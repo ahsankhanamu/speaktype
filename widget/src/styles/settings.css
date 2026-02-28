@@ -1,0 +1,286 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #1a1a1a;
+  color: #e0e0e0;
+  padding: 24px;
+  font-size: 14px;
+}
+
+h1 {
+  font-size: 20px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: white;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 20px;
+  background: #252525;
+  border-radius: 8px;
+  padding: 3px;
+}
+
+.tab {
+  flex: 1;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.15s;
+}
+
+.tab.active {
+  background: #333;
+  color: white;
+}
+
+.tab:hover:not(.active) {
+  color: #bbb;
+}
+
+/* Tab content */
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+/* Fields */
+.field {
+  margin-bottom: 16px;
+}
+
+.field label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  color: #999;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+input[type="text"],
+select {
+  width: 100%;
+  padding: 10px 12px;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+input[type="text"]:focus,
+select:focus {
+  border-color: #555;
+}
+
+select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='%23888' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 32px;
+}
+
+.hint {
+  font-size: 12px;
+  color: #666;
+  margin-top: 4px;
+}
+
+/* Hotkey display */
+.hotkey-display {
+  padding: 10px 14px;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 8px;
+  font-family: 'SF Mono', 'Menlo', monospace;
+  font-size: 15px;
+  color: #4ade80;
+}
+
+.hotkey-capture {
+  width: 100%;
+  padding: 12px;
+  background: #252525;
+  border: 2px dashed #444;
+  border-radius: 8px;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.hotkey-capture:hover {
+  border-color: #666;
+  color: #aaa;
+}
+
+.hotkey-capture.capturing {
+  border-color: #3b82f6;
+  color: white;
+  background: #1e3a5f;
+}
+
+/* Presets */
+.presets {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.preset {
+  padding: 6px 12px;
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 6px;
+  color: #aaa;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset:hover {
+  background: #333;
+  color: white;
+}
+
+/* URL row */
+.url-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.url-row input {
+  flex: 1;
+}
+
+.status-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+
+.status-dot.connected {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.5);
+}
+
+.status-dot.disconnected {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.5);
+}
+
+.status-dot.checking {
+  background: #eab308;
+  animation: pulse 0.8s ease infinite alternate;
+}
+
+@keyframes pulse {
+  from { opacity: 0.5; }
+  to { opacity: 1; }
+}
+
+/* Buttons */
+.btn {
+  padding: 10px 20px;
+  border: 1px solid #333;
+  border-radius: 8px;
+  background: #252525;
+  color: #e0e0e0;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn:hover {
+  background: #333;
+}
+
+.btn.primary {
+  background: #3b82f6;
+  border-color: #3b82f6;
+  color: white;
+}
+
+.btn.primary:hover {
+  background: #2563eb;
+}
+
+.btn.secondary {
+  background: transparent;
+}
+
+/* History */
+.history-list {
+  max-height: 340px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-entry {
+  background: #252525;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.history-entry .history-time {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 4px;
+}
+
+.history-entry .history-text {
+  font-size: 14px;
+  color: #e0e0e0;
+  user-select: text;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.history-empty {
+  text-align: center;
+  color: #666;
+  padding: 40px 0;
+  font-size: 14px;
+}
+
+.history-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Actions bar */
+.actions {
+  margin-top: 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}

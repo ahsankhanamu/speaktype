@@ -1,0 +1,8 @@
+{
+  "name": "talktype-widget",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "cargo tauri"
+  }
+}
