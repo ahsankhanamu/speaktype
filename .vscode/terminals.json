@@ -1,0 +1,33 @@
+{
+  "autorun": false,
+  "autokill": true,
+  "terminals": [
+    {
+      "name": "TalkType Whisper Server",
+      "description": "Local Whisper transcription API (port 8003)",
+      "icon": "mic",
+      "color": "terminal.ansiWhite",
+      "command": "make talktype",
+      "open": true,
+      "focus": true
+    },
+    {
+      "name": "TalkType Client",
+      "description": "Push-to-talk voice typing (F9 hotkey)",
+      "icon": "record",
+      "color": "terminal.ansiRed",
+      "command": "make talktype-client",
+      "open": false,
+      "focus": false
+    },
+    {
+      "name": "TalkType Widget",
+      "description": "Floating widget with voice animation (Tauri)",
+      "icon": "symbol-event",
+      "color": "terminal.ansiBlue",
+      "command": "make talktype-widget",
+      "open": false,
+      "focus": false
+    }
+  ]
+}
