@@ -1,0 +1,66 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+venv/
+ENV/
+env/
+.venv/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Whisper models (downloaded automatically)
+*.bin
+*.pt
+
+# Logs
+*.log
+
+# Local config (if users create their own)
+config.local.py
+.env
+.env.local
+REDDIT_POSTS_TALKTYPE.md
+*.bak
+
+# Claude Code context (machine-specific)
+CLAUDE.md
+
+# Tauri widget build artifacts
+widget/src-tauri/target/
+widget/node_modules/
