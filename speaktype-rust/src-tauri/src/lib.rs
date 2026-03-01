@@ -5,6 +5,7 @@ mod logging;
 mod paste;
 mod permissions;
 mod settings;
+mod tones;
 mod transcribe;
 
 use audio::AudioRecorder;
@@ -70,11 +71,29 @@ pub fn run() {
             let recorder = AudioRecorder::new()?;
 
             let is_recording = Arc::new(AtomicBool::new(false));
+            let last_active_window = Arc::new(Mutex::new(None));
+
+            // Background thread: track the last focused non-SpeakType app.
+            // This runs every 300ms so we always know where to paste,
+            // even if the widget stole focus via a click.
+            {
+                let tracker = last_active_window.clone();
+                std::thread::spawn(move || loop {
+                    if let Some(win) = paste::get_frontmost_window() {
+                        let mut stored = tracker.lock().unwrap();
+                        *stored = Some(win);
+                    }
+                    // None means SpeakType is frontmost — keep previous value
+                    std::thread::sleep(std::time::Duration::from_millis(300));
+                });
+            }
+
             let app_state = AppState {
                 settings: Arc::new(Mutex::new(settings.clone())),
                 recorder: Arc::new(Mutex::new(recorder)),
                 is_recording: is_recording.clone(),
                 target_window: Arc::new(Mutex::new(None)),
+                last_active_window,
             };
 
             app.manage(app_state);
@@ -120,7 +139,7 @@ pub fn run() {
             let settings_item =
                 MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let show_item =
-                MenuItemBuilder::with_id("show", "Show Widget").build(app)?;
+                MenuItemBuilder::with_id("show", "Hide Widget").build(app)?;
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
             let menu = MenuBuilder::new(app)
@@ -133,6 +152,8 @@ pub fn run() {
                 .build()?;
 
             let _tray = TrayIconBuilder::new()
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).expect("failed to load tray icon"))
+                .icon_as_template(true)
                 .menu(&menu)
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -150,8 +171,14 @@ pub fn run() {
                     }
                     "show" => {
                         if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
+                            if window.is_visible().unwrap_or(false) {
+                                let _ = window.hide();
+                                let _ = show_item.set_text("Show Widget");
+                            } else {
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                let _ = show_item.set_text("Hide Widget");
+                            }
                         }
                     }
                     "quit" => {

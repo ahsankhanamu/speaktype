@@ -3,14 +3,30 @@
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 
+const actionsSettings = document.getElementById('actions-settings');
+const actionsHistory = document.getElementById('actions-history');
+
 // === Tab Switching ===
+function switchTab(tabName) {
+  tabs.forEach(t => t.classList.remove('active'));
+  tabContents.forEach(tc => tc.classList.remove('active'));
+  document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+  document.getElementById(`tab-${tabName}`).classList.add('active');
+
+  // Show the right actions bar
+  if (tabName === 'history') {
+    actionsSettings.style.display = 'none';
+    actionsHistory.style.display = '';
+    loadHistory();
+  } else {
+    actionsSettings.style.display = '';
+    actionsHistory.style.display = 'none';
+    if (tabName === 'general') checkPermissions();
+  }
+}
+
 tabs.forEach(tab => {
-  tab.addEventListener('click', () => {
-    tabs.forEach(t => t.classList.remove('active'));
-    tabContents.forEach(tc => tc.classList.remove('active'));
-    tab.classList.add('active');
-    document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
-  });
+  tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
 
 // === Load Settings ===
@@ -315,17 +331,6 @@ document.getElementById('request-acc-btn').addEventListener('click', async () =>
   } catch (e) {
     console.error('Failed to request accessibility:', e);
   }
-});
-
-// Load history when History tab is activated, permissions when General tab is activated
-tabs.forEach(tab => {
-  tab.addEventListener('click', () => {
-    if (tab.dataset.tab === 'history') {
-      loadHistory();
-    } else if (tab.dataset.tab === 'general') {
-      checkPermissions();
-    }
-  });
 });
 
 // === About ===

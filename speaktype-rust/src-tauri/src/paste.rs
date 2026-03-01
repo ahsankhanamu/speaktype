@@ -26,11 +26,12 @@ const TERMINAL_BUNDLE_IDS: &[&str] = &[
     "com.github.wez.wezterm",
 ];
 
-/// Get the currently active window
-pub fn get_active_window() -> Option<WindowInfo> {
+/// Get the currently active (frontmost) window, skipping SpeakType itself.
+/// Returns the frontmost non-SpeakType app.
+pub fn get_frontmost_window() -> Option<WindowInfo> {
     #[cfg(target_os = "macos")]
     {
-        macos_get_active_window()
+        macos_get_frontmost_window()
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -39,29 +40,15 @@ pub fn get_active_window() -> Option<WindowInfo> {
 }
 
 #[cfg(target_os = "macos")]
-fn macos_get_active_window() -> Option<WindowInfo> {
-    // Use osascript to get the frontmost app that isn't us.
-    // NSWorkspace.frontmostApplication returns our own app when the widget is clicked,
-    // so we need to find the app that was active before we took focus.
+fn macos_get_frontmost_window() -> Option<WindowInfo> {
+    // Simple: get frontmost app. If it's SpeakType, return None (caller keeps previous value).
     let script = r#"
         tell application "System Events"
-            set appList to every process whose frontmost is true
-            if (count of appList) > 0 then
-                set frontApp to item 1 of appList
-                set appName to name of frontApp
-                set appID to bundle identifier of frontApp
-                if appID is "com.speaktype.widget" then
-                    -- We are frontmost, find the next visible app
-                    set allApps to every process whose visible is true and bundle identifier is not "com.speaktype.widget"
-                    if (count of allApps) > 0 then
-                        set targetApp to item 1 of allApps
-                        return (name of targetApp) & "|" & (bundle identifier of targetApp)
-                    end if
-                end if
-                return appName & "|" & appID
-            end if
+            set frontApp to first application process whose frontmost is true
+            set appName to name of frontApp
+            set appID to bundle identifier of frontApp
+            return appName & "|" & appID
         end tell
-        return ""
     "#;
 
     match std::process::Command::new("osascript")
@@ -72,24 +59,20 @@ fn macos_get_active_window() -> Option<WindowInfo> {
         Ok(output) => {
             let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if result.is_empty() {
-                log_message("[window] No active window found");
                 return None;
             }
             let parts: Vec<&str> = result.splitn(2, '|').collect();
             let name = parts.first().unwrap_or(&"").to_string();
             let bundle_id = parts.get(1).map(|s| s.to_string());
 
-            log_message(&format!(
-                "[window] Active: name={:?}, bundle_id={:?}",
-                name, bundle_id
-            ));
+            // Skip if it's our own app
+            if bundle_id.as_deref() == Some("com.speaktype.widget") {
+                return None;
+            }
 
             Some(WindowInfo { name, bundle_id })
         }
-        Err(e) => {
-            log_message(&format!("[window] osascript failed: {}", e));
-            None
-        }
+        Err(_) => None,
     }
 }
 

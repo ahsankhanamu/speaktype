@@ -8,23 +8,19 @@
 </head>
 <body>
   <div class="settings">
-    <div class="title-row">
-      <h1>SpeakType Settings</h1>
-      <button class="info-btn" id="about-btn" title="About SpeakType">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-      </button>
-    </div>
-
     <!-- Tabs -->
     <div class="tabs">
       <button class="tab active" data-tab="hotkey">Hotkey</button>
       <button class="tab" data-tab="server">Server</button>
       <button class="tab" data-tab="general">General</button>
       <button class="tab" data-tab="history">History</button>
+      <button class="info-btn" id="about-btn" title="About SpeakType">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Hotkey Tab -->
@@ -118,14 +114,14 @@
       <div class="history-list" id="history-list">
         <div class="history-empty" id="history-empty">No transcriptions yet</div>
       </div>
-      <div class="history-actions">
-        <button class="btn secondary" id="clear-history-btn">Clear History</button>
-      </div>
     </div>
 
-    <!-- Actions -->
-    <div class="actions">
+    <!-- Actions (swapped by JS based on active tab) -->
+    <div class="actions" id="actions-settings">
       <button class="btn primary" id="save-btn">Save</button>
+    </div>
+    <div class="actions" id="actions-history" style="display:none">
+      <button class="btn secondary" id="clear-history-btn">Clear History</button>
     </div>
   </div>
 

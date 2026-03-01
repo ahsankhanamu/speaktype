@@ -24,11 +24,7 @@
         "x": 100,
         "y": 100
       }
-    ],
-    "trayIcon": {
-      "iconPath": "icons/tray-icon.png",
-      "iconAsTemplate": true
-    }
+    ]
   },
   "bundle": {
     "active": true,

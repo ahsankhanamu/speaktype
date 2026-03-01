@@ -3,6 +3,7 @@ use crate::history::History;
 use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
 use crate::settings::Settings;
+use crate::tones::{self, Tone};
 use crate::transcribe;
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -14,6 +15,10 @@ pub struct AppState {
     pub recorder: Arc<Mutex<AudioRecorder>>,
     pub is_recording: Arc<AtomicBool>,
     pub target_window: Arc<Mutex<Option<WindowInfo>>>,
+    /// Continuously tracked: the last focused app that isn't SpeakType.
+    /// Updated by a background thread so it's always ready, even if the
+    /// widget has already stolen focus by the time recording starts.
+    pub last_active_window: Arc<Mutex<Option<WindowInfo>>>,
 }
 
 #[tauri::command]
@@ -45,6 +50,7 @@ pub fn toggle_recording(
             0
         };
 
+        tones::play(Tone::RecordingStop);
         let _ = app.emit(
             "sidecar:recording_stopped",
             json!({"duration_ms": duration_ms}),
@@ -71,10 +77,13 @@ pub fn toggle_recording(
             return Ok(()); // Already recording
         }
 
-        // Capture active window before recording starts
+        // Use the continuously tracked last active window (works whether
+        // recording was started via hotkey or widget click)
         {
             let mut tw = state.target_window.lock().map_err(|e| e.to_string())?;
-            *tw = paste::get_active_window();
+            let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
+            *tw = last.clone();
+            log_message(&format!("[toggle_recording] target_window={:?}", *tw));
         }
 
         {
@@ -83,6 +92,7 @@ pub fn toggle_recording(
         }
 
         state.is_recording.store(true, Ordering::SeqCst);
+        tones::play(Tone::RecordingStart);
         let _ = app.emit("sidecar:recording_started", json!({}));
     }
 
@@ -101,6 +111,7 @@ async fn process_recording(
     // Check for speech
     if samples.is_empty() || !audio::has_speech(&samples, sample_rate) {
         log_message("[process] No speech detected");
+        tones::play(Tone::Error);
         let _ = app.emit("sidecar:no_speech", json!({}));
         return;
     }
@@ -110,6 +121,7 @@ async fn process_recording(
         Ok(data) => data,
         Err(e) => {
             log_message(&format!("[process] WAV encoding error: {}", e));
+            tones::play(Tone::Error);
             let _ = app.emit("sidecar:error", json!({"message": e}));
             return;
         }
@@ -120,6 +132,7 @@ async fn process_recording(
         Ok(text) => text,
         Err(e) => {
             log_message(&format!("[process] Transcription error: {}", e));
+            tones::play(Tone::Error);
             let _ = app.emit("sidecar:error", json!({"message": e}));
             return;
         }
@@ -131,6 +144,7 @@ async fn process_recording(
             "[process] Empty or hallucination: {:?}",
             text
         ));
+        tones::play(Tone::Error);
         let _ = app.emit("sidecar:no_speech", json!({}));
         return;
     }
@@ -148,6 +162,7 @@ async fn process_recording(
 
     if let Err(e) = paste_result {
         log_message(&format!("[process] Paste task error: {}", e));
+        tones::play(Tone::Error);
         let _ = app.emit("sidecar:error", json!({"message": e.to_string()}));
         return;
     }
@@ -249,7 +264,7 @@ pub async fn open_about(app: AppHandle) -> Result<(), String> {
 
     WebviewWindowBuilder::new(&app, "about", WebviewUrl::App("about.html".into()))
         .title("About SpeakType")
-        .inner_size(320.0, 280.0)
+        .inner_size(320.0, 380.0)
         .resizable(false)
         .center()
         .build()

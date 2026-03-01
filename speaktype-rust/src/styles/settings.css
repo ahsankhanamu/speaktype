@@ -4,6 +4,11 @@
   box-sizing: border-box;
 }
 
+html, body {
+  height: 100%;
+  overflow: hidden;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: #1a1a1a;
@@ -12,28 +17,30 @@ body {
   font-size: 14px;
 }
 
-h1 {
-  font-size: 20px;
-  font-weight: 600;
-  color: white;
+.settings {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
 }
 
-.title-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 20px;
+.tab-content.active {
+  display: block;
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .info-btn {
   background: none;
   border: none;
-  color: #666;
+  color: #555;
   cursor: pointer;
-  padding: 4px;
+  padding: 6px;
   border-radius: 6px;
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   transition: all 0.15s;
 }
 
@@ -77,10 +84,6 @@ h1 {
 /* Tab content */
 .tab-content {
   display: none;
-}
-
-.tab-content.active {
-  display: block;
 }
 
 /* Fields */
@@ -305,8 +308,6 @@ select {
 
 /* History */
 .history-list {
-  max-height: 340px;
-  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
