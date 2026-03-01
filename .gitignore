@@ -64,5 +64,5 @@ CLAUDE.md
 # Tauri build artifacts
 speaktype-python/src-tauri/target/
 speaktype-python/node_modules/
-speaktype/src-tauri/target/
-speaktype/node_modules/
+speaktype-rust/src-tauri/target/
+speaktype-rust/node_modules/
