@@ -31,7 +31,7 @@ impl Settings {
     fn config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("talktype")
+            .join("speaktype-python")
     }
 
     fn config_path() -> PathBuf {

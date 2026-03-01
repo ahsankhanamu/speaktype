@@ -19,7 +19,7 @@ impl History {
     fn config_dir() -> PathBuf {
         dirs::config_dir()
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("talktype")
+            .join("speaktype-python")
     }
 
     fn history_path() -> PathBuf {

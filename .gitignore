@@ -61,6 +61,8 @@ REDDIT_POSTS_TALKTYPE.md
 # Claude Code context (machine-specific)
 CLAUDE.md
 
-# Tauri widget build artifacts
-widget/src-tauri/target/
-widget/node_modules/
+# Tauri build artifacts
+speaktype-python/src-tauri/target/
+speaktype-python/node_modules/
+speaktype/src-tauri/target/
+speaktype/node_modules/

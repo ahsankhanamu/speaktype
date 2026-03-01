@@ -106,7 +106,7 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     }
 
     WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
-        .title("TalkType Settings")
+        .title("SpeakType Settings")
         .inner_size(480.0, 580.0)
         .resizable(false)
         .center()

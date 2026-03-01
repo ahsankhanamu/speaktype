@@ -1,4 +1,4 @@
-// TalkType Settings — Tab switching, hotkey capture, form handling
+// SpeakType Settings — Tab switching, hotkey capture, form handling
 
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');

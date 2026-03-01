@@ -49,8 +49,8 @@ TERMINALS = {
         "ConEmu", "mintty", "Hyper", "Terminus"
     ],
     "Darwin": [
-        "Terminal", "iTerm", "iTerm2", "Hyper", "kitty",
-        "alacritty", "wezterm"
+        "com.apple.Terminal", "com.googlecode.iterm2", "co.zeit.hyper",
+        "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm"
     ]
 }
 
@@ -383,9 +383,11 @@ def get_active_window():
             import ctypes
             return ctypes.windll.user32.GetForegroundWindow()
         elif SYSTEM == "Darwin":
-            script = 'tell application "System Events" to get name of first process whose frontmost is true'
+            script = 'tell application "System Events" to get bundle identifier of first process whose frontmost is true'
             result = subprocess.check_output(["osascript", "-e", script], stderr=subprocess.DEVNULL)
-            return result.strip()
+            window_id = result.strip().decode()
+            print(f"[window] Captured frontmost app: {window_id}")
+            return window_id
     except:
         return None
     return None
@@ -405,8 +407,12 @@ def focus_window(window_id):
             import ctypes
             ctypes.windll.user32.SetForegroundWindow(window_id)
         elif SYSTEM == "Darwin":
-            # macOS: window_id is app name
-            script = f'tell application "{window_id.decode()}" to activate'
+            # macOS: window_id is bundle identifier (e.g. com.apple.Terminal)
+            script = f'''
+                tell application id "{window_id}"
+                    activate
+                end tell
+            '''
             subprocess.run(["osascript", "-e", script], stderr=subprocess.DEVNULL, check=True)
         return True
     except:
@@ -435,9 +441,9 @@ def is_terminal_window(window_id) -> bool:
                       for t in TERMINALS.get("Windows", []))
 
         elif SYSTEM == "Darwin":
-            # window_id is app name on macOS
-            app_name = window_id.decode() if isinstance(window_id, bytes) else str(window_id)
-            return any(t.lower() in app_name.lower() for t in TERMINALS.get("Darwin", []))
+            # window_id is bundle identifier on macOS
+            bundle_id = window_id if isinstance(window_id, str) else str(window_id)
+            return any(t in bundle_id for t in TERMINALS.get("Darwin", []))
     except:
         pass
     return False

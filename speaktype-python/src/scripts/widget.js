@@ -1,4 +1,4 @@
-// TalkType Widget — Simplified: click to toggle, global shortcut for drag-free use
+// SpeakType Widget — Simplified: click to toggle, global shortcut for drag-free use
 
 const widget = document.getElementById('widget');
 const timer = document.querySelector('.timer');

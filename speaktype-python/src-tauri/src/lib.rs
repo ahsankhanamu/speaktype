@@ -151,7 +151,7 @@ pub fn run() {
                     }
                 })?;
             } else {
-                eprintln!("[talktype] Invalid hotkey: {}", hotkey_str);
+                eprintln!("[speaktype] Invalid hotkey: {}", hotkey_str);
             }
 
             // System tray
@@ -168,7 +168,7 @@ pub fn run() {
 
             let _tray = TrayIconBuilder::new()
                 .menu(&menu)
-                .tooltip("TalkType")
+                .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "settings" => {
                         let app = app.clone();
@@ -192,5 +192,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running TalkType");
+        .expect("error while running SpeakType");
 }

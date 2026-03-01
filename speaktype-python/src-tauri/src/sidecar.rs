@@ -8,9 +8,9 @@ use tauri::{AppHandle, Emitter};
 const MAX_LOG_SIZE: u64 = 1_000_000; // 1MB
 
 fn log_path() -> Option<std::path::PathBuf> {
-    let dir = dirs::config_dir()?.join("talktype");
+    let dir = dirs::config_dir()?.join("speaktype-python");
     std::fs::create_dir_all(&dir).ok()?;
-    Some(dir.join("talktype.log"))
+    Some(dir.join("speaktype.log"))
 }
 
 fn log_file() -> Option<std::fs::File> {
@@ -45,7 +45,7 @@ pub fn log_message(msg: &str) {
 /// Call once at startup to rotate old logs
 pub fn init_logging() {
     rotate_if_needed();
-    log_message("=== TalkType started ===");
+    log_message("=== SpeakType started ===");
 }
 
 pub struct Sidecar {
