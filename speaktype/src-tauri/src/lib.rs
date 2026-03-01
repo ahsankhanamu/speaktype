@@ -1,0 +1,157 @@
+mod audio;
+mod commands;
+mod history;
+mod logging;
+mod paste;
+mod permissions;
+mod settings;
+mod transcribe;
+
+use audio::AudioRecorder;
+use commands::AppState;
+use settings::Settings;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use tauri::{
+    menu::{MenuBuilder, MenuItemBuilder},
+    tray::TrayIconBuilder,
+    Manager,
+};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .invoke_handler(tauri::generate_handler![
+            commands::toggle_recording,
+            commands::check_permissions,
+            commands::request_accessibility,
+            commands::get_settings,
+            commands::save_settings,
+            commands::update_hotkey,
+            commands::check_server,
+            commands::open_settings,
+            commands::hide_widget,
+            commands::minimize_widget,
+            commands::quit_app,
+            commands::save_window_position,
+            commands::get_history,
+            commands::delete_history_entry,
+            commands::clear_history,
+        ])
+        .setup(|app| {
+            logging::init_logging();
+
+            // Check macOS permissions at startup
+            let has_accessibility = permissions::check_accessibility(true);
+            let has_microphone = permissions::request_microphone();
+            logging::log_message(&format!(
+                "[permissions] accessibility={}, microphone={}",
+                has_accessibility, has_microphone
+            ));
+
+            let settings = Settings::load();
+
+            // Restore window position
+            if let (Some(x), Some(y)) = (settings.window_x, settings.window_y) {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.set_position(tauri::Position::Physical(
+                        tauri::PhysicalPosition {
+                            x: x as i32,
+                            y: y as i32,
+                        },
+                    ));
+                }
+            }
+
+            // Create audio recorder
+            let recorder = AudioRecorder::new()?;
+
+            let is_recording = Arc::new(AtomicBool::new(false));
+            let app_state = AppState {
+                settings: Arc::new(Mutex::new(settings.clone())),
+                recorder: Arc::new(Mutex::new(recorder)),
+                is_recording: is_recording.clone(),
+                target_window: Arc::new(Mutex::new(None)),
+            };
+
+            app.manage(app_state);
+
+            // Register global shortcut
+            let hotkey_str = settings.hotkey.clone();
+            let app_handle = app.handle().clone();
+            let is_rec_for_shortcut = is_recording.clone();
+
+            if let Ok(shortcut) = hotkey_str.parse::<Shortcut>() {
+                app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
+                    // Only handle key-down, ignore key-up to prevent double-fire
+                    if event.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    let currently_recording = is_rec_for_shortcut.load(Ordering::SeqCst);
+
+                    // Call toggle_recording via the app handle
+                    let app_clone = app_handle.clone();
+                    tauri::async_runtime::spawn(async move {
+                        // Invoke the toggle_recording command logic directly
+                        let state = app_clone.state::<AppState>();
+                        if let Err(e) = commands::toggle_recording(
+                            app_clone.clone(),
+                            state,
+                            currently_recording,
+                        ) {
+                            logging::log_message(&format!(
+                                "[shortcut] toggle_recording error: {}",
+                                e
+                            ));
+                        }
+                    });
+                })?;
+                logging::log_message(&format!("[shortcut] Registered: {}", hotkey_str));
+            } else {
+                logging::log_message(&format!("[shortcut] Invalid hotkey: {}", hotkey_str));
+            }
+
+            // System tray
+            let settings_item =
+                MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+            let show_item =
+                MenuItemBuilder::with_id("show", "Show Widget").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+
+            let menu = MenuBuilder::new(app)
+                .item(&settings_item)
+                .item(&show_item)
+                .separator()
+                .item(&quit_item)
+                .build()?;
+
+            let _tray = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("SpeakType")
+                .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "settings" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = commands::open_settings(app).await;
+                        });
+                    }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
+                    }
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .build(app)?;
+
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running SpeakType");
+}
