@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>About SpeakType</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      user-select: none;
+    }
+    .about {
+      text-align: center;
+      padding: 32px;
+    }
+    .app-icon {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 16px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .app-icon svg {
+      width: 36px;
+      height: 36px;
+      fill: white;
+    }
+    .app-name {
+      font-size: 20px;
+      font-weight: 600;
+      color: white;
+      margin-bottom: 4px;
+    }
+    .app-version {
+      font-size: 13px;
+      color: #888;
+      margin-bottom: 20px;
+    }
+    .app-desc {
+      font-size: 13px;
+      color: #aaa;
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .divider {
+      height: 1px;
+      background: #333;
+      margin: 16px 0;
+    }
+    .creator {
+      font-size: 13px;
+      color: #888;
+    }
+    .creator a {
+      color: #3b82f6;
+      text-decoration: none;
+    }
+    .creator a:hover {
+      text-decoration: underline;
+    }
+    .copyright {
+      font-size: 11px;
+      color: #555;
+      margin-top: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="about">
+    <div class="app-icon">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+      </svg>
+    </div>
+    <div class="app-name">SpeakType</div>
+    <div class="app-version">v0.1.0</div>
+    <div class="app-desc">
+      Voice typing that works everywhere.<br>
+      Press a key, speak, and your words appear.
+    </div>
+    <div class="divider"></div>
+    <div class="creator">
+      Created by <a href="https://ahsankhan.dev" target="_blank">Ahsan Khan</a>
+    </div>
+    <div class="copyright">&copy; 2026 Ahsan Khan. All rights reserved.</div>
+  </div>
+</body>
+</html>

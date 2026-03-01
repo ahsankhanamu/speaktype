@@ -31,6 +31,7 @@ pub fn run() {
             commands::save_settings,
             commands::update_hotkey,
             commands::check_server,
+            commands::open_about,
             commands::open_settings,
             commands::hide_widget,
             commands::minimize_widget,
@@ -114,6 +115,8 @@ pub fn run() {
             }
 
             // System tray
+            let about_item =
+                MenuItemBuilder::with_id("about", "About SpeakType").build(app)?;
             let settings_item =
                 MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let show_item =
@@ -121,6 +124,8 @@ pub fn run() {
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
             let menu = MenuBuilder::new(app)
+                .item(&about_item)
+                .separator()
                 .item(&settings_item)
                 .item(&show_item)
                 .separator()
@@ -131,6 +136,12 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "about" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let _ = commands::open_about(app).await;
+                        });
+                    }
                     "settings" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {

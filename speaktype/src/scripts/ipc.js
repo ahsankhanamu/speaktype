@@ -47,6 +47,10 @@ const ttipc = {
     return this.invoke('check_server', { apiUrl });
   },
 
+  openAbout() {
+    return this.invoke('open_about');
+  },
+
   openSettings() {
     return this.invoke('open_settings');
   },

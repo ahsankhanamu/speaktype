@@ -241,6 +241,24 @@ pub fn clear_history() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn open_about(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("about") {
+        window.set_focus().map_err(|e| e.to_string())?;
+        return Ok(());
+    }
+
+    WebviewWindowBuilder::new(&app, "about", WebviewUrl::App("about.html".into()))
+        .title("About SpeakType")
+        .inner_size(320.0, 280.0)
+        .resizable(false)
+        .center()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
         window.set_focus().map_err(|e| e.to_string())?;

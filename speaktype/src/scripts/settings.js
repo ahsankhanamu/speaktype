@@ -328,5 +328,10 @@ tabs.forEach(tab => {
   });
 });
 
+// === About ===
+document.getElementById('about-btn').addEventListener('click', () => {
+  ttipc.openAbout().catch(e => console.error('Failed to open about:', e));
+});
+
 // === Init ===
 loadSettings();
