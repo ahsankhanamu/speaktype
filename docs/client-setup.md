@@ -1,4 +1,4 @@
-# Client Setup (client/talktype.py)
+# Client Setup (client/speaktype.py)
 
 The client runs on your host machine (not in Docker) because it needs access to your microphone, keyboard, and display.
 
@@ -9,7 +9,7 @@ The client runs on your host machine (not in Docker) because it needs access to 
 brew install portaudio
 
 # Set up Python environment
-cd talktype
+cd speaktype
 python3 -m venv .venv
 source .venv/bin/activate
 pip install ".[client]"
@@ -28,7 +28,7 @@ macOS requires accessibility permissions for keyboard monitoring:
 sudo apt install xdotool xclip portaudio19-dev
 
 # Python environment
-cd talktype
+cd speaktype
 python3 -m venv .venv
 source .venv/bin/activate
 pip install ".[client]"
@@ -37,7 +37,7 @@ pip install ".[client]"
 ## Windows
 
 ```powershell
-cd talktype
+cd speaktype
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install ".[client]"
@@ -49,20 +49,20 @@ With the Docker whisper server already running:
 
 ```bash
 source .venv/bin/activate
-python client/talktype.py --api http://localhost:8003/transcribe
+python client/speaktype.py --api http://localhost:8003/transcribe
 ```
 
 ### Common Options
 
 ```bash
 # Change hotkey
-python client/talktype.py --api http://localhost:8003/transcribe --hotkey f8
+python client/speaktype.py --api http://localhost:8003/transcribe --hotkey f8
 
 # Set language (skip auto-detect for faster results)
-python client/talktype.py --api http://localhost:8003/transcribe --language en
+python client/speaktype.py --api http://localhost:8003/transcribe --language en
 
 # Minimal UI
-python client/talktype.py --api http://localhost:8003/transcribe --minimal
+python client/speaktype.py --api http://localhost:8003/transcribe --minimal
 ```
 
 ## How It Works
@@ -72,4 +72,4 @@ python client/talktype.py --api http://localhost:8003/transcribe --minimal
 3. Press F9 again — stops recording, sends audio to the whisper server
 4. Transcribed text is pasted into your currently focused window
 
-The client remembers which window was focused when you started recording, so you can switch to TalkType's terminal to see status, then your text still gets pasted in the right place.
+The client remembers which window was focused when you started recording, so you can switch to SpeakType's terminal to see status, then your text still gets pasted in the right place.

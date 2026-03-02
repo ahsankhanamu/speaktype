@@ -1,6 +1,6 @@
 {
   "identifier": "default",
-  "description": "Default capabilities for TalkType widget",
+  "description": "Default capabilities for SpeakType widget",
   "windows": ["main", "settings"],
   "permissions": [
     "core:default",

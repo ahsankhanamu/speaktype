@@ -55,7 +55,7 @@ Thumbs.db
 config.local.py
 .env
 .env.local
-REDDIT_POSTS_TALKTYPE.md
+REDDIT_POSTS_SPEAKTYPE.md
 *.bak
 
 # Claude Code context (machine-specific)

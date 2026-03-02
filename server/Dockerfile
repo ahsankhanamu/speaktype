@@ -1,11 +1,11 @@
 # =============================================================================
-# TalkType Whisper Server - Docker Image
+# SpeakType Whisper Server - Docker Image
 # =============================================================================
 # Runs the whisper_server.py FastAPI transcription service.
-# The talktype.py client runs on your host (needs audio/keyboard/display).
+# The speaktype.py client runs on your host (needs audio/keyboard/display).
 #
-# Build:  docker build -t talktype-whisper .
-# Run:    docker run -p 8003:8002 talktype-whisper
+# Build:  docker build -t speaktype-whisper .
+# Run:    docker run -p 8003:8002 speaktype-whisper
 # =============================================================================
 
 FROM python:3.13-slim

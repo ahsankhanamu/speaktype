@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# TalkType installer for Linux
+# SpeakType installer for Linux
 
 set -e
 
-echo "Installing TalkType..."
+echo "Installing SpeakType..."
 
 # Check if running on Linux
 if [[ "$OSTYPE" != "linux-gnu"* ]]; then
@@ -73,10 +73,10 @@ pip install -q ".[all]"
 echo ""
 echo "Installation complete!"
 echo ""
-echo "To run TalkType:"
+echo "To run SpeakType:"
 echo "  source venv/bin/activate"
-echo "  python client/talktype.py"
+echo "  python client/speaktype.py"
 echo ""
 echo "Or for faster startup, run the Whisper server first:"
 echo "  python server/whisper_server.py &"
-echo "  python client/talktype.py --api http://localhost:8002/transcribe"
+echo "  python client/speaktype.py --api http://localhost:8002/transcribe"

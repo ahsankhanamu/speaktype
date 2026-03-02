@@ -1,8 +1,8 @@
 # Docker Setup Guide
 
-TalkType has two components:
+SpeakType has two components:
 - **server/whisper_server.py** — The transcription API server (runs in Docker)
-- **client/talktype.py** — The desktop client (runs on your host, needs mic/keyboard/display)
+- **client/speaktype.py** — The desktop client (runs on your host, needs mic/keyboard/display)
 
 The Docker setup containerizes the server, so you get a clean, reproducible transcription backend with one command.
 
@@ -16,7 +16,7 @@ cd server && docker compose up -d
 curl http://localhost:8003/health
 
 # Run the client on your host (from project root)
-cd .. && python client/talktype.py --api http://localhost:8003/transcribe
+cd .. && python client/speaktype.py --api http://localhost:8003/transcribe
 ```
 
 That's it. Press F9, speak, press F9 — text appears.
@@ -34,8 +34,8 @@ Requires [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-nat
 Or build directly:
 
 ```bash
-docker build -f server/Dockerfile.gpu -t talktype-whisper:gpu .
-docker run --gpus all -p 8002:8002 talktype-whisper:gpu
+docker build -f server/Dockerfile.gpu -t speaktype-whisper:gpu .
+docker run --gpus all -p 8002:8002 speaktype-whisper:gpu
 ```
 
 ## Configuration
@@ -62,7 +62,7 @@ Downloaded models are stored in a Docker volume (`whisper-models`). They persist
 To clear cached models:
 
 ```bash
-docker volume rm talktype_whisper-models
+docker volume rm speaktype_whisper-models
 ```
 
 ## Model Size Reference

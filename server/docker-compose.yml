@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: server/Dockerfile
-    container_name: talktype-whisper
+    container_name: speaktype-whisper
     ports:
       - "8003:8002"
     volumes:
@@ -26,7 +26,7 @@ services:
   #   build:
   #     context: ..
   #     dockerfile: server/Dockerfile.gpu
-  #   container_name: talktype-whisper-gpu
+  #   container_name: speaktype-whisper-gpu
   #   ports:
   #     - "8002:8002"
   #   volumes:

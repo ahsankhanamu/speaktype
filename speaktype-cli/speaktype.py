@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-TalkType - Push-to-talk voice typing for your terminal.
+SpeakType - Push-to-talk voice typing for your terminal.
 
 Press a hotkey, speak, press again - your words appear wherever you're typing.
 Works on Linux, Windows, and macOS with local Whisper transcription.
 
 Usage:
-    python talktype.py [--api URL] [--model MODEL] [--hotkey KEY]
+    python speaktype.py [--api URL] [--model MODEL] [--hotkey KEY]
 
 Examples:
-    python talktype.py                          # Use faster-whisper locally
-    python talktype.py --api http://localhost:8002/transcribe  # Use API
-    python talktype.py --model small            # Use small model
-    python talktype.py --hotkey f8              # Use F8 instead of F9
+    python speaktype.py                          # Use faster-whisper locally
+    python speaktype.py --api http://localhost:8002/transcribe  # Use API
+    python speaktype.py --model small            # Use small model
+    python speaktype.py --hotkey f8              # Use F8 instead of F9
 """
 
 import argparse
@@ -214,10 +214,10 @@ def parse_args():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python talktype.py                     # Use local faster-whisper
-  python talktype.py --api http://localhost:8002/transcribe
-  python talktype.py --model small       # Use 'small' model for better accuracy
-  python talktype.py --hotkey f8         # Use F8 instead of F9
+  python speaktype.py                     # Use local faster-whisper
+  python speaktype.py --api http://localhost:8002/transcribe
+  python speaktype.py --model small       # Use 'small' model for better accuracy
+  python speaktype.py --hotkey f8         # Use F8 instead of F9
         """
     )
     parser.add_argument(
@@ -669,22 +669,22 @@ def transcribe_and_paste(audio: np.ndarray):
         if text and not is_hallucination(text):
             paste_text(" " + text)  # Space to separate from previous
             beep_success()
-            set_terminal_title("TalkType ✅")
+            set_terminal_title("SpeakType ✅")
             show_status("✅ DONE", text[:50])
         else:
             beep_error()
-            set_terminal_title("TalkType")
+            set_terminal_title("SpeakType")
             show_status("❌ NO SPEECH", "Nothing detected")
     except Exception as e:
         beep_error()
-        set_terminal_title("TalkType ❌")
+        set_terminal_title("SpeakType ❌")
         show_status("❌ ERROR", str(e)[:30])
     finally:
         with state_lock:
             state = State.IDLE
         # Reset to ready after a moment
         time.sleep(1.5)
-        set_terminal_title("TalkType - Ready")
+        set_terminal_title("SpeakType - Ready")
         show_status("● READY", "Press F9 to record")
 
 
@@ -756,7 +756,7 @@ def main():
         sidecar_main()
         return
 
-    print("TalkType - Voice Typing for Your Terminal")
+    print("SpeakType - Voice Typing for Your Terminal")
     print("=" * 45)
     print(f"System: {SYSTEM}")
 
@@ -764,7 +764,7 @@ def main():
     load_whisper_model()
 
     hotkey = get_hotkey(config.hotkey)
-    set_terminal_title("TalkType - Ready")
+    set_terminal_title("SpeakType - Ready")
 
     if config.minimal:
         show_status("● READY", f"Press {config.hotkey.upper()} to record")

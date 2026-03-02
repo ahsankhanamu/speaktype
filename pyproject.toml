@@ -1,5 +1,5 @@
 [project]
-name = "talktype"
+name = "speaktype"
 version = "1.0.0"
 description = "Push-to-talk voice typing for your terminal"
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Client dependencies (talktype.py — runs on host, not Docker)
+# Client dependencies (speaktype.py — runs on host, not Docker)
 client = [
     "scipy>=1.10.0",
     "sounddevice>=0.4.6",
@@ -27,7 +27,7 @@ client = [
 ]
 # Everything — server + client + local whisper
 all = [
-    "talktype[client]",
+    "speaktype[client]",
     "faster-whisper>=0.10.0",
 ]
 # GPU acceleration (NVIDIA)

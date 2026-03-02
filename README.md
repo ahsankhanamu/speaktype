@@ -1,4 +1,4 @@
-# TalkType
+# SpeakType
 
 **Push-to-talk voice typing that works everywhere.**
 
@@ -6,9 +6,9 @@ Press a hotkey, speak, press again — your words appear wherever you're typing.
 
 ![Demo](assets/demo.gif)
 
-## Why TalkType?
+## Why SpeakType?
 
-When you type, you self-edit and truncate. When you speak, you explain naturally and fully. TalkType bridges that gap — letting you talk to your terminal, your AI assistant, or any app, and have your words appear instantly.
+When you type, you self-edit and truncate. When you speak, you explain naturally and fully. SpeakType bridges that gap — letting you talk to your terminal, your AI assistant, or any app, and have your words appear instantly.
 
 Built for developers who want:
 - **Voice input for CLI tools** like Claude Code, aider, or any terminal app
@@ -34,7 +34,7 @@ Built for developers who want:
 ### Quick Install (Linux)
 
 ```bash
-git clone https://github.com/ahsankhanamu/talktype.git && cd talktype && ./install.sh
+git clone https://github.com/ahsankhanamu/speaktype.git && cd speaktype && ./install.sh
 ```
 
 ### Manual Install - Linux (Ubuntu/Debian)
@@ -44,8 +44,8 @@ git clone https://github.com/ahsankhanamu/talktype.git && cd talktype && ./insta
 sudo apt install xdotool xclip portaudio19-dev
 
 # Clone and install
-git clone https://github.com/ahsankhanamu/talktype.git
-cd talktype
+git clone https://github.com/ahsankhanamu/speaktype.git
+cd speaktype
 python3 -m venv .venv
 source .venv/bin/activate
 pip install ".[all]"
@@ -55,8 +55,8 @@ pip install ".[all]"
 
 ```powershell
 # Clone and install
-git clone https://github.com/ahsankhanamu/talktype.git
-cd talktype
+git clone https://github.com/ahsankhanamu/speaktype.git
+cd speaktype
 python -m venv .venv
 .\.venv\Scripts\activate
 pip install ".[all]"
@@ -69,8 +69,8 @@ pip install ".[all]"
 brew install portaudio
 
 # Clone and install
-git clone https://github.com/ahsankhanamu/talktype.git
-cd talktype
+git clone https://github.com/ahsankhanamu/speaktype.git
+cd speaktype
 python3 -m venv .venv
 source .venv/bin/activate
 pip install ".[all]"
@@ -78,12 +78,12 @@ pip install ".[all]"
 
 ### Dependency Groups
 
-TalkType uses `pyproject.toml` with optional dependency groups:
+SpeakType uses `pyproject.toml` with optional dependency groups:
 
 | Install Command | What You Get |
 |---|---|
 | `pip install .` | Server only (server/whisper_server.py) |
-| `pip install ".[client]"` | Client only (client/talktype.py with API mode) |
+| `pip install ".[client]"` | Client only (client/speaktype.py with API mode) |
 | `pip install ".[all]"` | Everything — server + client + local Whisper |
 | `pip install ".[gpu]"` | NVIDIA GPU acceleration (add to any of the above) |
 
@@ -96,8 +96,8 @@ TalkType uses `pyproject.toml` with optional dependency groups:
 source .venv/bin/activate  # Linux/macOS
 # or: .\.venv\Scripts\activate  # Windows
 
-# Run TalkType
-python client/talktype.py
+# Run SpeakType
+python client/speaktype.py
 ```
 
 First run will download the Whisper model (~150MB for `base`).
@@ -112,37 +112,37 @@ Then:
 
 ```bash
 # Use a different model (tiny, base, small, medium, large-v3)
-python client/talktype.py --model small
+python client/speaktype.py --model small
 
 # Use a different hotkey
-python client/talktype.py --hotkey f8
+python client/speaktype.py --hotkey f8
 
 # Connect to a Whisper API server (if you have one running)
-python client/talktype.py --api http://localhost:8002/transcribe
+python client/speaktype.py --api http://localhost:8002/transcribe
 
 # Change language
-python client/talktype.py --language es  # Spanish
+python client/speaktype.py --language es  # Spanish
 ```
 
 ### OpenAI-Compatible APIs
 
-TalkType supports any OpenAI-compatible transcription API, so you can use different backends like Whisper, Parakeet, or Whisper Turbo:
+SpeakType supports any OpenAI-compatible transcription API, so you can use different backends like Whisper, Parakeet, or Whisper Turbo:
 
 ```bash
 # OpenAI API
-python client/talktype.py --api https://api.openai.com/v1/audio/transcriptions --api-model whisper-1
+python client/speaktype.py --api https://api.openai.com/v1/audio/transcriptions --api-model whisper-1
 
 # Groq (super fast)
-python client/talktype.py --api https://api.groq.com/openai/v1/audio/transcriptions --api-model whisper-large-v3
+python client/speaktype.py --api https://api.groq.com/openai/v1/audio/transcriptions --api-model whisper-large-v3
 
 # Local OpenAI-compatible server (e.g., faster-whisper-server, whisper.cpp)
-python client/talktype.py --api http://localhost:8080/v1/audio/transcriptions --api-model whisper-1
+python client/speaktype.py --api http://localhost:8080/v1/audio/transcriptions --api-model whisper-1
 
 # Any custom server
-python client/talktype.py --api http://localhost:8002/transcribe
+python client/speaktype.py --api http://localhost:8002/transcribe
 ```
 
-TalkType auto-detects OpenAI-compatible endpoints by URL pattern. For custom servers, it uses a simpler format that works with most Whisper APIs.
+SpeakType auto-detects OpenAI-compatible endpoints by URL pattern. For custom servers, it uses a simpler format that works with most Whisper APIs.
 
 ### Model Sizes
 
@@ -158,7 +158,7 @@ For most use cases, `base` or `small` is the sweet spot.
 
 ## Desktop Widget (Tauri)
 
-TalkType includes a native desktop widget built with Tauri that provides:
+SpeakType includes a native desktop widget built with Tauri that provides:
 - Floating always-on-top widget with voice recording animation
 - Settings window with Hotkey, Server, General, and History tabs
 - System tray integration
@@ -168,13 +168,13 @@ The widget source lives in `widget/`. See [widget/README.md](widget/) for build 
 
 ## Whisper API Server (Recommended for Power Users)
 
-For faster startup and better performance, run the included Whisper API server. The model stays loaded in memory, so TalkType connects instantly.
+For faster startup and better performance, run the included Whisper API server. The model stays loaded in memory, so SpeakType connects instantly.
 
 ### Why use the server?
 
 | Mode | Startup | Memory | Best for |
 |------|---------|--------|----------|
-| Direct (`client/talktype.py`) | ~3-5s (loads model) | Uses RAM while running | Occasional use |
+| Direct (`client/speaktype.py`) | ~3-5s (loads model) | Uses RAM while running | Occasional use |
 | Server (`server/whisper_server.py`) | Instant | Server keeps model loaded | Heavy use, multiple apps |
 
 ### Running the Server
@@ -188,10 +188,10 @@ python server/whisper_server.py --model base
 python server/whisper_server.py --model large-v3 --device cuda
 ```
 
-**Terminal 2 - Run TalkType:**
+**Terminal 2 - Run SpeakType:**
 ```bash
 source .venv/bin/activate
-python client/talktype.py --api http://localhost:8002/transcribe
+python client/speaktype.py --api http://localhost:8002/transcribe
 ```
 
 ### Server Options
@@ -223,8 +223,8 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=/path/to/talktype
-ExecStart=/path/to/talktype/.venv/bin/python server/whisper_server.py --model base
+WorkingDirectory=/path/to/speaktype
+ExecStart=/path/to/speaktype/.venv/bin/python server/whisper_server.py --model base
 Restart=on-failure
 RestartSec=5
 
@@ -256,20 +256,20 @@ curl -X POST http://localhost:8002/transcribe \
 
 ## Running as a Service (Linux)
 
-To have TalkType start automatically on login:
+To have SpeakType start automatically on login:
 
 ```bash
 # Create systemd user service
 mkdir -p ~/.config/systemd/user
 
-cat > ~/.config/systemd/user/talktype.service << 'EOF'
+cat > ~/.config/systemd/user/speaktype.service << 'EOF'
 [Unit]
-Description=TalkType Voice Dictation
+Description=SpeakType Voice Dictation
 After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/talktype/.venv/bin/python /path/to/talktype/client/talktype.py
+ExecStart=/path/to/speaktype/.venv/bin/python /path/to/speaktype/client/speaktype.py
 Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0
@@ -280,18 +280,18 @@ EOF
 
 # Enable and start
 systemctl --user daemon-reload
-systemctl --user enable talktype
-systemctl --user start talktype
+systemctl --user enable speaktype
+systemctl --user start speaktype
 
 # Check status
-systemctl --user status talktype
+systemctl --user status speaktype
 ```
 
 ## Using with Claude Code
 
-TalkType works seamlessly with [Claude Code](https://claude.ai/code) and similar terminal AI assistants:
+SpeakType works seamlessly with [Claude Code](https://claude.ai/code) and similar terminal AI assistants:
 
-1. Start TalkType in a separate terminal (or as a service)
+1. Start SpeakType in a separate terminal (or as a service)
 2. Focus your Claude Code terminal
 3. Press F9, describe what you want, press F9
 4. Your detailed voice prompt appears in Claude Code
@@ -300,13 +300,13 @@ Voice lets you elaborate naturally without self-editing — often resulting in c
 
 ## Using with Browsers
 
-TalkType works in any browser text field — it's not just for terminals:
+SpeakType works in any browser text field — it's not just for terminals:
 
 1. Focus a text field (Google Docs, ChatGPT, Slack, email composer, etc.)
 2. Press F9, speak, press F9
 3. Your words appear in the browser
 
-Since TalkType uses clipboard + standard paste (Ctrl+V / Cmd+V), it works anywhere that accepts pasted text.
+Since SpeakType uses clipboard + standard paste (Ctrl+V / Cmd+V), it works anywhere that accepts pasted text.
 
 ## Troubleshooting
 

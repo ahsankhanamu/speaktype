@@ -1,10 +1,10 @@
 # =============================================================================
-# TalkType Whisper Server - GPU (NVIDIA CUDA) Image
+# SpeakType Whisper Server - GPU (NVIDIA CUDA) Image
 # =============================================================================
 # For GPU-accelerated transcription with NVIDIA GPUs.
 #
-# Build:  docker build -f Dockerfile.gpu -t talktype-whisper:gpu .
-# Run:    docker run --gpus all -p 8003:8002 talktype-whisper:gpu
+# Build:  docker build -f Dockerfile.gpu -t speaktype-whisper:gpu .
+# Run:    docker run --gpus all -p 8003:8002 speaktype-whisper:gpu
 # =============================================================================
 
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04

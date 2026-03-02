@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Whisper API Server - Local transcription server for TalkType.
+Whisper API Server - Local transcription server for SpeakType.
 
-Run this once, keep it running, and TalkType connects to it.
+Run this once, keep it running, and SpeakType connects to it.
 Faster startup since the model stays loaded in memory.
 
 Usage:
@@ -11,8 +11,8 @@ Usage:
     python whisper_server.py --port 8080        # Different port
     CUDA_VISIBLE_DEVICES=0 python whisper_server.py  # Specific GPU
 
-Then run TalkType with:
-    python talktype.py --api http://localhost:8002/transcribe
+Then run SpeakType with:
+    python speaktype.py --api http://localhost:8002/transcribe
 """
 
 import argparse
@@ -68,7 +68,7 @@ def get_model(name: str, device: str, compute: str) -> WhisperModel:
 # === FastAPI App ===
 app = FastAPI(
     title="Whisper API",
-    description="Local Whisper transcription server for TalkType",
+    description="Local Whisper transcription server for SpeakType",
     version="1.0.0"
 )
 

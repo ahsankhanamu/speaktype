@@ -65,25 +65,25 @@ pub fn run() {
                 .ok()
                 .and_then(|p| p.parent().map(|p| p.to_path_buf()))
                 .map(|p| {
-                    // In dev mode, the exe is in target/debug, so navigate to client/talktype.py
+                    // In dev mode, the exe is in target/debug, so navigate to client/speaktype.py
                     let dev_path = p
                         .ancestors()
-                        .find(|a| a.join("client").join("talktype.py").exists())
-                        .map(|a| a.join("client").join("talktype.py"));
-                    dev_path.unwrap_or_else(|| p.join("client").join("talktype.py"))
+                        .find(|a| a.join("client").join("speaktype.py").exists())
+                        .map(|a| a.join("client").join("speaktype.py"));
+                    dev_path.unwrap_or_else(|| p.join("client").join("speaktype.py"))
                 })
-                .unwrap_or_else(|| std::path::PathBuf::from("client/talktype.py"));
+                .unwrap_or_else(|| std::path::PathBuf::from("client/speaktype.py"));
 
             // Also check relative to widget/src-tauri
             let script_path = if script_path.exists() {
                 script_path
             } else {
-                // During development, client/talktype.py is two dirs up from src-tauri
+                // During development, client/speaktype.py is two dirs up from src-tauri
                 let alt = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .parent()
                     .and_then(|p| p.parent())
-                    .map(|p| p.join("client/talktype.py"))
-                    .unwrap_or_else(|| std::path::PathBuf::from("../../client/talktype.py"));
+                    .map(|p| p.join("client/speaktype.py"))
+                    .unwrap_or_else(|| std::path::PathBuf::from("../../client/speaktype.py"));
                 if alt.exists() {
                     alt
                 } else {
@@ -92,7 +92,7 @@ pub fn run() {
             };
 
             let script_str = script_path.to_string_lossy().to_string();
-            sidecar::log_message(&format!("[talktype] Using script: {}", script_str));
+            sidecar::log_message(&format!("[speaktype] Using script: {}", script_str));
 
             let sidecar = sidecar::Sidecar::spawn(
                 &settings.python_path,
