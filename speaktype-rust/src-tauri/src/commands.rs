@@ -5,6 +5,7 @@ use crate::paste::{self, WindowInfo};
 use crate::settings::Settings;
 use crate::tones::{self, Tone};
 use crate::transcribe;
+use crate::tray::{self, TrayState};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -50,6 +51,7 @@ pub fn toggle_recording(
             0
         };
 
+        tray::set_tray_state(&app, TrayState::Transcribing);
         tones::play(Tone::RecordingStop);
         let _ = app.emit(
             "sidecar:recording_stopped",
@@ -98,6 +100,7 @@ pub fn toggle_recording(
         }
 
         state.is_recording.store(true, Ordering::SeqCst);
+        tray::set_tray_state(&app, TrayState::Recording);
         tones::play(Tone::RecordingStart);
         let _ = app.emit("sidecar:recording_started", json!({}));
     }
@@ -118,6 +121,7 @@ async fn process_recording(
     if samples.is_empty() || !audio::has_speech(&samples, sample_rate) {
         log_message("[process] No speech detected");
         tones::play(Tone::Error);
+        tray::flash_error(&app);
         let _ = app.emit("sidecar:no_speech", json!({}));
         return;
     }
@@ -128,6 +132,7 @@ async fn process_recording(
         Err(e) => {
             log_message(&format!("[process] WAV encoding error: {}", e));
             tones::play(Tone::Error);
+            tray::flash_error(&app);
             let _ = app.emit("sidecar:error", json!({"message": e}));
             return;
         }
@@ -139,6 +144,7 @@ async fn process_recording(
         Err(e) => {
             log_message(&format!("[process] Transcription error: {}", e));
             tones::play(Tone::Error);
+            tray::flash_error(&app);
             let _ = app.emit("sidecar:error", json!({"message": e}));
             return;
         }
@@ -151,6 +157,7 @@ async fn process_recording(
             text
         ));
         tones::play(Tone::Error);
+        tray::flash_error(&app);
         let _ = app.emit("sidecar:no_speech", json!({}));
         return;
     }
@@ -169,6 +176,7 @@ async fn process_recording(
     if let Err(e) = paste_result {
         log_message(&format!("[process] Paste task error: {}", e));
         tones::play(Tone::Error);
+        tray::flash_error(&app);
         let _ = app.emit("sidecar:error", json!({"message": e.to_string()}));
         return;
     }
@@ -178,6 +186,7 @@ async fn process_recording(
         log_message(&format!("[history] Save error: {}", e));
     }
 
+    tray::set_tray_state(&app, TrayState::Idle);
     let _ = app.emit("sidecar:pasted", json!({"text": text}));
 }
 

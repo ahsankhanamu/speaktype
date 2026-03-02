@@ -7,6 +7,7 @@ mod permissions;
 mod settings;
 mod tones;
 mod transcribe;
+mod tray;
 
 use audio::AudioRecorder;
 use commands::AppState;
@@ -175,6 +176,9 @@ pub fn run() {
             }
 
             // System tray
+            let record_item =
+                MenuItemBuilder::with_id("record", "Start Recording").build(app)?;
+            tray::set_record_menu_item(record_item.clone());
             let about_item =
                 MenuItemBuilder::with_id("about", "About SpeakType").build(app)?;
             let settings_item =
@@ -184,20 +188,42 @@ pub fn run() {
             let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
 
             let menu = MenuBuilder::new(app)
-                .item(&about_item)
+                .item(&record_item)
                 .separator()
                 .item(&settings_item)
                 .item(&show_item)
                 .separator()
+                .item(&about_item)
                 .item(&quit_item)
                 .build()?;
 
-            let _tray = TrayIconBuilder::new()
+            let _tray = TrayIconBuilder::with_id(tray::TRAY_ID)
                 .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")).expect("failed to load tray icon"))
-                .icon_as_template(true)
+                .icon_as_template(false)
                 .menu(&menu)
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
+                    "record" => {
+                        let currently_recording = is_recording.load(Ordering::SeqCst);
+                        let app_clone = app.clone();
+                        let record_item = record_item.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app_clone.state::<AppState>();
+                            if let Err(e) = commands::toggle_recording(
+                                app_clone.clone(),
+                                state,
+                                currently_recording,
+                            ) {
+                                logging::log_message(&format!(
+                                    "[tray] toggle_recording error: {}",
+                                    e
+                                ));
+                            }
+                            // Update menu label
+                            let is_rec = app_clone.state::<AppState>().is_recording.load(Ordering::SeqCst);
+                            let _ = record_item.set_text(if is_rec { "Stop Recording" } else { "Start Recording" });
+                        });
+                    }
                     "about" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
