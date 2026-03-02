@@ -1,4 +1,4 @@
-# Client Setup (client/speaktype.py)
+# Client Setup (speaktype-cli/speaktype.py)
 
 The client runs on your host machine (not in Docker) because it needs access to your microphone, keyboard, and display.
 
@@ -49,20 +49,20 @@ With the Docker whisper server already running:
 
 ```bash
 source .venv/bin/activate
-python client/speaktype.py --api http://localhost:8003/transcribe
+python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe
 ```
 
 ### Common Options
 
 ```bash
 # Change hotkey
-python client/speaktype.py --api http://localhost:8003/transcribe --hotkey f8
+python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe --hotkey f8
 
 # Set language (skip auto-detect for faster results)
-python client/speaktype.py --api http://localhost:8003/transcribe --language en
+python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe --language en
 
 # Minimal UI
-python client/speaktype.py --api http://localhost:8003/transcribe --minimal
+python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe --minimal
 ```
 
 ## How It Works

@@ -2,7 +2,7 @@
 
 SpeakType has two components:
 - **server/whisper_server.py** — The transcription API server (runs in Docker)
-- **client/speaktype.py** — The desktop client (runs on your host, needs mic/keyboard/display)
+- **speaktype-cli/speaktype.py** — The desktop client (runs on your host, needs mic/keyboard/display)
 
 The Docker setup containerizes the server, so you get a clean, reproducible transcription backend with one command.
 
@@ -16,7 +16,7 @@ cd server && docker compose up -d
 curl http://localhost:8003/health
 
 # Run the client on your host (from project root)
-cd .. && python client/speaktype.py --api http://localhost:8003/transcribe
+cd .. && python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe
 ```
 
 That's it. Press F9, speak, press F9 — text appears.

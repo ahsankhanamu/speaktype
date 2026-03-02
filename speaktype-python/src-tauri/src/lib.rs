@@ -65,25 +65,25 @@ pub fn run() {
                 .ok()
                 .and_then(|p| p.parent().map(|p| p.to_path_buf()))
                 .map(|p| {
-                    // In dev mode, the exe is in target/debug, so navigate to client/speaktype.py
+                    // In dev mode, the exe is in target/debug, so navigate to speaktype-cli/speaktype.py
                     let dev_path = p
                         .ancestors()
-                        .find(|a| a.join("client").join("speaktype.py").exists())
-                        .map(|a| a.join("client").join("speaktype.py"));
-                    dev_path.unwrap_or_else(|| p.join("client").join("speaktype.py"))
+                        .find(|a| a.join("speaktype-cli").join("speaktype.py").exists())
+                        .map(|a| a.join("speaktype-cli").join("speaktype.py"));
+                    dev_path.unwrap_or_else(|| p.join("speaktype-cli").join("speaktype.py"))
                 })
-                .unwrap_or_else(|| std::path::PathBuf::from("client/speaktype.py"));
+                .unwrap_or_else(|| std::path::PathBuf::from("speaktype-cli/speaktype.py"));
 
             // Also check relative to widget/src-tauri
             let script_path = if script_path.exists() {
                 script_path
             } else {
-                // During development, client/speaktype.py is two dirs up from src-tauri
+                // During development, speaktype-cli/speaktype.py is two dirs up from src-tauri
                 let alt = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                     .parent()
                     .and_then(|p| p.parent())
-                    .map(|p| p.join("client/speaktype.py"))
-                    .unwrap_or_else(|| std::path::PathBuf::from("../../client/speaktype.py"));
+                    .map(|p| p.join("speaktype-cli/speaktype.py"))
+                    .unwrap_or_else(|| std::path::PathBuf::from("../../speaktype-cli/speaktype.py"));
                 if alt.exists() {
                     alt
                 } else {

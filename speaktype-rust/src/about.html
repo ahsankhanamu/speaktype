@@ -92,9 +92,15 @@
     </div>
     <div class="divider"></div>
     <div class="creator">
-      Created by <a href="https://ahsankhan.dev" target="_blank">Ahsan Khan</a>
+      Created by <a href="#" onclick="openExternal('https://ahsankhan.dev')">Ahsan Khan</a>
     </div>
     <div class="copyright">&copy; 2026 Ahsan Khan. All rights reserved.</div>
   </div>
+  <script>
+    async function openExternal(url) {
+      const { openUrl } = window.__TAURI__.opener;
+      await openUrl(url);
+    }
+  </script>
 </body>
 </html>

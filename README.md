@@ -83,7 +83,7 @@ SpeakType uses `pyproject.toml` with optional dependency groups:
 | Install Command | What You Get |
 |---|---|
 | `pip install .` | Server only (server/whisper_server.py) |
-| `pip install ".[client]"` | Client only (client/speaktype.py with API mode) |
+| `pip install ".[client]"` | Client only (speaktype-cli/speaktype.py with API mode) |
 | `pip install ".[all]"` | Everything — server + client + local Whisper |
 | `pip install ".[gpu]"` | NVIDIA GPU acceleration (add to any of the above) |
 
@@ -97,7 +97,7 @@ source .venv/bin/activate  # Linux/macOS
 # or: .\.venv\Scripts\activate  # Windows
 
 # Run SpeakType
-python client/speaktype.py
+python speaktype-cli/speaktype.py
 ```
 
 First run will download the Whisper model (~150MB for `base`).
@@ -112,16 +112,16 @@ Then:
 
 ```bash
 # Use a different model (tiny, base, small, medium, large-v3)
-python client/speaktype.py --model small
+python speaktype-cli/speaktype.py --model small
 
 # Use a different hotkey
-python client/speaktype.py --hotkey f8
+python speaktype-cli/speaktype.py --hotkey f8
 
 # Connect to a Whisper API server (if you have one running)
-python client/speaktype.py --api http://localhost:8002/transcribe
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe
 
 # Change language
-python client/speaktype.py --language es  # Spanish
+python speaktype-cli/speaktype.py --language es  # Spanish
 ```
 
 ### OpenAI-Compatible APIs
@@ -130,16 +130,16 @@ SpeakType supports any OpenAI-compatible transcription API, so you can use diffe
 
 ```bash
 # OpenAI API
-python client/speaktype.py --api https://api.openai.com/v1/audio/transcriptions --api-model whisper-1
+python speaktype-cli/speaktype.py --api https://api.openai.com/v1/audio/transcriptions --api-model whisper-1
 
 # Groq (super fast)
-python client/speaktype.py --api https://api.groq.com/openai/v1/audio/transcriptions --api-model whisper-large-v3
+python speaktype-cli/speaktype.py --api https://api.groq.com/openai/v1/audio/transcriptions --api-model whisper-large-v3
 
 # Local OpenAI-compatible server (e.g., faster-whisper-server, whisper.cpp)
-python client/speaktype.py --api http://localhost:8080/v1/audio/transcriptions --api-model whisper-1
+python speaktype-cli/speaktype.py --api http://localhost:8080/v1/audio/transcriptions --api-model whisper-1
 
 # Any custom server
-python client/speaktype.py --api http://localhost:8002/transcribe
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe
 ```
 
 SpeakType auto-detects OpenAI-compatible endpoints by URL pattern. For custom servers, it uses a simpler format that works with most Whisper APIs.
@@ -174,7 +174,7 @@ For faster startup and better performance, run the included Whisper API server. 
 
 | Mode | Startup | Memory | Best for |
 |------|---------|--------|----------|
-| Direct (`client/speaktype.py`) | ~3-5s (loads model) | Uses RAM while running | Occasional use |
+| Direct (`speaktype-cli/speaktype.py`) | ~3-5s (loads model) | Uses RAM while running | Occasional use |
 | Server (`server/whisper_server.py`) | Instant | Server keeps model loaded | Heavy use, multiple apps |
 
 ### Running the Server
@@ -191,7 +191,7 @@ python server/whisper_server.py --model large-v3 --device cuda
 **Terminal 2 - Run SpeakType:**
 ```bash
 source .venv/bin/activate
-python client/speaktype.py --api http://localhost:8002/transcribe
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe
 ```
 
 ### Server Options
@@ -269,7 +269,7 @@ After=graphical-session.target
 
 [Service]
 Type=simple
-ExecStart=/path/to/speaktype/.venv/bin/python /path/to/speaktype/client/speaktype.py
+ExecStart=/path/to/speaktype/.venv/bin/python /path/to/speaktype/speaktype-cli/speaktype.py
 Restart=on-failure
 RestartSec=5
 Environment=DISPLAY=:0
