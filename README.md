@@ -4,7 +4,9 @@
 
 Press a hotkey, speak, press again — your words appear wherever you're typing. Works with any terminal, IDE, or text field. Local transcription using [Whisper](https://github.com/openai/whisper), no cloud services required.
 
-![Demo](assets/demo.gif)
+<p align="center">
+  <img src="assets/demo.gif" alt="SpeakType Demo" width="720">
+</p>
 
 ## Why SpeakType?
 
@@ -28,6 +30,12 @@ Built for developers who want:
 - **Smart paste**: Auto-detects terminals vs other apps (Ctrl+Shift+V vs Ctrl+V)
 - **Window focus**: Remembers where you started — switch apps while speaking
 - **Configurable**: Choose your hotkey, model size, and language
+
+## Screenshots
+
+| Idle | Recording | Transcribing | Success |
+|:----:|:---------:|:------------:|:-------:|
+| ![Idle](assets/showcase-2-idle.png) | ![Recording](assets/showcase-3-recording.png) | ![Transcribing](assets/showcase-4-transcribing.png) | ![Success](assets/showcase-5-success.png) |
 
 ## Installation
 
