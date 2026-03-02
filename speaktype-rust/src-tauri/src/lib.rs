@@ -45,6 +45,10 @@ pub fn run() {
         .setup(|app| {
             logging::init_logging();
 
+            // Hide from dock — widget lives in tray only
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             // Check macOS permissions at startup
             let has_accessibility = permissions::check_accessibility(true);
             let has_microphone = permissions::request_microphone();
@@ -65,6 +69,42 @@ pub fn run() {
                         },
                     ));
                 }
+            }
+
+            // Make widget a non-activating panel so clicking it
+            // never steals focus from the user's active app
+            #[cfg(target_os = "macos")]
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.with_webview(|webview| {
+                    unsafe {
+                        use objc2::runtime::AnyClass;
+                        use objc2_app_kit::{NSPanel, NSWindowStyleMask};
+                        use objc2_foundation::NSObject;
+
+                        unsafe extern "C" {
+                            fn object_setClass(
+                                obj: *mut NSObject,
+                                cls: *const AnyClass,
+                            ) -> *const AnyClass;
+                        }
+
+                        let ns_win_ptr = webview.ns_window();
+
+                        // Swizzle the NSWindow to NSPanel
+                        let panel_class = AnyClass::get(c"NSPanel").unwrap();
+                        object_setClass(ns_win_ptr as *mut NSObject, panel_class);
+
+                        // Configure as non-activating floating panel
+                        let panel = &*(ns_win_ptr as *const NSPanel);
+                        let mask = NSWindowStyleMask::Borderless
+                            | NSWindowStyleMask::NonactivatingPanel;
+                        panel.setStyleMask(mask);
+                        panel.setFloatingPanel(true);
+                        panel.setBecomesKeyOnlyIfNeeded(true);
+
+                        logging::log_message("[panel] Widget set as non-activating panel");
+                    }
+                });
             }
 
             // Create audio recorder

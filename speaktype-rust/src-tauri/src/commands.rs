@@ -61,10 +61,16 @@ pub fn toggle_recording(
             let s = state.settings.lock().map_err(|e| e.to_string())?;
             s.clone()
         };
-        let target_window = {
+        let target_window = if settings.paste_mode == "active" {
+            // "Paste to active window" — use whatever app is focused right now
+            let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
+            last.clone()
+        } else {
+            // "Paste to original window" — use the app captured at recording start
             let tw = state.target_window.lock().map_err(|e| e.to_string())?;
             tw.clone()
         };
+        log_message(&format!("[toggle_recording] paste_mode={}, target={:?}", settings.paste_mode, target_window));
 
         // Spawn async task for transcription + paste
         let app_clone = app.clone();

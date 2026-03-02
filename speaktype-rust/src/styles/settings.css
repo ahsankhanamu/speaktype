@@ -252,8 +252,16 @@ select {
   color: white;
 }
 
-.btn.primary:hover {
+.btn.primary:hover:not(.disabled) {
   background: #2563eb;
+}
+
+.btn.primary.disabled {
+  background: #2a3a5c;
+  border-color: #2a3a5c;
+  color: #667;
+  cursor: default;
+  opacity: 0.5;
 }
 
 .btn.secondary {

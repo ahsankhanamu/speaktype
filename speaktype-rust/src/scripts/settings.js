@@ -5,6 +5,10 @@ const tabContents = document.querySelectorAll('.tab-content');
 
 const actionsSettings = document.getElementById('actions-settings');
 const actionsHistory = document.getElementById('actions-history');
+const saveBtn = document.getElementById('save-btn');
+
+// Snapshot of loaded settings for dirty detection
+let loadedSnapshot = {};
 
 // === Tab Switching ===
 function switchTab(tabName) {
@@ -29,6 +33,37 @@ tabs.forEach(tab => {
   tab.addEventListener('click', () => switchTab(tab.dataset.tab));
 });
 
+// === Dirty Detection ===
+function getFormValues() {
+  return {
+    hotkey: capturedHotkey || loadedSnapshot.hotkey || '',
+    api_url: document.getElementById('api-url').value,
+    model: document.getElementById('model-select').value,
+    language: document.getElementById('language-select').value,
+    paste_mode: document.getElementById('paste-mode-select').value,
+  };
+}
+
+function checkDirty() {
+  const current = getFormValues();
+  const dirty = current.hotkey !== loadedSnapshot.hotkey ||
+    current.api_url !== loadedSnapshot.api_url ||
+    current.model !== loadedSnapshot.model ||
+    current.language !== loadedSnapshot.language ||
+    current.paste_mode !== loadedSnapshot.paste_mode;
+
+  saveBtn.disabled = !dirty;
+  saveBtn.classList.toggle('disabled', !dirty);
+}
+
+// Listen for changes on all form inputs
+['api-url'].forEach(id => {
+  document.getElementById(id).addEventListener('input', checkDirty);
+});
+['model-select', 'language-select', 'paste-mode-select'].forEach(id => {
+  document.getElementById(id).addEventListener('change', checkDirty);
+});
+
 // === Load Settings ===
 async function loadSettings() {
   try {
@@ -46,6 +81,19 @@ async function loadSettings() {
       langSelect.value = settings.language === 'auto' ? 'auto' : settings.language;
     }
 
+    const pasteModeSelect = document.getElementById('paste-mode-select');
+    if (settings.paste_mode) pasteModeSelect.value = settings.paste_mode;
+
+    // Store snapshot for dirty detection
+    loadedSnapshot = {
+      hotkey: settings.hotkey || '',
+      api_url: settings.api_url || '',
+      model: modelSelect.value,
+      language: langSelect.value,
+      paste_mode: pasteModeSelect.value,
+    };
+
+    checkDirty();
     checkServer(settings.api_url);
   } catch (e) {
     console.error('Failed to load settings:', e);
@@ -100,6 +148,7 @@ document.addEventListener('keydown', (e) => {
       capturing = false;
       // Update display immediately
       document.getElementById('current-hotkey').textContent = capturedHotkey;
+      checkDirty();
     }
   }
 
@@ -117,6 +166,7 @@ document.querySelectorAll('.preset').forEach(btn => {
     captureBtn.textContent = capturedHotkey;
     capturing = false;
     captureBtn.classList.remove('capturing');
+    checkDirty();
   });
 });
 
@@ -161,9 +211,31 @@ document.getElementById('reset-position-btn').addEventListener('click', async ()
   }
 });
 
+// === Restore Defaults ===
+document.getElementById('restore-defaults-btn').addEventListener('click', () => {
+  const defaults = {
+    hotkey: 'CmdOrCtrl+Alt+L',
+    api_url: 'http://localhost:8003/transcribe',
+    model: 'base',
+    language: 'auto',
+    paste_mode: 'original',
+  };
+
+  capturedHotkey = defaults.hotkey;
+  document.getElementById('current-hotkey').textContent = defaults.hotkey;
+  captureBtn.textContent = defaults.hotkey;
+  document.getElementById('api-url').value = defaults.api_url;
+  document.getElementById('model-select').value = defaults.model;
+  document.getElementById('language-select').value = defaults.language;
+  document.getElementById('paste-mode-select').value = defaults.paste_mode;
+
+  checkDirty();
+});
+
 // === Save ===
-document.getElementById('save-btn').addEventListener('click', async () => {
-  const btn = document.getElementById('save-btn');
+saveBtn.addEventListener('click', async () => {
+  if (saveBtn.disabled) return;
+
   try {
     const settings = await ttipc.getSettings();
     if (!settings) {
@@ -178,24 +250,40 @@ document.getElementById('save-btn').addEventListener('click', async () => {
     settings.api_url = document.getElementById('api-url').value;
     settings.model = document.getElementById('model-select').value;
     settings.language = document.getElementById('language-select').value;
+    settings.paste_mode = document.getElementById('paste-mode-select').value;
 
     await ttipc.saveSettings(settings);
     document.getElementById('current-hotkey').textContent = settings.hotkey;
 
+    // Update snapshot so button goes back to disabled
+    loadedSnapshot = {
+      hotkey: settings.hotkey,
+      api_url: settings.api_url,
+      model: settings.model,
+      language: settings.language,
+      paste_mode: settings.paste_mode,
+    };
+    capturedHotkey = '';
+    checkDirty();
+
     // Visual feedback
-    btn.textContent = 'Saved!';
-    btn.style.background = '#16a34a';
+    saveBtn.textContent = 'Saved!';
+    saveBtn.style.background = '#16a34a';
+    saveBtn.style.borderColor = '#16a34a';
     setTimeout(() => {
-      btn.textContent = 'Save';
-      btn.style.background = '';
+      saveBtn.textContent = 'Save';
+      saveBtn.style.background = '';
+      saveBtn.style.borderColor = '';
     }, 1500);
   } catch (e) {
     console.error('Failed to save settings:', e);
-    btn.textContent = 'Error!';
-    btn.style.background = '#dc2626';
+    saveBtn.textContent = 'Error!';
+    saveBtn.style.background = '#dc2626';
+    saveBtn.style.borderColor = '#dc2626';
     setTimeout(() => {
-      btn.textContent = 'Save';
-      btn.style.background = '';
+      saveBtn.textContent = 'Save';
+      saveBtn.style.background = '';
+      saveBtn.style.borderColor = '';
     }, 1500);
   }
 });

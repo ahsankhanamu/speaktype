@@ -10,6 +10,14 @@ pub struct Settings {
     pub language: String,
     pub window_x: Option<f64>,
     pub window_y: Option<f64>,
+    /// "original" = paste to the app active when recording started
+    /// "active"   = paste to the app active when recording stops
+    #[serde(default = "default_paste_mode")]
+    pub paste_mode: String,
+}
+
+fn default_paste_mode() -> String {
+    "original".to_string()
 }
 
 impl Default for Settings {
@@ -21,6 +29,7 @@ impl Default for Settings {
             language: "auto".to_string(),
             window_x: None,
             window_y: None,
+            paste_mode: "original".to_string(),
         }
     }
 }

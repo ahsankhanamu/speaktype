@@ -105,6 +105,14 @@
         <p class="hint">Microphone is needed for recording. Accessibility is needed to paste text into other apps.</p>
       </div>
       <div class="field">
+        <label>Paste Behavior</label>
+        <select id="paste-mode-select">
+          <option value="original">Paste to original window</option>
+          <option value="active">Paste to active window</option>
+        </select>
+        <p class="hint">Original: pastes to the app you were in when recording started. Active: pastes to whichever app is focused when recording stops.</p>
+      </div>
+      <div class="field">
         <button class="btn secondary" id="reset-position-btn">Reset Widget Position</button>
       </div>
     </div>
@@ -118,7 +126,8 @@
 
     <!-- Actions (swapped by JS based on active tab) -->
     <div class="actions" id="actions-settings">
-      <button class="btn primary" id="save-btn">Save</button>
+      <button class="btn secondary" id="restore-defaults-btn">Restore Defaults</button>
+      <button class="btn primary disabled" id="save-btn" disabled>Save</button>
     </div>
     <div class="actions" id="actions-history" style="display:none">
       <button class="btn secondary" id="clear-history-btn">Clear History</button>
