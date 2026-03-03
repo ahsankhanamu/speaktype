@@ -215,7 +215,7 @@ document.getElementById('reset-position-btn').addEventListener('click', async ()
 document.getElementById('restore-defaults-btn').addEventListener('click', () => {
   const defaults = {
     hotkey: 'CmdOrCtrl+Alt+L',
-    api_url: 'http://localhost:8003/transcribe',
+    api_url: 'http://localhost:8002/transcribe',
     model: 'base',
     language: 'auto',
     paste_mode: 'original',

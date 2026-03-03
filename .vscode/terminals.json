@@ -4,7 +4,7 @@
   "terminals": [
     {
       "name": "SpeakType Whisper Server",
-      "description": "Local Whisper transcription API (port 8003)",
+      "description": "Local Whisper transcription API (port 8002)",
       "icon": "mic",
       "color": "terminal.ansiWhite",
       "command": "make speaktype",

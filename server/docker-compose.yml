@@ -5,7 +5,7 @@ services:
       dockerfile: server/Dockerfile
     container_name: speaktype-whisper
     ports:
-      - "8003:8002"
+      - "8002:8002"
     volumes:
       # Persist downloaded models across container restarts
       - whisper-models:/home/whisper/.cache

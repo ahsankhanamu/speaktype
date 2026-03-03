@@ -49,20 +49,20 @@ With the Docker whisper server already running:
 
 ```bash
 source .venv/bin/activate
-python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe
 ```
 
 ### Common Options
 
 ```bash
 # Change hotkey
-python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe --hotkey f8
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe --hotkey f8
 
 # Set language (skip auto-detect for faster results)
-python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe --language en
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe --language en
 
 # Minimal UI
-python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe --minimal
+python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe --minimal
 ```
 
 ## How It Works

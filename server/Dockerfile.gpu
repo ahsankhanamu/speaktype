@@ -4,7 +4,7 @@
 # For GPU-accelerated transcription with NVIDIA GPUs.
 #
 # Build:  docker build -f Dockerfile.gpu -t speaktype-whisper:gpu .
-# Run:    docker run --gpus all -p 8003:8002 speaktype-whisper:gpu
+# Run:    docker run --gpus all -p 8002:8002 speaktype-whisper:gpu
 # =============================================================================
 
 FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04

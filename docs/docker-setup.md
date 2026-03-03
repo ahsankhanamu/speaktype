@@ -13,10 +13,10 @@ The Docker setup containerizes the server, so you get a clean, reproducible tran
 cd server && docker compose up -d
 
 # Verify it's running
-curl http://localhost:8003/health
+curl http://localhost:8002/health
 
 # Run the client on your host (from project root)
-cd .. && python speaktype-cli/speaktype.py --api http://localhost:8003/transcribe
+cd .. && python speaktype-cli/speaktype.py --api http://localhost:8002/transcribe
 ```
 
 That's it. Press F9, speak, press F9 — text appears.
@@ -93,7 +93,7 @@ docker compose down
 docker compose build && docker compose up -d
 
 # Test transcription with curl
-curl -X POST http://localhost:8003/transcribe \
+curl -X POST http://localhost:8002/transcribe \
   -F "file=@recording.wav" \
   -F "language=en"
 ```
@@ -103,7 +103,7 @@ curl -X POST http://localhost:8003/transcribe \
 **Container won't start / health check failing:**
 - First run takes 30-60s to download the model. Check logs: `docker compose logs -f`
 
-**Port 8003 already in use:**
+**Port 8002 already in use:**
 - Another service is on that port. Change the host port in `server/docker-compose.yml`
 - Then update your `--api` URL to match
 

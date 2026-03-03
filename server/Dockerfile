@@ -5,7 +5,7 @@
 # The speaktype.py client runs on your host (needs audio/keyboard/display).
 #
 # Build:  docker build -t speaktype-whisper .
-# Run:    docker run -p 8003:8002 speaktype-whisper
+# Run:    docker run -p 8002:8002 speaktype-whisper
 # =============================================================================
 
 FROM python:3.13-slim

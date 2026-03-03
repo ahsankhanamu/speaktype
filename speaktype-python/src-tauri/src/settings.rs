@@ -17,7 +17,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             hotkey: "CmdOrCtrl+Alt+L".to_string(),
-            api_url: "http://localhost:8003/transcribe".to_string(),
+            api_url: "http://localhost:8002/transcribe".to_string(),
             model: "base".to_string(),
             language: "auto".to_string(),
             window_x: None,

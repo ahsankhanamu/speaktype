@@ -16,17 +16,22 @@ Then run SpeakType with:
 """
 
 import argparse
+import itertools
 import logging
 import os
+import struct
 import tempfile
 import time
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger("whisper_server")
+
+# Monotonic request counter for log correlation
+_req_counter = itertools.count(1)
 
 # Auto-configure CUDA library paths if nvidia packages are installed
 def _setup_cuda_paths():
@@ -60,6 +65,23 @@ DEFAULT_COMPUTE = os.getenv("WHISPER_COMPUTE", "float16")  # "float16", "int8", 
 
 # === Model Cache ===
 _models: Dict[Tuple[str, str, str], WhisperModel] = {}
+
+
+def _parse_wav_duration(data: bytes) -> float | None:
+    """Extract duration from WAV header. Returns seconds or None if not a valid WAV."""
+    try:
+        if len(data) < 44 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+            return None
+        # Standard PCM WAV: bytes 24-27 = sample rate, bytes 28-31 = byte rate
+        sample_rate = struct.unpack_from("<I", data, 24)[0]
+        byte_rate = struct.unpack_from("<I", data, 28)[0]
+        if byte_rate == 0:
+            return None
+        # Data size is total file minus 44-byte header (approximate)
+        data_size = len(data) - 44
+        return data_size / byte_rate
+    except Exception:
+        return None
 
 
 def get_model(name: str, device: str, compute: str) -> WhisperModel:
@@ -106,26 +128,31 @@ async def transcribe(
     - **language**: Language code (e.g., "en", "es"). Auto-detect if not specified.
     - **model**: Model to use (tiny, base, small, medium, large-v3). Uses default if not specified.
     """
+    req_id = next(_req_counter)
     m = model or DEFAULT_MODEL
 
     # Validate model name to prevent path traversal
     if m not in ALLOWED_MODELS:
-        logger.warning("Rejected invalid model: %s", m)
+        logger.warning("req#%d Rejected invalid model: %s", req_id, m)
         raise HTTPException(400, f"Invalid model: {m}. Allowed: {', '.join(sorted(ALLOWED_MODELS))}")
 
     # Read and validate upload size
     content = await file.read()
     file_size_kb = len(content) / 1024
     if len(content) > MAX_UPLOAD_BYTES:
-        logger.warning("Rejected oversized upload: %.1fMB", len(content) / (1024 * 1024))
+        logger.warning("req#%d Rejected oversized upload: %.1fMB", req_id, len(content) / (1024 * 1024))
         raise HTTPException(413, f"File too large. Maximum size: {MAX_UPLOAD_BYTES // (1024*1024)}MB")
     if len(content) == 0:
-        logger.warning("Rejected empty file upload")
+        logger.warning("req#%d Rejected empty file upload", req_id)
         raise HTTPException(400, "Empty file uploaded")
 
+    # Try to parse audio duration from WAV header
+    wav_duration = _parse_wav_duration(content)
+    wav_info = f" wav_duration={wav_duration:.1f}s" if wav_duration else ""
+
     logger.info(
-        "Transcribe request: file=%s size=%.1fKB model=%s language=%s",
-        file.filename, file_size_kb, m, language or "auto",
+        "req#%d Received: file=%s size=%.1fKB%s model=%s language=%s",
+        req_id, file.filename, file_size_kb, wav_info, m, language or "auto",
     )
 
     whisper = get_model(m, DEFAULT_DEVICE, DEFAULT_COMPUTE)
@@ -144,12 +171,14 @@ async def transcribe(
         elapsed = time.time() - t0
 
         audio_duration = segments_list[-1]["end"] if segments_list else 0
+        rtf = audio_duration / elapsed if elapsed > 0 else 0
+
         logger.info(
-            "Transcription complete: %.1fs audio in %.2fs (%.1fx realtime) lang=%s(%d%%) text=%s",
-            audio_duration, elapsed,
-            audio_duration / elapsed if elapsed > 0 else 0,
+            "req#%d OK: %.1fs audio in %.2fs (%.1fx realtime) lang=%s(%d%%) segments=%d text=%s",
+            req_id, audio_duration, elapsed, rtf,
             info.language, int(info.language_probability * 100),
-            repr(text[:100]) if text else "(empty)",
+            len(segments_list),
+            repr(text[:80]) if text else "(empty)",
         )
 
         return {
@@ -160,7 +189,7 @@ async def transcribe(
             "segments": segments_list
         }
     except Exception as e:
-        logger.exception("Transcription failed: %s", e)
+        logger.error("req#%d FAILED: %s", req_id, e)
         raise HTTPException(500, "Transcription failed")
     finally:
         try:
@@ -191,12 +220,17 @@ def main():
     DEFAULT_COMPUTE = args.compute
 
     # Pre-load model
-    logger.info("Whisper API Server starting on http://%s:%d", args.host, args.port)
-    logger.info("Config: model=%s device=%s compute=%s", DEFAULT_MODEL, DEFAULT_DEVICE, DEFAULT_COMPUTE)
+    logger.info("=" * 50)
+    logger.info("Whisper API Server")
+    logger.info("  URL:     http://%s:%d", args.host, args.port)
+    logger.info("  Model:   %s", DEFAULT_MODEL)
+    logger.info("  Device:  %s", DEFAULT_DEVICE)
+    logger.info("  Compute: %s", DEFAULT_COMPUTE)
+    logger.info("=" * 50)
     get_model(DEFAULT_MODEL, DEFAULT_DEVICE, DEFAULT_COMPUTE)
     logger.info("Server ready — accepting requests")
 
-    uvicorn.run(app, host=args.host, port=args.port, log_level="info")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 if __name__ == "__main__":
