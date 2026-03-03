@@ -37,7 +37,7 @@
       "icons/icon.png"
     ],
     "macOS": {
-      "signingIdentity": "Apple Development: Ahsan Khan (8MR3U6SC3X)",
+      "signingIdentity": "Developer ID Application: Your Name (TEAMID)",
       "entitlements": "Entitlements.plist"
     }
   },

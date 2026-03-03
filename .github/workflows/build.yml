@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-widget:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: speaktype-rust/src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: speaktype-rust/src-tauri
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli
+
+      - name: Compile check
+        run: cargo check
