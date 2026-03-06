@@ -4,6 +4,7 @@ mod history;
 mod logging;
 mod paste;
 mod permissions;
+mod server;
 mod settings;
 mod tones;
 mod transcribe;
@@ -17,7 +18,7 @@ use std::sync::{Arc, Mutex};
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
-    Manager,
+    Emitter, Manager,
 };
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
@@ -51,13 +52,31 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            // Check macOS permissions at startup
-            let has_accessibility = permissions::check_accessibility(true);
-            let has_microphone = permissions::request_microphone();
-            logging::log_message(&format!(
-                "[permissions] accessibility={}, microphone={}",
-                has_accessibility, has_microphone
-            ));
+            // Check macOS permissions sequentially in background thread
+            // (simultaneous prompts cause one dialog to hide behind the app)
+            {
+                let app_handle = app.handle().clone();
+                std::thread::spawn(move || {
+                    // Step 1: Microphone (shows system dialog if not determined)
+                    let has_mic = permissions::request_microphone();
+                    logging::log_message(&format!("[permissions] microphone={}", has_mic));
+
+                    // Step 2: Accessibility — only prompt if not already granted
+                    let has_acc = permissions::check_accessibility(false);
+                    if !has_acc {
+                        std::thread::sleep(std::time::Duration::from_millis(500));
+                        permissions::check_accessibility(true); // triggers system prompt
+                    }
+                    let has_acc = permissions::check_accessibility(false);
+                    logging::log_message(&format!("[permissions] accessibility={}", has_acc));
+
+                    // Notify frontend of final status
+                    let _ = app_handle.emit(
+                        "sidecar:permissions",
+                        serde_json::json!({ "microphone": has_mic, "accessibility": has_acc }),
+                    );
+                });
+            }
 
             let settings = Settings::load();
 
@@ -130,6 +149,34 @@ pub fn run() {
                 });
             }
 
+            // Background thread: detect when the default audio input device changes.
+            // Polls every 2s and emits sidecar:device_changed with device name + input count.
+            {
+                let app_handle_for_device = app.handle().clone();
+                std::thread::spawn(move || {
+                    let mut last_name: Option<String> = None;
+                    let mut last_count: usize = 0;
+                    loop {
+                        let current = audio::get_default_input_device_name();
+                        let count = audio::count_input_devices();
+                        if current != last_name || count != last_count {
+                            let name = current.clone().unwrap_or_default();
+                            logging::log_message(&format!(
+                                "[audio] Device changed: {:?} (inputs={})",
+                                name, count
+                            ));
+                            let _ = app_handle_for_device.emit(
+                                "sidecar:device_changed",
+                                serde_json::json!({ "name": name, "count": count }),
+                            );
+                            last_name = current;
+                            last_count = count;
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(2));
+                    }
+                });
+            }
+
             let app_state = AppState {
                 settings: Arc::new(Mutex::new(settings.clone())),
                 recorder: Arc::new(Mutex::new(recorder)),
@@ -139,6 +186,47 @@ pub fn run() {
             };
 
             app.manage(app_state);
+
+            // Auto-launch embedded server if bundled resources are present
+            if server::has_embedded_server(app.handle()) {
+                let _ = app.emit("server:starting", serde_json::json!({}));
+
+                if let Some(info) = server::start_server(app.handle()) {
+                    let app_handle_for_server = app.handle().clone();
+                    let port = info.port;
+                    let model = info.model;
+                    tauri::async_runtime::spawn(async move {
+                        if server::wait_for_server(port).await {
+                            // Update in-memory settings to match actual port/model (don't persist to disk)
+                            let state = app_handle_for_server.state::<AppState>();
+                            if let Ok(mut settings) = state.settings.lock() {
+                                settings.api_url = format!("http://127.0.0.1:{}/transcribe", port);
+                                settings.model = model.clone();
+                                logging::log_message(&format!(
+                                    "[server] Settings updated: api_url={}, model={}",
+                                    settings.api_url, settings.model
+                                ));
+                            }
+                            let _ = app_handle_for_server.emit(
+                                "server:ready",
+                                serde_json::json!({ "port": port, "model": model }),
+                            );
+                        } else {
+                            let _ = app_handle_for_server.emit(
+                                "server:error",
+                                serde_json::json!({ "reason": "Server failed to start within timeout" }),
+                            );
+                        }
+                    });
+                } else {
+                    let _ = app.emit(
+                        "server:error",
+                        serde_json::json!({ "reason": "Failed to spawn server process" }),
+                    );
+                }
+            } else {
+                logging::log_message("[server] No embedded server found, using external API");
+            }
 
             // Register global shortcut
             let hotkey_str = settings.hotkey.clone();
@@ -257,6 +345,11 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running SpeakType");
+        .build(tauri::generate_context!())
+        .expect("error while building SpeakType")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                server::stop_server();
+            }
+        });
 }

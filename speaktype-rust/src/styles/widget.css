@@ -34,8 +34,48 @@ html, body {
 /* IDLE */
 .widget.idle { background: rgba(30,30,30,0.95); box-shadow: 0 2px 12px rgba(0,0,0,0.5); }
 .widget.idle .state-idle { display: flex; }
+.icon-container { position: relative; width: 22px; height: 22px; }
 .mic-icon { width: 22px; height: 22px; color: rgba(255,255,255,0.5); transition: color 0.2s, transform 0.15s; }
 .widget.idle:hover .mic-icon { color: rgba(255,255,255,0.9); transform: scale(1.1); }
+.perm-warning {
+  display: none;
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #eab308;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
+  animation: permPulse 1.5s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes permPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+
+.server-status {
+  display: none;
+  position: absolute;
+  bottom: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.server-status.starting {
+  background: #eab308;
+  box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
+  animation: permPulse 1.5s ease-in-out infinite;
+}
+.server-status.ready {
+  background: #4ade80;
+  box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
+}
+.server-status.error {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
 
 /* RECORDING */
 .widget.recording {

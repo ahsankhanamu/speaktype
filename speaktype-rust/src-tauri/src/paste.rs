@@ -41,13 +41,14 @@ pub fn get_frontmost_window() -> Option<WindowInfo> {
 
 #[cfg(target_os = "macos")]
 fn macos_get_frontmost_window() -> Option<WindowInfo> {
-    // Simple: get frontmost app. If it's SpeakType, return None (caller keeps previous value).
+    // Get frontmost app with its PID. If it's our own process, return None (caller keeps previous value).
     let script = r#"
         tell application "System Events"
             set frontApp to first application process whose frontmost is true
             set appName to name of frontApp
             set appID to bundle identifier of frontApp
-            return appName & "|" & appID
+            set appPID to unix id of frontApp
+            return appName & "|" & appID & "|" & appPID
         end tell
     "#;
 
@@ -61,12 +62,13 @@ fn macos_get_frontmost_window() -> Option<WindowInfo> {
             if result.is_empty() {
                 return None;
             }
-            let parts: Vec<&str> = result.splitn(2, '|').collect();
+            let parts: Vec<&str> = result.splitn(3, '|').collect();
             let name = parts.first().unwrap_or(&"").to_string();
             let bundle_id = parts.get(1).map(|s| s.to_string());
+            let pid = parts.get(2).and_then(|s| s.trim().parse::<u32>().ok());
 
-            // Skip if it's our own app
-            if bundle_id.as_deref() == Some("com.speaktype.widget") {
+            // Skip if it's our own process (works for any bundle ID)
+            if pid == Some(std::process::id()) {
                 return None;
             }
 

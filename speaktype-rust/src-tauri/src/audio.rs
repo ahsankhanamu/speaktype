@@ -174,6 +174,19 @@ pub fn has_speech(audio: &[f32], sample_rate: u32) -> bool {
     false
 }
 
+/// Return the name of the current default input device.
+pub fn get_default_input_device_name() -> Option<String> {
+    let host = cpal::default_host();
+    host.default_input_device()
+        .and_then(|d| d.name().ok())
+}
+
+/// Count the number of available input devices.
+pub fn count_input_devices() -> usize {
+    let host = cpal::default_host();
+    host.input_devices().map(|d| d.count()).unwrap_or(0)
+}
+
 /// Encode f32 samples as WAV bytes (16-bit mono PCM)
 pub fn to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
     let num_samples = samples.len();

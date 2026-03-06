@@ -131,8 +131,8 @@ async def transcribe(
     req_id = next(_req_counter)
     m = model or DEFAULT_MODEL
 
-    # Validate model name to prevent path traversal
-    if m not in ALLOWED_MODELS:
+    # Validate model name to prevent path traversal (also accept directory paths for bundled apps)
+    if m not in ALLOWED_MODELS and not os.path.isdir(m):
         logger.warning("req#%d Rejected invalid model: %s", req_id, m)
         raise HTTPException(400, f"Invalid model: {m}. Allowed: {', '.join(sorted(ALLOWED_MODELS))}")
 

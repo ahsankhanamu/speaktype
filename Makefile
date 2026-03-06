@@ -26,6 +26,16 @@ docker-up: ## Start server in Docker
 docker-down: ## Stop server Docker container
 	docker compose -f server/docker-compose.yml down
 
+# ─── Bundle (all-in-one .dmg with embedded server) ──────────────────────────
+
+.PHONY: bundle-resources bundle
+
+bundle-resources: ## Prepare embedded Python + model resources for bundle
+	./speaktype-bundled/bundle-macos.sh
+
+bundle: bundle-resources ## Build self-contained .dmg with embedded server
+	cd speaktype-bundled && cargo tauri build
+
 # ─── General ──────────────────────────────────────────────────────────────────
 
 .PHONY: install clean help
