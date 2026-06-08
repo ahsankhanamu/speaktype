@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SpeakType Settings</title>
+  <link rel="stylesheet" href="styles/settings.css">
+</head>
+<body>
+  <div class="settings">
+    <div class="tabs">
+      <button class="tab active" data-tab="hotkey">Hotkey</button>
+      <button class="tab" data-tab="server">Server</button>
+      <button class="tab" data-tab="general">General</button>
+      <button class="tab" data-tab="models">Models</button>
+      <button class="tab" data-tab="history">History</button>
+      <button class="info-btn" id="about-btn" title="About SpeakType">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="tab-content active" id="tab-hotkey">
+      <div class="field">
+        <label>Current Hotkey</label>
+        <div class="hotkey-display" id="current-hotkey">Loading...</div>
+      </div>
+      <div class="field">
+        <label>Press new hotkey combination</label>
+        <button class="hotkey-capture" id="capture-btn">Click to capture...</button>
+        <p class="hint">Press the key combination you want to use, then click Save.</p>
+      </div>
+      <div class="field">
+        <label>Or choose a preset</label>
+        <div class="presets">
+          <button class="preset" data-hotkey="CmdOrCtrl+Alt+L">Cmd+Option+L</button>
+          <button class="preset" data-hotkey="CmdOrCtrl+Shift+Space">Cmd+Shift+Space</button>
+          <button class="preset" data-hotkey="F9">F9</button>
+          <button class="preset" data-hotkey="F8">F8</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-server">
+      <div class="field">
+        <label>API URL</label>
+        <div class="url-row">
+          <input type="text" id="api-url" placeholder="http://localhost:8002/transcribe">
+          <span class="status-dot" id="server-status" title="Checking..."></span>
+        </div>
+        <p class="hint">Whisper-compatible transcription endpoint</p>
+      </div>
+      <div class="field">
+        <label>Language</label>
+        <input type="text" id="language-search" placeholder="Search language..." class="input-filter" style="margin-bottom:4px;width:100%">
+        <select id="language-select"></select>
+        <p class="hint">Type to filter. Set to "Auto-detect" for multilingual. Language detection requires a multilingual model (not .en variants).</p>
+      </div>
+      <button class="btn" id="check-server-btn">Check Connection</button>
+    </div>
+
+    <div class="tab-content" id="tab-general">
+      <div class="field">
+        <label>Permissions</label>
+        <div class="permissions-list">
+          <div class="permission-row">
+            <span class="permission-label">Microphone</span>
+            <span class="permission-status" id="perm-mic">Checking...</span>
+            <button class="btn secondary btn-small open-settings-btn" id="open-mic-btn" style="display:none">Grant</button>
+          </div>
+          <div class="permission-row">
+            <span class="permission-label">Accessibility</span>
+            <span class="permission-status" id="perm-acc">Checking...</span>
+            <button class="btn secondary btn-small open-settings-btn" id="open-acc-btn" style="display:none">Grant</button>
+            <button class="btn secondary btn-small" id="request-acc-btn" style="display:none">Prompt</button>
+          </div>
+        </div>
+        <p class="hint">Microphone for recording. Accessibility to paste text into other apps.</p>
+      </div>
+      <div class="field">
+        <label>Paste Behavior</label>
+        <select id="paste-mode-select">
+          <option value="original">Paste to original window</option>
+          <option value="active">Paste to active window</option>
+        </select>
+        <p class="hint">Original: pastes to app you were in when recording started. Active: pastes to whichever app is focused when recording stops.</p>
+      </div>
+      <div class="field">
+        <label>Keys After Paste</label>
+        <select id="post-paste-keys-select">
+          <option value="">None</option>
+          <option value="enter">Enter</option>
+          <option value="tab">Tab</option>
+          <option value="enter+enter">Enter + Enter</option>
+          <option value="space">Space</option>
+        </select>
+        <input type="text" id="post-paste-keys-custom" placeholder="Or type custom: e.g. enter+tab" style="margin-top: 6px">
+        <p class="hint">Keys to press automatically after text is pasted. Use + to chain keys (e.g., enter+tab).</p>
+      </div>
+      <div class="field">
+        <button class="btn secondary" id="reset-position-btn">Reset Widget Position</button>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-models">
+      <select id="model-select" style="display:none"></select>
+      <div id="model-list" class="model-status-bar">
+        <div id="download-progress-area" style="display:none">
+          <div class="download-item" id="download-item">
+            <div class="download-header">
+              <span class="download-name" id="download-name"></span>
+              <span class="download-percent" id="download-percent">0%</span>
+            </div>
+            <div class="progress-bar-track">
+              <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+            </div>
+            <div class="download-details">
+              <span class="download-speed" id="download-speed"></span>
+              <span class="download-eta" id="download-eta"></span>
+              <button class="btn secondary btn-small" id="cancel-download-btn" style="margin-left:auto">Cancel</button>
+            </div>
+          </div>
+        </div>
+        <div id="model-status" class="model-status" style="display:none"></div>
+      </div>
+      <div class="model-grid" id="model-grid"></div>
+    </div>
+
+    <div class="tab-content" id="tab-history">
+      <div class="history-list" id="history-list">
+        <div class="history-empty" id="history-empty">No transcriptions yet</div>
+      </div>
+    </div>
+
+    <div class="actions" id="actions-settings">
+      <button class="btn secondary" id="restore-defaults-btn">Restore Defaults</button>
+      <button class="btn primary disabled" id="save-btn" disabled>Save</button>
+    </div>
+    <div class="actions" id="actions-history" style="display:none">
+      <button class="btn secondary" id="clear-history-btn">Clear History</button>
+    </div>
+    <div class="actions" id="actions-models" style="display:none">
+    </div>
+  </div>
+
+  <script src="scripts/ipc.js"></script>
+  <script src="scripts/settings.js"></script>
+</body>
+</html>

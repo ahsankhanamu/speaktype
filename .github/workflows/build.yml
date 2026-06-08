@@ -1,6 +1,10 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -8,15 +12,15 @@ jobs:
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: speaktype-rust/src-tauri
+        working-directory: apps/widget-rust/src-tauri
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: speaktype-rust/src-tauri
+          workspaces: apps/widget-rust/src-tauri
 
       - name: Install tauri-cli
         run: cargo install tauri-cli

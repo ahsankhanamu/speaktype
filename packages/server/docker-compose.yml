@@ -1,0 +1,48 @@
+services:
+  whisper-server:
+    build:
+      context: ../..
+      dockerfile: packages/server/Dockerfile
+    container_name: speaktype-whisper
+    ports:
+      - "8002:8002"
+    volumes:
+      # Persist downloaded models across container restarts
+      - whisper-models:/home/whisper/.cache
+    environment:
+      - WHISPER_MODEL=${WHISPER_MODEL:-base}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
+      - WHISPER_COMPUTE=${WHISPER_COMPUTE:-auto}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+
+  # Uncomment below for GPU support (requires nvidia-docker)
+  # whisper-server-gpu:
+  #   build:
+  #     context: ..
+  #     dockerfile: server/Dockerfile.gpu
+  #   container_name: speaktype-whisper-gpu
+  #   ports:
+  #     - "8002:8002"
+  #   volumes:
+  #     - whisper-models:/home/whisper/.cache
+  #   environment:
+  #     - WHISPER_MODEL=${WHISPER_MODEL:-base}
+  #     - WHISPER_DEVICE=cuda
+  #     - WHISPER_COMPUTE=float16
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   restart: unless-stopped
+
+volumes:
+  whisper-models:

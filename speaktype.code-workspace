@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"name": "SpeakType",
+			"path": "."
+		}
+	],
+	"settings": {
+		"files.exclude": {
+			"**/node_modules": true,
+			"**/__pycache__": true,
+			"**/.DS_Store": true,
+			"**/target": true,
+			"**/*.egg-info": true
+		}
+	}
+}

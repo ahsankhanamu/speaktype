@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -12,15 +14,15 @@ jobs:
     runs-on: macos-latest
     defaults:
       run:
-        working-directory: speaktype-rust
+        working-directory: apps/widget-rust
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup show
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: speaktype-rust/src-tauri
+          workspaces: apps/widget-rust/src-tauri
 
       - name: Install tauri-cli
         run: cargo install tauri-cli
@@ -51,7 +53,7 @@ jobs:
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: speaktype-rust/src-tauri/target/release/bundle/dmg/*.dmg
+          files: apps/widget-rust/src-tauri/target/release/bundle/dmg/*.dmg
 
   build-server:
     runs-on: ubuntu-latest
@@ -73,7 +75,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: server/Dockerfile
+          file: packages/server/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/whisper-server:${{ steps.version.outputs.tag }}

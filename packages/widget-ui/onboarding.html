@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Welcome to SpeakType</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #1a1a1a;
+      color: #e5e5e5;
+      overflow: hidden;
+    }
+    body { display: flex; flex-direction: column; padding: 22px 24px 18px; }
+
+    .header { text-align: center; margin-bottom: 18px; }
+    .header .logo {
+      width: 44px; height: 44px; margin: 0 auto 10px;
+      color: #3b82f6;
+    }
+    .header h1 { font-size: 19px; font-weight: 650; }
+    .header p { font-size: 13px; color: #9a9a9a; margin-top: 4px; }
+
+    .steps { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+
+    .step {
+      background: #232323;
+      border: 1px solid #2f2f2f;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      gap: 12px;
+      transition: opacity .2s, border-color .2s;
+    }
+    .step.locked { opacity: .45; pointer-events: none; }
+    .step.active { border-color: #3b82f6; }
+    .step.done { border-color: rgba(74,222,128,.35); }
+
+    .step-num {
+      flex: 0 0 26px; height: 26px; border-radius: 50%;
+      background: #333; color: #bbb;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 600;
+    }
+    .step.active .step-num { background: #3b82f6; color: #fff; }
+    .step.done .step-num { background: #16a34a; color: #fff; }
+
+    .step-body { flex: 1; min-width: 0; }
+    .step-title { font-size: 14px; font-weight: 600; }
+    .step-desc { font-size: 12px; color: #9a9a9a; margin-top: 2px; }
+
+    .step-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .step.done .step-actions, .step.locked .step-actions { display: none; }
+
+    .btn {
+      border: none; border-radius: 7px; padding: 7px 13px;
+      font-size: 12.5px; font-weight: 550; cursor: pointer;
+      font-family: inherit;
+    }
+    .btn.primary { background: #3b82f6; color: #fff; }
+    .btn.primary:hover { background: #2563eb; }
+    .btn.ghost { background: #333; color: #ddd; }
+    .btn.ghost:hover { background: #3d3d3d; }
+
+    /* model step */
+    .model-list { margin-top: 10px; max-height: 168px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+    .model-row {
+      display: flex; align-items: center; gap: 10px;
+      background: #1d1d1d; border: 1px solid #2c2c2c; border-radius: 8px;
+      padding: 9px 11px; cursor: pointer;
+    }
+    .model-row:hover { border-color: #3a3a3a; }
+    .model-row.recommended { border-color: rgba(59,130,246,.45); }
+    .model-row.done { border-color: rgba(74,222,128,.4); }
+    .model-row-body { flex: 1; min-width: 0; }
+    .model-row-name { font-size: 13px; font-weight: 600; }
+    .model-row-desc { font-size: 11px; color: #8a8a8a; margin-top: 1px; }
+    .model-badge {
+      font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
+      white-space: nowrap;
+    }
+    .badge-download { background: #1e3a5f; color: #93c5fd; }
+    .badge-resume { background: rgba(245,158,11,.15); color: #f59e0b; }
+    .badge-use { background: #2a2a2a; color: #bbb; }
+    .badge-ready { background: rgba(74,222,128,.15); color: #4ade80; }
+    .tag-rec { font-size: 10px; color: #93c5fd; font-weight: 600; }
+
+    .dl-progress { margin-top: 10px; }
+    .dl-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+    .dl-track { height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
+    .dl-fill { height: 100%; background: linear-gradient(90deg,#3b82f6,#2563eb); width: 0%; transition: width .2s; }
+    .dl-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #8a8a8a; margin-top: 5px; }
+
+    .footer { margin-top: 16px; }
+    .start-btn {
+      width: 100%; padding: 12px; border: none; border-radius: 9px;
+      background: #16a34a; color: #fff; font-size: 14px; font-weight: 650;
+      cursor: pointer; font-family: inherit;
+    }
+    .start-btn:disabled { background: #2a2a2a; color: #666; cursor: default; }
+    .start-btn:not(:disabled):hover { background: #15803d; }
+
+    .check-ic { width: 15px; height: 15px; }
+    .spinner {
+      width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.25);
+      border-top-color: #fff; border-radius: 50%; display: inline-block;
+      animation: spin .7s linear infinite; vertical-align: -2px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <svg class="logo" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+    </svg>
+    <h1>Welcome to SpeakType</h1>
+    <p>Three quick steps to get you set up.</p>
+  </div>
+
+  <div class="steps">
+    <!-- Step 1: Microphone -->
+    <div class="step" id="step-mic">
+      <div class="step-num" id="num-mic">1</div>
+      <div class="step-body">
+        <div class="step-title">Microphone access</div>
+        <div class="step-desc" id="desc-mic">Required to record your voice.</div>
+        <div class="step-actions">
+          <button class="btn primary" id="btn-mic-allow">Allow Microphone</button>
+          <button class="btn ghost" id="btn-mic-settings">Open System Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2: Accessibility -->
+    <div class="step locked" id="step-acc">
+      <div class="step-num" id="num-acc">2</div>
+      <div class="step-body">
+        <div class="step-title">Accessibility access</div>
+        <div class="step-desc" id="desc-acc">Required to paste text into other apps.</div>
+        <div class="step-actions">
+          <button class="btn primary" id="btn-acc-allow">Allow Accessibility</button>
+          <button class="btn ghost" id="btn-acc-settings">Open System Settings</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Model -->
+    <div class="step locked" id="step-model">
+      <div class="step-num" id="num-model">3</div>
+      <div class="step-body">
+        <div class="step-title">Download a speech model</div>
+        <div class="step-desc" id="desc-model">Runs fully on your Mac — no internet needed after download.</div>
+        <div class="model-list" id="model-list"></div>
+        <div class="dl-progress" id="dl-progress" style="display:none">
+          <div class="dl-head">
+            <span id="dl-name">Downloading…</span>
+            <span id="dl-percent">0%</span>
+          </div>
+          <div class="dl-track"><div class="dl-fill" id="dl-fill"></div></div>
+          <div class="dl-meta">
+            <span id="dl-speed"></span>
+            <button class="btn ghost" id="dl-cancel" style="padding:3px 9px">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <button class="start-btn" id="start-btn" disabled>Start Using SpeakType</button>
+  </div>
+
+  <script>
+    function getInvoke() {
+      if (window.__TAURI__ && window.__TAURI__.core) return window.__TAURI__.core.invoke;
+      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.invoke) return window.__TAURI_INTERNALS__.invoke;
+      return null;
+    }
+    function getListen() {
+      if (window.__TAURI__ && window.__TAURI__.event) return window.__TAURI__.event.listen;
+      if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.listen) return window.__TAURI_INTERNALS__.listen;
+      return null;
+    }
+    const inv = (cmd, args) => { const f = getInvoke(); return f ? f(cmd, args) : Promise.resolve(); };
+    const lis = (ev, cb) => { const f = getListen(); return f ? f(ev, cb) : Promise.resolve(); };
+
+    const RECOMMENDED = 'small.en';
+    let status = { microphone: false, accessibility: false, model: false, active_model: '' };
+    let downloadingModel = null;
+    let modelsCache = [];
+
+    const $ = id => document.getElementById(id);
+
+    function fmtMB(bytes) {
+      if (!bytes) return '';
+      if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(0) + ' MB';
+      return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+
+    function setStep(el, numEl, state, doneText) {
+      el.classList.remove('locked', 'active', 'done');
+      el.classList.add(state);
+      if (state === 'done') {
+        numEl.innerHTML = '<svg class="check-ic" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"/></svg>';
+      } else {
+        numEl.textContent = numEl.dataset.n;
+      }
+    }
+
+    function render() {
+      const micDone = status.microphone;
+      const accDone = status.accessibility;
+      const modelDone = status.model;
+
+      // Step 1
+      setStep($('step-mic'), $('num-mic'), micDone ? 'done' : 'active');
+      $('desc-mic').textContent = micDone ? 'Microphone access granted.' : 'Click Allow, then choose “Allow” in the macOS prompt.';
+
+      // Step 2 — locked until mic done
+      setStep($('step-acc'), $('num-acc'),
+        !micDone ? 'locked' : (accDone ? 'done' : 'active'));
+      $('desc-acc').textContent = accDone
+        ? 'Accessibility access granted.'
+        : 'Enable SpeakType under Accessibility, then return here.';
+
+      // Step 3 — locked until accessibility done
+      setStep($('step-model'), $('num-model'),
+        !accDone ? 'locked' : (modelDone ? 'done' : 'active'));
+      if (modelDone) {
+        $('desc-model').textContent = 'Model "' + status.active_model + '" is ready.';
+        $('model-list').style.display = 'none';
+      } else {
+        $('desc-model').textContent = 'Pick a model to download. ' + RECOMMENDED + ' is recommended for most Macs.';
+        $('model-list').style.display = accDone ? 'flex' : 'none';
+        if (accDone) renderModels();
+      }
+
+      $('start-btn').disabled = !(micDone && accDone && modelDone);
+    }
+
+    function renderModels() {
+      const list = $('model-list');
+      list.innerHTML = '';
+      modelsCache.forEach(m => {
+        const row = document.createElement('div');
+        row.className = 'model-row'
+          + (m.id === RECOMMENDED ? ' recommended' : '')
+          + (m.downloaded ? ' done' : '');
+        let badge, badgeText;
+        if (m.downloaded) { badge = 'badge-use'; badgeText = (m.id === status.active_model ? 'Active' : 'Use'); }
+        else if (m.partial) { badge = 'badge-resume'; badgeText = 'Resume'; }
+        else { badge = 'badge-download'; badgeText = 'Download'; }
+
+        const sizeLabel = m.downloaded_size || m.size || '';
+        const incomplete = m.partial && m.partial_label ? ' · ' + m.partial_label : '';
+        row.innerHTML =
+          '<div class="model-row-body">' +
+            '<div class="model-row-name">' + m.id +
+              (m.id === RECOMMENDED ? ' <span class="tag-rec">recommended</span>' : '') + '</div>' +
+            '<div class="model-row-desc">' + sizeLabel + (m.desc ? ' — ' + m.desc : '') + incomplete + '</div>' +
+          '</div>' +
+          '<span class="model-badge ' + badge + '">' + badgeText + '</span>';
+
+        row.onclick = () => chooseModel(m.id);
+        list.appendChild(row);
+      });
+    }
+
+    async function refreshModels() {
+      try {
+        const res = await inv('get_models');
+        modelsCache = (res && res.available) || [];
+        if ($('step-model').classList.contains('active')) renderModels();
+      } catch (e) { console.error('get_models failed', e); }
+    }
+
+    function showProgress(model, percent, speed) {
+      $('dl-progress').style.display = 'block';
+      $('model-list').style.display = 'none';
+      $('dl-name').textContent = 'Downloading ' + model + '…';
+      $('dl-percent').textContent = Math.round(percent) + '%';
+      $('dl-fill').style.width = Math.round(percent) + '%';
+      $('dl-speed').textContent = speed > 0 ? speed.toFixed(1) + ' MB/s' : '';
+    }
+    function hideProgress() {
+      $('dl-progress').style.display = 'none';
+      downloadingModel = null;
+    }
+
+    async function chooseModel(id) {
+      if (downloadingModel) return;
+      downloadingModel = id;
+      $('dl-name').textContent = 'Preparing ' + id + '…';
+      $('dl-percent').textContent = '';
+      $('dl-fill').style.width = '0%';
+      $('dl-progress').style.display = 'block';
+      $('model-list').style.display = 'none';
+      try {
+        const result = await inv('load_model', { model: id });
+        if (result && result.status === 'error') {
+          hideProgress();
+          $('desc-model').textContent = 'Failed: ' + (result.message || 'unknown') + ' — try again.';
+        }
+        // success path resolved by status poll picking up model=true
+      } catch (e) {
+        hideProgress();
+        $('desc-model').textContent = 'Download failed: ' + e + ' — try again.';
+      }
+      await poll();
+    }
+
+    async function poll() {
+      try {
+        const s = await inv('get_onboarding_status');
+        if (s) { status = s; render(); }
+        if (status.accessibility && !status.model && !downloadingModel) refreshModels();
+      } catch (e) { /* ignore */ }
+    }
+
+    // wire buttons
+    $('num-mic').dataset.n = '1'; $('num-acc').dataset.n = '2'; $('num-model').dataset.n = '3';
+
+    $('btn-mic-allow').onclick = async () => {
+      await inv('request_microphone_access');
+      setTimeout(poll, 600);
+    };
+    $('btn-mic-settings').onclick = () => inv('open_system_pane', { pane: 'com.apple.preference.security?Privacy_Microphone' });
+
+    $('btn-acc-allow').onclick = async () => {
+      await inv('request_accessibility');
+      setTimeout(poll, 600);
+    };
+    $('btn-acc-settings').onclick = () => inv('open_system_pane', { pane: 'com.apple.preference.security?Privacy_Accessibility' });
+
+    $('dl-cancel').onclick = async () => {
+      if (downloadingModel) {
+        await inv('cancel_model_download', { model: downloadingModel });
+        hideProgress();
+        render();
+      }
+    };
+
+    $('start-btn').onclick = async () => {
+      $('start-btn').disabled = true;
+      $('start-btn').innerHTML = '<span class="spinner"></span> Starting…';
+      try { await inv('finish_onboarding'); } catch (e) { console.error(e); }
+    };
+
+    // model download progress events
+    lis('model:progress', (event) => {
+      const p = typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload;
+      if (!downloadingModel || p.model !== downloadingModel) return;
+      if (p.phase === 'downloading') {
+        const pct = p.percent || (p.total_bytes > 0 ? (p.bytes_downloaded / p.total_bytes) * 100 : 0);
+        showProgress(p.model, pct, p.speed_mbps || 0);
+      } else if (p.phase === 'done') {
+        $('dl-percent').textContent = '100%';
+        $('dl-fill').style.width = '100%';
+        $('dl-name').textContent = 'Loading ' + p.model + '…';
+        setTimeout(() => { hideProgress(); poll(); }, 400);
+      } else if (p.phase === 'cancelled') {
+        hideProgress(); render();
+      }
+    });
+
+    poll();
+    setInterval(poll, 1500);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) poll(); });
+  </script>
+</body>
+</html>
