@@ -99,6 +99,14 @@ const ttipc = {
     return this.invoke('load_model', { model });
   },
 
+  queueModelDownload(model, restart = false) {
+    return this.invoke('queue_model_download', { model, restart });
+  },
+
+  restartModelDownload(model) {
+    return this.invoke('restart_model_download', { model });
+  },
+
   getModels() {
     return this.invoke('get_models');
   },
@@ -109,6 +117,10 @@ const ttipc = {
 
   cancelModelDownload(model) {
     return this.invoke('cancel_model_download', { model });
+  },
+
+  pauseModelDownload(model) {
+    return this.invoke('pause_model_download', { model });
   },
 };
 

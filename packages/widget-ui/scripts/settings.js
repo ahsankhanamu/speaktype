@@ -130,7 +130,39 @@ function populateLanguageSelect(filter) {
 
 let loadedSnapshot = {};
 let modelUnlisten = null;
-let currentDownloadingModel = null;
+let queueUnlisten = null;
+let switchingModel = null;
+let modelStatusTimer = null;
+const cardProgress = {};
+
+const DOWNLOADING_ICON_SVG = `<svg class="model-icon icon-downloading" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>`;
+
+function baseModelDesc(m) {
+  const sizeLabel = m.downloaded_size || m.size || '';
+  const descLabel = m.desc || '';
+  return `${sizeLabel}${sizeLabel && descLabel ? ' — ' : ''}${descLabel}`;
+}
+
+function ensureCardDownloadingState(card, p) {
+  card.classList.add('downloading');
+  card.classList.remove('partial', 'waiting', 'dimmed');
+
+  const iconWrap = card.querySelector('.model-card-icon');
+  if (iconWrap) iconWrap.innerHTML = DOWNLOADING_ICON_SVG;
+
+  const actionWrap = card.querySelector('.model-card-action');
+  if (actionWrap) {
+    actionWrap.innerHTML = `<span class="model-badge badge-downloading">Downloading</span>`;
+  }
+
+  const pct = Math.round(p.percent || 0);
+  const descEl = card.querySelector('.model-card-desc');
+  if (descEl && pct >= 0) {
+    const base = descEl.dataset.baseDesc || descEl.textContent.split(' — Incomplete')[0].split(/ — \d+%$/)[0];
+    if (!descEl.dataset.baseDesc) descEl.dataset.baseDesc = base;
+    descEl.textContent = `${descEl.dataset.baseDesc} — ${pct}%`;
+  }
+}
 
 function switchTab(tabName) {
   tabs.forEach(t => t.classList.remove('active'));
@@ -147,6 +179,7 @@ function switchTab(tabName) {
     loadHistory();
   } else if (tabName === 'models') {
     actionsModels.style.display = '';
+    ensureModelProgressListener();
     refreshModelList();
   } else {
     actionsSettings.style.display = '';
@@ -444,7 +477,7 @@ saveBtn.addEventListener('click', async () => {
     checkDirty();
 
     if (modelChanged) {
-      preloadModel(settings.model);
+      activateModel(settings.model);
     }
 
     saveBtn.textContent = 'Saved!';
@@ -472,6 +505,7 @@ let statusSpinner = null;
 
 function setStatusLoading(text) {
   const el = document.getElementById('model-status');
+  el.hidden = false;
   el.style.display = 'flex';
   el.className = 'model-status loading';
   if (!statusSpinner || !el.contains(statusSpinner)) {
@@ -481,140 +515,250 @@ function setStatusLoading(text) {
   el.querySelector('.status-text').textContent = text;
 }
 
-function updateStatusText(text) {
-  const el = document.getElementById('model-status');
-  const span = el.querySelector('.status-text');
-  if (span) span.textContent = text;
-}
-
 function showModelStatus(type, html) {
   const el = document.getElementById('model-status');
+  el.hidden = false;
+  el.style.display = 'flex';
   el.className = 'model-status ' + type;
   el.innerHTML = html;
-  el.style.display = 'flex';
   statusSpinner = null;
 }
 
-function hideModelStatus() {
-  document.getElementById('model-status').style.display = 'none';
-}
-
-function formatBytes(bytes) {
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(0) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-}
-
-function showDownloadProgress(model, percent, speed, eta) {
-  const area = document.getElementById('download-progress-area');
-  const name = document.getElementById('download-name');
-  const percentEl = document.getElementById('download-percent');
-  const fill = document.getElementById('progress-fill');
-  const speedEl = document.getElementById('download-speed');
-  const etaEl = document.getElementById('download-eta');
-
-  area.style.display = 'block';
-  name.textContent = 'Downloading ' + model + '...';
-  percentEl.textContent = Math.round(percent) + '%';
-  fill.style.width = Math.round(percent) + '%';
-
-  if (speed > 0) {
-    speedEl.textContent = speed.toFixed(1) + ' MB/s';
-  } else {
-    speedEl.textContent = '';
-  }
-
-  if (eta > 0) {
-    if (eta < 60) {
-      etaEl.textContent = eta + 's remaining';
-    } else {
-      etaEl.textContent = Math.round(eta / 60) + 'm ' + (eta % 60) + 's remaining';
-    }
-  } else {
-    etaEl.textContent = '';
-  }
-}
-
-function hideDownloadProgress() {
-  document.getElementById('download-progress-area').style.display = 'none';
-  currentDownloadingModel = null;
-}
-
-document.getElementById('cancel-download-btn').addEventListener('click', async () => {
-  if (currentDownloadingModel) {
-    try {
-      await ttipc.invoke('cancel_model_download', { model: currentDownloadingModel });
-      showModelStatus('error', 'Download cancelled: ' + currentDownloadingModel);
-      setTimeout(hideModelStatus, 3000);
-    } catch (e) {
-      console.error('Cancel failed:', e);
-    }
-    hideDownloadProgress();
-  }
-});
-
-let modelLoadGen = 0;
-
-async function preloadModel(model) {
-  const gen = ++modelLoadGen;
-
-  if (modelUnlisten) {
-    if (typeof modelUnlisten === 'function') modelUnlisten();
-    modelUnlisten = null;
-  }
-
-  setStatusLoading('Preparing ' + model + ' model...');
-  currentDownloadingModel = model;
-
-  const unlisten = await ttipc.listen('model:progress', (event) => {
-    if (modelLoadGen !== gen) { unlisten(); return; }
-    const p = event.payload;
-    if (p.model !== model) return;
-
-    if (p.phase === 'downloading') {
-      const pct = p.percent || (p.total_bytes > 0 ? (p.bytes_downloaded / p.total_bytes) * 100 : 0);
-      showDownloadProgress(model, pct, p.speed_mbps || 0, p.eta_secs || 0);
-      updateStatusText('Downloading ' + model + '...');
-    } else if (p.phase === 'loading') {
-      hideDownloadProgress();
-      setStatusLoading('Loading ' + model + ' model into memory...');
-    } else if (p.phase === 'done') {
-      hideDownloadProgress();
-      showModelStatus('success', model + ' model ready!');
-      refreshModelList();
-      setTimeout(hideModelStatus, 4000);
-    } else if (p.phase === 'cancelled') {
-      hideDownloadProgress();
-      showModelStatus('error', 'Download cancelled');
-      setTimeout(hideModelStatus, 3000);
-    }
+function setModelGridBusy(model, busy) {
+  switchingModel = busy ? model : null;
+  const grid = document.getElementById('model-grid');
+  if (!grid) return;
+  grid.classList.toggle('busy', busy);
+  grid.querySelectorAll('.model-card').forEach(card => {
+    const isTarget = card.dataset.model === model;
+    card.classList.toggle('switching', busy && isTarget);
+    card.classList.toggle('dimmed', busy && !isTarget);
   });
-  modelUnlisten = unlisten;
+}
 
+function clearModelStatusTimer() {
+  if (modelStatusTimer) {
+    clearTimeout(modelStatusTimer);
+    modelStatusTimer = null;
+  }
+}
+
+function hideModelStatus() {
+  const el = document.getElementById('model-status');
+  el.hidden = true;
+  el.style.display = 'none';
+  clearModelStatusTimer();
+}
+
+function scheduleHideModelStatus(ms) {
+  clearModelStatusTimer();
+  modelStatusTimer = setTimeout(hideModelStatus, ms);
+}
+
+function formatEta(eta) {
+  if (!eta || eta <= 0) return '';
+  if (eta < 60) return eta + 's remaining';
+  return Math.round(eta / 60) + 'm ' + (eta % 60) + 's remaining';
+}
+
+function cardProgressHtml(model, p) {
+  const pct = Math.round(p.percent || 0);
+  const speed = p.speed_mbps > 0 ? p.speed_mbps.toFixed(1) + ' MB/s' : '';
+  const eta = formatEta(p.eta_secs);
+  return `
+    <div class="model-card-progress">
+      <div class="card-progress-header">
+        <span class="card-progress-label">Downloading</span>
+        <span class="card-progress-pct">${pct}%</span>
+      </div>
+      <div class="progress-bar-track card-progress-track">
+        <div class="progress-bar-fill card-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="card-progress-meta">
+        <span class="card-progress-speed">${speed}</span>
+        <span class="card-progress-eta">${eta}</span>
+        <button type="button" class="btn secondary btn-small card-pause-btn" data-model="${model}">Pause</button>
+      </div>
+    </div>`;
+}
+
+function updateCardProgress(model, p) {
+  cardProgress[model] = { ...cardProgress[model], ...p };
+  const card = document.querySelector(`.model-card[data-model="${CSS.escape(model)}"]`);
+  if (!card) return;
+
+  ensureCardDownloadingState(card, cardProgress[model]);
+
+  let progressEl = card.querySelector('.model-card-progress');
+  if (!progressEl) {
+    progressEl = document.createElement('div');
+    card.appendChild(progressEl);
+  }
+  progressEl.outerHTML = cardProgressHtml(model, cardProgress[model]);
+
+  card.querySelector('.card-pause-btn')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    pauseModelDownload(model);
+  });
+}
+
+function clearCardProgress(model) {
+  delete cardProgress[model];
+  const card = document.querySelector(`.model-card[data-model="${CSS.escape(model)}"]`);
+  card?.querySelector('.model-card-progress')?.remove();
+}
+
+async function pauseModelDownload(model) {
+  hideModelStatus();
   try {
-    const result = await ttipc.loadModel(model);
-    if (modelLoadGen !== gen) return;
-    if (typeof modelUnlisten === 'function') modelUnlisten();
-    modelUnlisten = null;
+    await ttipc.pauseModelDownload(model);
+  } catch (e) {
+    console.error('Pause failed:', e);
+  }
+  clearCardProgress(model);
+  refreshModelList();
+}
 
-    if (result && (result.status === 'loaded' || result.status === 'already_loaded')) {
-      hideDownloadProgress();
-      const msg = model + ' model ready';
-      showModelStatus('success', msg);
+async function cancelQueuedDownload(model) {
+  try {
+    await ttipc.cancelModelDownload(model);
+  } catch (e) {
+    console.error('Cancel failed:', e);
+  }
+  clearCardProgress(model);
+  refreshModelList();
+}
+
+function handleModelProgress(p) {
+  if (!p || !p.model) return;
+
+  const model = p.model;
+  const message = p.message || '';
+
+  if (p.phase === 'preparing' || p.phase === 'stopping' || p.phase === 'starting' || p.phase === 'loading') {
+    setModelGridBusy(model, true);
+    setStatusLoading(message || `Switching to ${model}...`);
+    return;
+  }
+
+  if (p.phase === 'waiting') {
+    hideModelStatus();
+    cardProgress[model] = { phase: 'waiting', queue_position: p.queue_position };
+    refreshModelList();
+    return;
+  }
+
+  if (p.phase === 'downloading') {
+    hideModelStatus();
+    const pct = p.percent || (p.total_bytes > 0 ? (p.bytes_downloaded / p.total_bytes) * 100 : 0);
+    updateCardProgress(model, {
+      phase: 'downloading',
+      percent: pct,
+      speed_mbps: p.speed_mbps || 0,
+      eta_secs: p.eta_secs || 0,
+    });
+    return;
+  }
+
+  if (p.phase === 'paused') {
+    hideModelStatus();
+    setModelGridBusy(null, false);
+    clearCardProgress(model);
+    refreshModelList();
+    return;
+  }
+
+  if (p.phase === 'done') {
+    setModelGridBusy(null, false);
+    clearCardProgress(model);
+    showModelStatus('success', message || `${model} model ready`);
+    refreshModelList();
+    scheduleHideModelStatus(5000);
+    return;
+  }
+
+  if (p.phase === 'cancelled') {
+    hideModelStatus();
+    setModelGridBusy(null, false);
+    clearCardProgress(model);
+    refreshModelList();
+    return;
+  }
+
+  if (p.phase === 'error') {
+    hideModelStatus();
+    setModelGridBusy(null, false);
+    clearCardProgress(model);
+    showModelStatus('error', message || 'Model operation failed');
+    refreshModelList();
+    scheduleHideModelStatus(6000);
+  }
+}
+
+async function ensureModelProgressListener() {
+  if (modelUnlisten) return;
+  modelUnlisten = await ttipc.listen('model:progress', (event) => {
+    handleModelProgress(event.payload);
+  });
+  queueUnlisten = await ttipc.listen('model:queue', () => {
+    refreshModelList();
+  });
+}
+
+async function queueDownload(model, { restart = false, activate = false } = {}) {
+  await ensureModelProgressListener();
+  hideModelStatus();
+  try {
+    const result = activate
+      ? (restart ? await ttipc.restartModelDownload(model) : await ttipc.loadModel(model))
+      : await ttipc.queueModelDownload(model, restart);
+    if (result && result.status === 'complete') {
+      if (activate) await activateModel(model);
+      return;
+    }
+    if (result && (result.status === 'queued' || result.status === 'downloading')) {
       refreshModelList();
-    } else {
-      hideDownloadProgress();
-      showModelStatus('error', 'Failed: ' + ((result && result.message) || 'Unknown error'));
+      return;
+    }
+    if (result && result.status === 'error') {
+      showModelStatus('error', result.message || 'Failed to queue download');
+      scheduleHideModelStatus(5000);
     }
   } catch (e) {
-    if (modelLoadGen !== gen) return;
-    if (typeof modelUnlisten === 'function') modelUnlisten();
-    modelUnlisten = null;
-    hideDownloadProgress();
-    showModelStatus('error', 'Failed to load model: ' + e);
+    showModelStatus('error', 'Failed to queue download: ' + e);
+    scheduleHideModelStatus(5000);
   }
+}
 
-  setTimeout(hideModelStatus, 5000);
+async function preloadModel(model, { restart = false } = {}) {
+  await queueDownload(model, { restart, activate: true });
+}
+
+async function activateModel(model) {
+  const settings = await ttipc.getSettings();
+  if (!settings) return;
+  settings.model = model;
+  await ttipc.saveSettings(settings);
+  loadedSnapshot.model = model;
+  checkDirty();
+  await ensureModelProgressListener();
+  setModelGridBusy(model, true);
+  setStatusLoading(`Loading ${model}...`);
+  try {
+    const result = await ttipc.loadModel(model);
+    if (result && result.status === 'busy') {
+      setModelGridBusy(null, false);
+      showModelStatus('error', result.message || 'Server busy');
+      scheduleHideModelStatus(4000);
+    } else if (result && result.status === 'queued') {
+      setModelGridBusy(null, false);
+      refreshModelList();
+    }
+  } catch (e) {
+    setModelGridBusy(null, false);
+    showModelStatus('error', 'Failed to load model: ' + e);
+    scheduleHideModelStatus(5000);
+  }
 }
 
 async function refreshModelList() {
@@ -625,6 +769,20 @@ async function refreshModelList() {
     const result = await ttipc.getModels();
     const models = (result && result.available) || [];
     const downloading = (result && result.downloading) || [];
+    const waiting = (result && result.waiting) || [];
+    const serverProgress = (result && result.progress) || [];
+
+    for (const p of serverProgress) {
+      if (p.model && (!cardProgress[p.model] || cardProgress[p.model].phase === 'downloading')) {
+        cardProgress[p.model] = {
+          ...cardProgress[p.model],
+          phase: 'downloading',
+          percent: p.percent || 0,
+          speed_mbps: cardProgress[p.model]?.speed_mbps || 0,
+          eta_secs: cardProgress[p.model]?.eta_secs || 0,
+        };
+      }
+    }
 
     const settings = await ttipc.getSettings();
     const activeModel = settings ? settings.model : '';
@@ -641,19 +799,28 @@ async function refreshModelList() {
       // Only a fully-downloaded model can be the "active" one — a truncated
       // file that happens to match the saved model name is incomplete, not active.
       const isActive = m.id === activeModel && isDownloaded;
-      const isDownloading = downloading.includes(m.id);
+      const liveDl = cardProgress[m.id];
+      const isDownloading = downloading.includes(m.id)
+        || (liveDl && liveDl.phase === 'downloading');
+      const isWaiting = waiting.includes(m.id);
       const isSelected = m.id === selectedModel && !isActive;
 
       const card = document.createElement('div');
       card.className = 'model-card'
         + (isActive ? ' active' : '')
         + (isDownloading ? ' downloading' : '')
-        + (isPartial ? ' partial' : '')
+        + (isWaiting ? ' waiting' : '')
+        + (isPartial && !isDownloading && !isWaiting ? ' partial' : '')
         + (isSelected ? ' selected' : '');
       card.dataset.model = m.id;
 
       const sizeLabel = m.downloaded_size || m.size || '';
       const descLabel = m.desc || '';
+      const baseDesc = baseModelDesc(m);
+      const livePct = liveDl && liveDl.phase === 'downloading' ? Math.round(liveDl.percent || 0) : null;
+      const descText = isDownloading && livePct != null
+        ? `${baseDesc} — ${livePct}%`
+        : `${baseDesc}${isPartial && m.partial_label && !isDownloading ? ' — ' + m.partial_label : ''}`;
       let iconSvg, actionHtml;
 
       if (isActive) {
@@ -661,10 +828,18 @@ async function refreshModelList() {
         actionHtml = `<span class="model-badge badge-active">Active</span>`;
       } else if (isDownloading) {
         iconSvg = `<svg class="model-icon icon-downloading" viewBox="0 0 24 24" fill="none" stroke="#facc15" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12l4 4 4-4"/></svg>`;
-        actionHtml = `<span class="model-badge badge-downloading">Downloading...</span>`;
+        actionHtml = `<span class="model-badge badge-downloading">Downloading</span>`;
+      } else if (isWaiting) {
+        iconSvg = `<svg class="model-icon icon-waiting" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`;
+        const pos = waiting.indexOf(m.id) + 1;
+        actionHtml = `
+          <span class="model-badge badge-waiting">Waiting${pos > 0 ? ' #' + pos : ''}</span>
+          <button type="button" class="model-badge badge-cancel-queue card-cancel-btn" data-model="${m.id}">Cancel</button>`;
       } else if (isPartial) {
         iconSvg = `<svg class="model-icon icon-partial" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>`;
-        actionHtml = `<span class="model-badge badge-partial clickable-badge">Resume</span>`;
+        actionHtml = `
+          <span class="model-badge badge-partial clickable-badge" data-action="resume">Resume</span>
+          <span class="model-badge badge-restart clickable-badge" data-action="restart">Restart</span>`;
       } else if (isDownloaded) {
         iconSvg = `<svg class="model-icon icon-downloaded" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>`;
         actionHtml = `<span class="model-badge badge-load clickable-badge">Load</span>`;
@@ -674,47 +849,71 @@ async function refreshModelList() {
       }
 
       card.innerHTML = `
-        <div class="model-card-icon">${iconSvg}</div>
-        <div class="model-card-body">
-          <div class="model-card-name">${m.id}</div>
-          <div class="model-card-desc">${sizeLabel}${sizeLabel && descLabel ? ' — ' : ''}${descLabel}${isPartial && m.partial_label ? ' — ' + m.partial_label : ''}</div>
+        <div class="model-card-row">
+          <div class="model-card-icon">${iconSvg}</div>
+          <div class="model-card-body">
+            <div class="model-card-name">${m.id}</div>
+            <div class="model-card-desc" data-base-desc="${baseDesc.replace(/"/g, '&quot;')}">${descText}</div>
+          </div>
+          <div class="model-card-action">${actionHtml}</div>
         </div>
-        <div class="model-card-action">${actionHtml}</div>
       `;
 
       if (isDownloading) {
-        card.classList.add('clickable');
-        card.addEventListener('click', () => {
-          select.value = m.id;
-          preloadModel(m.id);
+        const progressWrap = document.createElement('div');
+        progressWrap.innerHTML = cardProgressHtml(m.id, liveDl || { percent: 0, speed_mbps: 0, eta_secs: 0 });
+        card.appendChild(progressWrap.firstElementChild);
+        card.querySelector('.card-pause-btn')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          pauseModelDownload(m.id);
         });
+      }
+
+      card.querySelectorAll('.card-cancel-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          cancelQueuedDownload(m.id);
+        });
+      });
+
+      const cardBusy = switchingModel && switchingModel !== m.id;
+
+      if ((isDownloading || isWaiting || cardBusy) && !isActive) {
+        if (!isDownloading) card.classList.add('dimmed');
+      }
+
+      if (isDownloading) {
+        // progress updated via updateCardProgress
+      } else if (isWaiting) {
+        // queued — cancel only
       } else if (isDownloaded && !isActive) {
         card.classList.add('clickable');
         card.addEventListener('click', () => {
+          if (switchingModel) return;
           select.value = m.id;
-          preloadModel(m.id);
+          activateModel(m.id);
         });
       } else if (isPartial) {
         card.classList.add('clickable');
-        card.addEventListener('click', () => {
-          select.value = m.id;
-          preloadModel(m.id);
-        });
-        card.querySelector('.clickable-badge')?.addEventListener('click', (e) => {
+        card.querySelector('[data-action="resume"]')?.addEventListener('click', (e) => {
           e.stopPropagation();
+          if (switchingModel) return;
           select.value = m.id;
-          preloadModel(m.id);
+          queueDownload(m.id, { activate: true });
         });
-      } else if (!isDownloaded) {
+        card.querySelector('[data-action="restart"]')?.addEventListener('click', (e) => {
+          e.stopPropagation();
+          if (switchingModel) return;
+          select.value = m.id;
+          queueDownload(m.id, { restart: true, activate: true });
+        });
+      } else if (!isDownloaded && !isWaiting && !isDownloading) {
         card.classList.add('clickable');
-        card.addEventListener('click', () => {
-          select.value = m.id;
-          refreshModelList();
-        });
         card.querySelector('.clickable-badge')?.addEventListener('click', (e) => {
           e.stopPropagation();
+          if (switchingModel) return;
           select.value = m.id;
-          preloadModel(m.id);
+          queueDownload(m.id);
         });
       }
 
@@ -875,3 +1074,4 @@ document.getElementById('about-btn').addEventListener('click', () => {
 });
 
 loadSettings();
+ensureModelProgressListener();

@@ -10,6 +10,9 @@ use tauri_plugin_shell::ShellExt;
 static SERVER_PROCESS: Mutex<Option<CommandChild>> = Mutex::new(None);
 static SERVER_PORT: Mutex<Option<u16>> = Mutex::new(None);
 static SERVER_INTENTIONAL_STOP: AtomicBool = AtomicBool::new(false);
+static SERVER_CRASH_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+const MAX_CRASH_RESTARTS: u32 = 3;
 
 const DEFAULT_PORT: u16 = 8002;
 const PORT_RANGE_END: u16 = 8020;
@@ -50,25 +53,37 @@ pub fn has_embedded_server(app: &AppHandle) -> bool {
 /// Spawn the embedded whisper server as a child process.
 /// Returns server info (port + actual model used), or None on failure.
 pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
+    if !should_auto_restart() {
+        logging::log_message("[server] Too many consecutive crashes — not starting server");
+        let _ = app.emit(
+            "server:error",
+            serde_json::json!({ "reason": "Server crashed repeatedly. Check Settings → Model." }),
+        );
+        return None;
+    }
+
+    let model = match crate::downloader::resolve_model_for_server(model) {
+        Some(model) => model,
+        None => {
+            let data_dir = crate::paths::config_dir_opt()?;
+            let model_path = data_dir.join("models").join(format!("ggml-{}.bin", model));
+            let reason = if model_path.exists() { "incomplete" } else { "missing" };
+            logging::log_message(&format!(
+                "[server] No complete model available for '{}', not starting server",
+                model
+            ));
+            let _ = app.emit("server:model_needed", serde_json::json!({
+                "model": model,
+                "path": model_path.to_string_lossy(),
+                "reason": reason,
+            }));
+            return None;
+        }
+    };
+
     // Resolve model path
     let data_dir = crate::paths::config_dir_opt()?;
     let model_path = data_dir.join("models").join(format!("ggml-{}.bin", model));
-
-    // A missing OR truncated model must not be handed to whisper-server — it
-    // would crash on load and look like an abrupt app failure.
-    if !crate::downloader::is_model_complete(model) {
-        let reason = if model_path.exists() { "incomplete" } else { "missing" };
-        logging::log_message(&format!(
-            "[server] Model '{}' is {} ({}), not starting server",
-            model, reason, model_path.display()
-        ));
-        let _ = app.emit("server:model_needed", serde_json::json!({
-            "model": model,
-            "path": model_path.to_string_lossy(),
-            "reason": reason,
-        }));
-        return None;
-    }
 
     let port = match find_available_port() {
         Some(p) => p,
@@ -141,15 +156,23 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
                                 let _ = f.write_all(b"\n").await;
                             }
                         }
-                        CommandEvent::Terminated(_) => {
+                        CommandEvent::Terminated(payload) => {
                             if let Some(f) = log_file.as_mut() {
                                 let _ = f.write_all(b"[server] Process terminated\n").await;
                             }
                             if !SERVER_INTENTIONAL_STOP.load(Ordering::SeqCst) {
-                                logging::log_message("[server] Server terminated unexpectedly — emitting crash event");
+                                let crashes = SERVER_CRASH_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+                                logging::log_message(&format!(
+                                    "[server] Server terminated unexpectedly (code={:?}, crashes={})",
+                                    payload.code, crashes
+                                ));
                                 let _ = app_handle_for_monitor.emit(
                                     "server:crash",
-                                    serde_json::json!({"reason": "Process terminated unexpectedly"}),
+                                    serde_json::json!({
+                                        "reason": "Process terminated unexpectedly",
+                                        "code": payload.code,
+                                        "crashes": crashes,
+                                    }),
                                 );
                             }
                             break;
@@ -201,6 +224,7 @@ pub async fn wait_for_server(port: u16) -> bool {
 
         if let Ok(resp) = client.get(&health_url).send().await {
             if resp.status().is_success() {
+                SERVER_CRASH_COUNT.store(0, Ordering::SeqCst);
                 logging::log_message(&format!(
                     "[server] Server ready in {:.1}s on port {}",
                     start.elapsed().as_secs_f64(),
@@ -219,9 +243,13 @@ pub fn current_port() -> Option<u16> {
     SERVER_PORT.lock().ok().and_then(|p| *p)
 }
 
-/// Kill the embedded server process if it's running.
+pub fn should_auto_restart() -> bool {
+    SERVER_CRASH_COUNT.load(Ordering::SeqCst) < MAX_CRASH_RESTARTS
+}
+
 pub fn stop_server() {
     SERVER_INTENTIONAL_STOP.store(true, Ordering::SeqCst);
+    SERVER_CRASH_COUNT.store(0, Ordering::SeqCst);
     if let Ok(mut proc) = SERVER_PROCESS.lock() {
         if let Some(child) = proc.take() {
             logging::log_message("[server] Stopping sidecar server");

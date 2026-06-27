@@ -52,7 +52,20 @@ pub fn is_hallucination(text: &str) -> bool {
     false
 }
 
-pub async fn transcribe(wav_data: Vec<u8>, settings: &Settings, duration_secs: f64) -> Result<String, String> {
+pub async fn transcribe(
+    wav_data: Vec<u8>,
+    settings: &Settings,
+    duration_secs: f64,
+) -> Result<String, String> {
+    transcribe_with_prompt(wav_data, settings, duration_secs, None).await
+}
+
+pub async fn transcribe_with_prompt(
+    wav_data: Vec<u8>,
+    settings: &Settings,
+    duration_secs: f64,
+    prompt: Option<&str>,
+) -> Result<String, String> {
     let api_url = &settings.api_url;
     let is_openai = is_openai_api(api_url);
 
@@ -81,8 +94,16 @@ pub async fn transcribe(wav_data: Vec<u8>, settings: &Settings, duration_secs: f
         if settings.language != "auto" {
             form = form.text("language", settings.language.clone());
         }
+        if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
+            form = form.text("prompt", prompt.to_string());
+            form = form.text("initial_prompt", prompt.to_string());
+        }
     } else {
         form = form.text("language", settings.language.clone());
+        if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
+            form = form.text("prompt", prompt.to_string());
+            form = form.text("initial_prompt", prompt.to_string());
+        }
     }
 
     let client = reqwest::Client::builder()

@@ -1,5 +1,7 @@
 mod audio;
+mod chunk_session;
 mod commands;
+mod download_queue;
 mod downloader;
 mod history;
 mod logging;
@@ -11,6 +13,7 @@ mod settings;
 mod tones;
 mod transcribe;
 mod tray;
+mod window;
 
 use audio::AudioRecorder;
 use commands::AppState;
@@ -53,7 +56,10 @@ pub fn run() {
             commands::update_hotkey,
             commands::check_server,
             commands::load_model,
+            commands::queue_model_download,
+            commands::restart_model_download,
             commands::cancel_model_download,
+            commands::pause_model_download,
             commands::get_models,
             commands::get_model_progress,
             commands::open_about,
@@ -110,12 +116,13 @@ pub fn run() {
 
             if let (Some(x), Some(y)) = (settings.window_x, settings.window_y) {
                 if let Some(window) = app.get_webview_window("main") {
-                    let _ = window.set_position(tauri::Position::Physical(
-                        tauri::PhysicalPosition {
-                            x: x as i32,
-                            y: y as i32,
-                        },
-                    ));
+                    let (cx, cy) = window::apply_saved_position(&window, x, y);
+                    if (cx, cy) != (x, y) {
+                        let mut corrected = settings.clone();
+                        corrected.window_x = Some(cx);
+                        corrected.window_y = Some(cy);
+                        let _ = corrected.save();
+                    }
                 }
             }
 
@@ -201,6 +208,7 @@ pub fn run() {
                 is_transcribing: is_transcribing.clone(),
                 target_window: Arc::new(Mutex::new(None)),
                 last_active_window,
+                chunk_session: Arc::new(Mutex::new(None)),
             };
 
             app.manage(app_state);
@@ -213,14 +221,23 @@ pub fn run() {
                     let port = info.port;
                     let model = info.model;
 
-                    // Auto-restart server if it crashes unexpectedly
+                    // Auto-restart server if it crashes unexpectedly (with backoff + cap)
                     let app_for_crash = app.handle().clone();
                     app.handle().listen("server:crash", move |_event| {
+                        if !server::should_auto_restart() {
+                            logging::log_message("[server] Crash restart limit reached — giving up");
+                            let _ = app_for_crash.emit(
+                                "server:error",
+                                serde_json::json!({ "reason": "Server crashed repeatedly. Check Settings → Model." }),
+                            );
+                            return;
+                        }
+
                         logging::log_message("[server] Crash detected, auto-restarting...");
                         let app = app_for_crash.clone();
                         tauri::async_runtime::spawn(async move {
                             server::stop_server();
-                            tokio::time::sleep(Duration::from_millis(500)).await;
+                            tokio::time::sleep(Duration::from_millis(1500)).await;
                             let model = {
                                 let state = app.state::<AppState>();
                                 state.settings.lock().ok().map(|s| s.model.clone()).unwrap_or_default()
@@ -265,6 +282,7 @@ pub fn run() {
                                 serde_json::json!({ "port": port, "model": model }),
                             );
                         } else {
+                            server::stop_server();
                             let _ = app_handle_for_server.emit(
                                 "server:error",
                                 serde_json::json!({ "reason": "Server failed to start within timeout" }),

@@ -163,7 +163,7 @@
           <div class="dl-track"><div class="dl-fill" id="dl-fill"></div></div>
           <div class="dl-meta">
             <span id="dl-speed"></span>
-            <button class="btn ghost" id="dl-cancel" style="padding:3px 9px">Cancel</button>
+            <button class="btn ghost" id="dl-cancel" style="padding:3px 9px">Pause</button>
           </div>
         </div>
       </div>
@@ -301,11 +301,11 @@
       $('model-list').style.display = 'none';
       try {
         const result = await inv('load_model', { model: id });
+        if (result && result.status === 'started') return;
         if (result && result.status === 'error') {
           hideProgress();
           $('desc-model').textContent = 'Failed: ' + (result.message || 'unknown') + ' — try again.';
         }
-        // success path resolved by status poll picking up model=true
       } catch (e) {
         hideProgress();
         $('desc-model').textContent = 'Download failed: ' + e + ' — try again.';
@@ -338,7 +338,7 @@
 
     $('dl-cancel').onclick = async () => {
       if (downloadingModel) {
-        await inv('cancel_model_download', { model: downloadingModel });
+        await inv('pause_model_download', { model: downloadingModel });
         hideProgress();
         render();
       }
@@ -357,13 +357,24 @@
       if (p.phase === 'downloading') {
         const pct = p.percent || (p.total_bytes > 0 ? (p.bytes_downloaded / p.total_bytes) * 100 : 0);
         showProgress(p.model, pct, p.speed_mbps || 0);
+      } else if (p.phase === 'preparing' || p.phase === 'stopping' || p.phase === 'starting' || p.phase === 'loading') {
+        $('dl-progress').style.display = 'block';
+        $('model-list').style.display = 'none';
+        $('dl-name').textContent = p.message || ('Loading ' + p.model + '…');
+        $('dl-percent').textContent = '';
+        $('dl-fill').style.width = '0%';
       } else if (p.phase === 'done') {
         $('dl-percent').textContent = '100%';
         $('dl-fill').style.width = '100%';
-        $('dl-name').textContent = 'Loading ' + p.model + '…';
+        $('dl-name').textContent = p.message || (p.model + ' ready');
         setTimeout(() => { hideProgress(); poll(); }, 400);
-      } else if (p.phase === 'cancelled') {
-        hideProgress(); render();
+      } else if (p.phase === 'paused') {
+        hideProgress();
+        render();
+      } else if (p.phase === 'cancelled' || p.phase === 'error') {
+        hideProgress();
+        $('desc-model').textContent = p.message || 'Model operation failed — try again.';
+        render();
       }
     });
 

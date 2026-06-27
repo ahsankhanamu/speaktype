@@ -4,7 +4,13 @@
   box-sizing: border-box;
 }
 
-:focus-visible {
+/* Focus: outline-offset breaks on native form controls (especially <select> on
+   WebKit). Use box-shadow rings on inputs; outline only on buttons/links. */
+:focus {
+  outline: none;
+}
+
+:focus-visible:not(input):not(select):not(textarea) {
   outline: 2px solid #ef643c;
   outline-offset: 2px;
 }
@@ -115,13 +121,18 @@ select {
   border-radius: 8px;
   color: white;
   font-size: 14px;
-  outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, box-shadow 0.15s;
 }
 
 input[type="text"]:focus,
 select:focus {
   border-color: #555;
+}
+
+input[type="text"]:focus-visible,
+select:focus-visible {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.35);
 }
 
 select {
@@ -319,27 +330,19 @@ select {
   background: rgba(239, 68, 68, 0.1);
 }
 
-/* Model loading status */
-/* Pinned status bar so download progress / "Preparing..." stays visible
-   at the top of the Models tab even when the model list is scrolled. */
-.model-status-bar {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  background: #1a1a1a;
-}
-.model-grid {
-  margin-top: 12px;
-}
-
-.model-status {
-  margin-top: 6px;
+/* Brief status for server load/switch only — downloads show on model cards */
+.model-status:not([hidden]) {
+  margin-bottom: 10px;
   padding: 8px 12px;
   border-radius: 6px;
   font-size: 13px;
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.model-status[hidden] {
+  display: none !important;
 }
 
 .model-status.loading {
@@ -374,45 +377,13 @@ select {
   to { transform: rotate(360deg); }
 }
 
-/* Download Progress Bar */
-#download-progress-area {
-  margin-top: 8px;
-}
-
-.download-item {
-  background: #252525;
-  border: 1px solid #333;
-  border-radius: 8px;
-  padding: 12px;
-}
-
-.download-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 8px;
-}
-
-.download-name {
-  font-size: 14px;
-  font-weight: 500;
-  color: #e0e0e0;
-}
-
-.download-percent {
-  font-size: 14px;
-  font-weight: 600;
-  color: #3b82f6;
-  font-variant-numeric: tabular-nums;
-}
-
+/* Shared progress bar used by in-card download UI */
 .progress-bar-track {
   width: 100%;
   height: 8px;
   background: #333;
   border-radius: 4px;
   overflow: hidden;
-  margin-bottom: 6px;
 }
 
 .progress-bar-fill {
@@ -421,80 +392,6 @@ select {
   border-radius: 4px;
   transition: width 0.2s ease;
   min-width: 2px;
-}
-
-.download-details {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  color: #888;
-}
-
-.download-speed, .download-eta {
-  font-variant-numeric: tabular-nums;
-}
-
-/* Downloaded Models List */
-.model-list {
-  margin-top: 16px;
-}
-
-.model-list label {
-  display: block;
-  font-size: 12px;
-  font-weight: 500;
-  color: #999;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  margin-bottom: 8px;
-}
-
-.downloaded-model-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 12px;
-  background: #252525;
-  border: 1px solid #333;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.downloaded-model-item .check-icon {
-  width: 16px;
-  height: 16px;
-  color: #4ade80;
-  flex-shrink: 0;
-}
-
-.downloaded-model-item .model-name {
-  flex: 1;
-  color: #e0e0e0;
-}
-
-.downloaded-model-item .model-size {
-  color: #888;
-  font-size: 12px;
-}
-
-.downloaded-model-item .active-badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  background: rgba(59, 130, 246, 0.15);
-  color: #3b82f6;
-  font-weight: 500;
-}
-
-.downloaded-model-item.clickable {
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-}
-
-.downloaded-model-item.clickable:hover {
-  background: #2a2a2a;
-  border-color: #3b82f6;
 }
 
 /* History */
@@ -588,8 +485,9 @@ select {
 
 .model-card {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0;
   padding: 12px;
   background: #252525;
   border: 1px solid #333;
@@ -621,8 +519,91 @@ select {
   background: rgba(245, 158, 11, 0.05);
 }
 
+.model-card-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+
 .model-card.downloading {
-  opacity: 0.7;
+  border-color: #facc15;
+  background: rgba(250, 204, 21, 0.05);
+}
+
+.model-card.waiting {
+  border-color: #64748b;
+  background: rgba(100, 116, 139, 0.08);
+  opacity: 0.85;
+}
+
+.model-card-progress {
+  width: 100%;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #333;
+}
+
+.card-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.card-progress-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #facc15;
+}
+
+.card-progress-pct {
+  font-size: 12px;
+  font-weight: 600;
+  color: #3b82f6;
+  font-variant-numeric: tabular-nums;
+}
+
+.card-progress-track {
+  margin-bottom: 6px;
+}
+
+.card-progress-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: #888;
+}
+
+.card-progress-meta .card-pause-btn {
+  margin-left: auto;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.badge-waiting {
+  background: rgba(100, 116, 139, 0.2);
+  color: #94a3b8;
+}
+
+.badge-cancel-queue {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+  cursor: pointer;
+  border: none;
+}
+
+.badge-cancel-queue:hover {
+  filter: brightness(1.15);
+}
+
+.model-icon.icon-waiting {
+  stroke: #94a3b8;
+}
+
+.model-card.downloading {
+  opacity: 1;
 }
 
 .model-card-icon {
@@ -685,6 +666,10 @@ select {
 
 .model-card-action {
   flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .model-badge {
@@ -719,6 +704,24 @@ select {
 .badge-partial {
   background: rgba(245, 158, 11, 0.15);
   color: #f59e0b;
+}
+
+.badge-restart {
+  background: rgba(239, 68, 68, 0.12);
+  color: #f87171;
+}
+
+.model-grid.busy .model-card.dimmed {
+  opacity: 0.45;
+}
+
+.model-card.switching {
+  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.45);
+  opacity: 1;
+}
+
+.model-card-action .model-badge + .model-badge {
+  margin-left: 0;
 }
 
 .clickable-badge {

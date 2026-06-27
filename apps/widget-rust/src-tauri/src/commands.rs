@@ -1,4 +1,7 @@
 use crate::audio::{self, AudioRecorder};
+use crate::chunk_session::{ChunkSession, transcribe_chunked};
+use crate::download_queue;
+use crate::downloader;
 use crate::history::History;
 use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
@@ -11,6 +14,19 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
+static MODEL_OPERATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+
+fn emit_model_progress(app: &AppHandle, model: &str, phase: &str, message: &str) {
+    let _ = app.emit(
+        "model:progress",
+        json!({
+            "model": model,
+            "phase": phase,
+            "message": message,
+        }),
+    );
+}
+
 pub struct AppState {
     pub settings: Arc<Mutex<Settings>>,
     pub recorder: Arc<Mutex<AudioRecorder>>,
@@ -18,6 +34,7 @@ pub struct AppState {
     pub is_transcribing: Arc<AtomicBool>,
     pub target_window: Arc<Mutex<Option<WindowInfo>>>,
     pub last_active_window: Arc<Mutex<Option<WindowInfo>>>,
+    pub chunk_session: Arc<Mutex<Option<ChunkSession>>>,
 }
 
 #[tauri::command]
@@ -62,6 +79,12 @@ pub fn toggle_recording(
             let s = state.settings.lock().map_err(|e| e.to_string())?;
             s.clone()
         };
+
+        let chunk_session = {
+            let mut session = state.chunk_session.lock().map_err(|e| e.to_string())?;
+            session.take()
+        };
+
         let target_window = if settings.paste_mode == "active" {
             let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
             last.clone()
@@ -73,7 +96,16 @@ pub fn toggle_recording(
         let app_clone = app.clone();
         let is_transcribing = state.is_transcribing.clone();
         tauri::async_runtime::spawn(async move {
-            process_recording(app_clone, samples, sample_rate, settings, target_window, is_transcribing).await;
+            process_recording(
+                app_clone,
+                samples,
+                sample_rate,
+                settings,
+                target_window,
+                is_transcribing,
+                chunk_session,
+            )
+            .await;
         });
     } else {
         if state.is_recording.load(Ordering::SeqCst) {
@@ -109,8 +141,19 @@ pub fn toggle_recording(
         }
 
         {
+            let settings = {
+                let s = state.settings.lock().map_err(|e| e.to_string())?;
+                s.clone()
+            };
             let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+            let buffer = recorder.buffer();
+            let sample_rate = recorder.sample_rate();
             recorder.start(app.clone())?;
+
+            let session = ChunkSession::start(settings, sample_rate, buffer);
+            let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
+            *chunk_session = Some(session);
+            log_message("[toggle_recording] Chunk session started");
         }
 
         state.is_recording.store(true, Ordering::SeqCst);
@@ -129,6 +172,7 @@ async fn process_recording(
     settings: Settings,
     target_window: Option<WindowInfo>,
     is_transcribing: Arc<AtomicBool>,
+    chunk_session: Option<ChunkSession>,
 ) {
     if is_transcribing.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst).is_err() {
         log_message("[process] Already transcribing, skipping");
@@ -141,6 +185,13 @@ async fn process_recording(
 
     let _ = app.emit("sidecar:transcribing", json!({}));
 
+    let duration_secs = samples.len() as f64 / sample_rate as f64;
+
+    if duration_secs > 120.0 {
+        log_message(&format!("[process] Long audio ({:.0}s), using chunked transcription", duration_secs));
+        let _ = app.emit("sidecar:long_audio", json!({"duration_secs": duration_secs}));
+    }
+
     if samples.is_empty() || !audio::has_speech(&samples, sample_rate) {
         log_message("[process] No speech detected");
         tones::play(Tone::Error);
@@ -149,34 +200,33 @@ async fn process_recording(
         return;
     }
 
-    let duration_secs = samples.len() as f64 / sample_rate as f64;
-
-    if duration_secs > 120.0 {
-        log_message(&format!("[process] Long audio ({:.0}s), transcribing with extended handling", duration_secs));
-        let _ = app.emit("sidecar:long_audio", json!({"duration_secs": duration_secs}));
-    }
-
-    let samples = audio::normalize_audio(&samples);
-
-    let wav_data = match audio::to_wav(&samples, sample_rate) {
-        Ok(data) => data,
-        Err(e) => {
-            log_message(&format!("[process] WAV encoding error: {}", e));
-            tones::play(Tone::Error);
-            tray::flash_error(&app);
-            let _ = app.emit("sidecar:error", json!({"message": e}));
-            return;
+    let text = if let Some(session) = chunk_session {
+        match session.finalize(samples.clone(), sample_rate).await {
+            Some(t) if !t.is_empty() => t,
+            _ => {
+                log_message("[process] Chunk session produced no text, falling back");
+                match transcribe_chunked(samples, sample_rate, &settings).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        log_message(&format!("[process] Transcription error: {}", e));
+                        tones::play(Tone::Error);
+                        tray::flash_error(&app);
+                        let _ = app.emit("sidecar:error", json!({"message": e}));
+                        return;
+                    }
+                }
+            }
         }
-    };
-
-    let text = match transcribe::transcribe(wav_data, &settings, duration_secs).await {
-        Ok(text) => text,
-        Err(e) => {
-            log_message(&format!("[process] Transcription error: {}", e));
-            tones::play(Tone::Error);
-            tray::flash_error(&app);
-            let _ = app.emit("sidecar:error", json!({"message": e}));
-            return;
+    } else {
+        match transcribe_chunked(samples, sample_rate, &settings).await {
+            Ok(t) => t,
+            Err(e) => {
+                log_message(&format!("[process] Transcription error: {}", e));
+                tones::play(Tone::Error);
+                tray::flash_error(&app);
+                let _ = app.emit("sidecar:error", json!({"message": e}));
+                return;
+            }
         }
     };
 
@@ -358,58 +408,114 @@ async fn restart_server_with_model(
     settings: &Arc<Mutex<Settings>>,
     model: &str,
 ) -> Result<serde_json::Value, String> {
+    emit_model_progress(app, model, "stopping", "Stopping current server...");
     crate::server::stop_server();
+
     if let Ok(mut s) = settings.lock() {
         s.model = model.to_string();
         if let Err(e) = s.save() {
             log_message(&format!("[load_model] Failed to save model setting: {}", e));
         }
     }
-    let model = {
-        let s = settings.lock().map_err(|e| e.to_string())?;
-        s.model.clone()
-    };
-    if let Some(info) = crate::server::start_server(app, &model) {
+
+    emit_model_progress(app, model, "starting", "Starting whisper server...");
+    if let Some(info) = crate::server::start_server(app, model) {
         let port = info.port;
-        crate::server::wait_for_server(port).await;
-        log_message(&format!("[load_model] Server restarted on port {}", port));
-        if let Ok(mut s) = settings.lock() {
-            s.api_url = format!("http://127.0.0.1:{}/inference", port);
-            if let Err(e) = s.save() {
-                log_message(&format!("[load_model] Failed to save API URL setting: {}", e));
+        emit_model_progress(
+            app,
+            model,
+            "loading",
+            "Loading model into memory (this can take a minute)...",
+        );
+        if crate::server::wait_for_server(port).await {
+            log_message(&format!("[load_model] Server restarted on port {}", port));
+            if let Ok(mut s) = settings.lock() {
+                s.api_url = format!("http://127.0.0.1:{}/inference", port);
+                if let Err(e) = s.save() {
+                    log_message(&format!("[load_model] Failed to save API URL setting: {}", e));
+                }
             }
+            emit_model_progress(app, model, "done", &format!("{} model ready", model));
+            Ok(json!({"status": "loaded", "model": model}))
+        } else {
+            crate::server::stop_server();
+            let msg = "Server failed to start — the model file may be corrupt. Try Restart Download.";
+            emit_model_progress(app, model, "error", msg);
+            Ok(json!({"status": "error", "message": msg}))
         }
-        Ok(json!({"status": "loaded", "model": model}))
     } else {
-        Ok(json!({"status": "error", "message": "Failed to restart server"}))
+        let msg = "Failed to start server — check that the model is fully downloaded.";
+        emit_model_progress(app, model, "error", msg);
+        Ok(json!({"status": "error", "message": msg}))
     }
+}
+
+fn start_server_model_operation(
+    app: AppHandle,
+    settings: Arc<Mutex<Settings>>,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    if MODEL_OPERATION_IN_PROGRESS.swap(true, Ordering::SeqCst) {
+        return Ok(json!({
+            "status": "busy",
+            "message": "Another model operation is already in progress",
+        }));
+    }
+
+    emit_model_progress(&app, &model, "preparing", &format!("Preparing {}...", model));
+
+    let model_for_task = model.clone();
+    tauri::async_runtime::spawn(async move {
+        let _ = restart_server_with_model(&app, &settings, &model_for_task).await;
+        MODEL_OPERATION_IN_PROGRESS.store(false, Ordering::SeqCst);
+    });
+
+    Ok(json!({"status": "started", "model": model}))
 }
 
 #[tauri::command]
 pub async fn load_model(app: AppHandle, state: State<'_, AppState>, model: String) -> Result<serde_json::Value, String> {
-    if crate::downloader::is_model_complete(&model) {
-        log_message(&format!("[load_model] Model '{}' already downloaded, loading", model));
-        return restart_server_with_model(&app, &state.settings, &model).await;
+    if downloader::is_model_complete(&model) {
+        return start_server_model_operation(app, state.settings.clone(), model);
     }
-
-    log_message(&format!("[load_model] Downloading (or resuming) model '{}'", model));
-
-    match crate::downloader::download_model(app.clone(), model.clone()).await {
-        Ok(_) => {
-            log_message(&format!("[load_model] Downloaded '{}' successfully", model));
-            restart_server_with_model(&app, &state.settings, &model).await
-        }
-        Err(e) => {
-            log_message(&format!("[load_model] Request failed: {}", e));
-            Ok(json!({"status": "error", "message": e.to_string()}))
-        }
-    }
+    download_queue::enqueue(app, state.settings.clone(), model, false, true)
 }
 
 #[tauri::command]
-pub async fn cancel_model_download(model: String) -> Result<serde_json::Value, String> {
-    let cancelled = crate::downloader::cancel_download(&model);
+pub async fn queue_model_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model: String,
+    restart: Option<bool>,
+) -> Result<serde_json::Value, String> {
+    let restart = restart.unwrap_or(false);
+    if restart {
+        downloader::clear_model_files(&model)?;
+    }
+    download_queue::enqueue(app, state.settings.clone(), model, restart, false)
+}
+
+#[tauri::command]
+pub async fn restart_model_download(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    model: String,
+) -> Result<serde_json::Value, String> {
+    downloader::clear_model_files(&model)?;
+    download_queue::enqueue(app, state.settings.clone(), model, true, true)
+}
+
+#[tauri::command]
+pub async fn cancel_model_download(app: AppHandle, model: String) -> Result<serde_json::Value, String> {
+    let cancelled = download_queue::cancel_waiting_with_app(&app, &model);
     Ok(json!({"cancelled": cancelled, "model": model}))
+}
+
+#[tauri::command]
+pub async fn pause_model_download(app: AppHandle, model: String) -> Result<serde_json::Value, String> {
+    let paused = download_queue::pause_with_app(&app, &model)
+        || (downloader::is_download_active(&model) && downloader::pause_download(&model));
+    Ok(json!({"paused": paused, "model": model}))
 }
 
 #[tauri::command]
@@ -458,17 +564,67 @@ pub async fn get_models() -> Result<serde_json::Value, String> {
         }
     }
 
-    let downloading = crate::downloader::get_downloading_models();
+    let (mut downloading, waiting) = download_queue::queue_status();
+    for model in downloader::get_downloading_models() {
+        if !downloading.contains(&model) {
+            downloading.push(model);
+        }
+    }
+
+    let live = downloader::get_live_download_progress();
+    let progress: Vec<serde_json::Value> = live
+        .iter()
+        .map(|(model, (bytes, total))| {
+            let pct = if *total > 0 {
+                (*bytes as f64 / *total as f64 * 100.0).round()
+            } else {
+                0.0
+            };
+            json!({
+                "model": model,
+                "bytes_downloaded": bytes,
+                "total_bytes": total,
+                "percent": pct,
+                "phase": "downloading",
+            })
+        })
+        .collect();
 
     Ok(json!({
         "available": available,
         "downloading": downloading,
+        "waiting": waiting,
+        "progress": progress,
     }))
 }
 
 #[tauri::command]
 pub async fn get_model_progress() -> Result<serde_json::Value, String> {
-    Ok(json!({"downloading": crate::downloader::get_downloading_models()}))
+    let (mut downloading, waiting) = download_queue::queue_status();
+    for model in downloader::get_downloading_models() {
+        if !downloading.contains(&model) {
+            downloading.push(model);
+        }
+    }
+    let live = downloader::get_live_download_progress();
+    let progress: Vec<serde_json::Value> = live
+        .iter()
+        .map(|(model, (bytes, total))| {
+            let pct = if *total > 0 {
+                (*bytes as f64 / *total as f64 * 100.0).round()
+            } else {
+                0.0
+            };
+            json!({
+                "model": model,
+                "bytes_downloaded": bytes,
+                "total_bytes": total,
+                "percent": pct,
+                "phase": "downloading",
+            })
+        })
+        .collect();
+    Ok(json!({"downloading": downloading, "waiting": waiting, "progress": progress}))
 }
 
 #[tauri::command]
@@ -581,9 +737,14 @@ pub async fn save_window_position(
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         let pos = window.outer_position().map_err(|e| e.to_string())?;
+        let (cx, cy) = crate::window::clamp_to_visible_screens(
+            &window,
+            pos.x as f64,
+            pos.y as f64,
+        );
         let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.window_x = Some(pos.x as f64);
-        settings.window_y = Some(pos.y as f64);
+        settings.window_x = Some(cx);
+        settings.window_y = Some(cy);
         settings.save()?;
     }
     Ok(())

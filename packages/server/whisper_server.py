@@ -305,6 +305,7 @@ async def transcribe(
     file: UploadFile = File(...),
     language: str = Form(None),
     model: str = Form(None),
+    initial_prompt: str = Form(None),
 ):
     """
     Transcribe an audio file.
@@ -350,7 +351,11 @@ async def transcribe(
 
         # Transcribe
         t0 = time.time()
-        segments, info = whisper.transcribe(tmp.name, language=language)
+        segments, info = whisper.transcribe(
+            tmp.name,
+            language=language,
+            initial_prompt=initial_prompt or None,
+        )
         segments_list = [{"start": s.start, "end": s.end, "text": s.text} for s in segments]
         text = "".join(s["text"] for s in segments_list)
         elapsed = time.time() - t0

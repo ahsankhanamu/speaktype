@@ -2,7 +2,7 @@ use crate::logging;
 use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, RANGE};
 use reqwest::Client;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::path::PathBuf;
@@ -15,13 +15,31 @@ const MODEL_REPO_BASE: &str = "https://huggingface.co/ggerganov/whisper.cpp/reso
 static ACTIVE_DOWNLOADS: LazyLock<Mutex<HashMap<String, Arc<AtomicBool>>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+static PAUSE_REQUESTS: LazyLock<Mutex<HashSet<String>>> =
+    LazyLock::new(|| Mutex::new(HashSet::new()));
+
 fn cleanup_download(model_name: &str) {
     if let Ok(mut downloads) = ACTIVE_DOWNLOADS.lock() {
         downloads.remove(model_name);
     }
 }
 
-pub async fn download_model(
+/// Download using an externally owned cancel flag (for the download queue).
+pub async fn download_model_with_cancel(
+    app: AppHandle,
+    model_name: String,
+    cancel_flag: Arc<AtomicBool>,
+) -> Result<PathBuf, String> {
+    if let Ok(mut downloads) = ACTIVE_DOWNLOADS.lock() {
+        downloads.insert(model_name.clone(), cancel_flag);
+    }
+
+    let result = download_model_inner(app, model_name.clone()).await;
+    cleanup_download(&model_name);
+    result
+}
+
+async fn download_model_inner(
     app: AppHandle,
     model_name: String,
 ) -> Result<PathBuf, String> {
@@ -110,21 +128,16 @@ pub async fn download_model(
         return Ok(file_path);
     }
 
-    let cancel_flag = Arc::new(AtomicBool::new(false));
-    if let Ok(mut downloads) = ACTIVE_DOWNLOADS.lock() {
-        downloads.insert(model_name.clone(), cancel_flag.clone());
-    }
+    let cancel_flag = ACTIVE_DOWNLOADS
+        .lock()
+        .ok()
+        .and_then(|d| d.get(&model_name).cloned())
+        .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
-    let model_name_clone = model_name.clone();
-    let result = download_inner(
+    download_inner(
         app, model_name, filename, url, models_dir,
         file_path, temp_path, downloaded, total_size, cancel_flag, &client,
-    ).await;
-
-    // Cleanup ACTIVE_DOWNLOADS entry on all exit paths (success, error, cancel)
-    cleanup_download(&model_name_clone);
-
-    result
+    ).await
 }
 
 async fn download_inner(
@@ -179,17 +192,37 @@ async fn download_inner(
 
     while let Some(chunk) = stream.next().await {
         if cancel_flag.load(Ordering::Relaxed) {
-            logging::log_message(&format!("[downloader] Download cancelled for {}", model_name));
+            let is_pause = take_pause_request(&model_name);
+            let phase = if is_pause { "paused" } else { "cancelled" };
+            let message = if is_pause {
+                "Download paused — tap Resume to continue"
+            } else {
+                "Download cancelled"
+            };
+            logging::log_message(&format!(
+                "[downloader] Download {} for {}",
+                if is_pause { "paused" } else { "cancelled" },
+                model_name
+            ));
             let _ = app.emit("model:progress", serde_json::json!({
                 "model": model_name,
-                "percent": (downloaded as f64 / total_size as f64 * 100.0).round(),
+                "percent": if total_size > 0 {
+                    (downloaded as f64 / total_size as f64 * 100.0).round()
+                } else {
+                    0.0
+                },
                 "bytes_downloaded": downloaded,
                 "total_bytes": total_size,
                 "speed": 0,
                 "eta_secs": 0,
-                "phase": "cancelled"
+                "phase": phase,
+                "message": message,
             }));
-            return Err("Download cancelled".to_string());
+            return Err(if is_pause {
+                "Download paused".to_string()
+            } else {
+                "Download cancelled".to_string()
+            });
         }
 
         let chunk = chunk.map_err(|e| e.to_string())?;
@@ -248,6 +281,29 @@ async fn download_inner(
     Ok(file_path)
 }
 
+fn take_pause_request(model_name: &str) -> bool {
+    PAUSE_REQUESTS
+        .lock()
+        .ok()
+        .map(|mut pause| pause.remove(model_name))
+        .unwrap_or(false)
+}
+
+pub fn is_download_active(model_name: &str) -> bool {
+    ACTIVE_DOWNLOADS
+        .lock()
+        .ok()
+        .map(|downloads| downloads.contains_key(model_name))
+        .unwrap_or(false)
+}
+
+pub fn pause_download(model_name: &str) -> bool {
+    if let Ok(mut pause) = PAUSE_REQUESTS.lock() {
+        pause.insert(model_name.to_string());
+    }
+    cancel_download(model_name)
+}
+
 pub fn cancel_download(model_name: &str) -> bool {
     if let Ok(downloads) = ACTIVE_DOWNLOADS.lock() {
         if let Some(flag) = downloads.get(model_name) {
@@ -259,12 +315,44 @@ pub fn cancel_download(model_name: &str) -> bool {
     false
 }
 
+/// Remove all on-disk artifacts for a model so a download can start from scratch.
+pub fn clear_model_files(model_name: &str) -> Result<(), String> {
+    cancel_download(model_name);
+    let Some(dir) = crate::paths::config_dir_opt().map(|d| d.join("models")) else {
+        return Err("Could not determine config directory".to_string());
+    };
+    for suffix in ["bin", "bin.part", "expected", "bin.incomplete"] {
+        let path = dir.join(format!("ggml-{}.{}", model_name, suffix));
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| e.to_string())?;
+            logging::log_message(&format!("[downloader] Removed {}", path.display()));
+        }
+    }
+    Ok(())
+}
+
 pub fn get_downloading_models() -> Vec<String> {
     if let Ok(downloads) = ACTIVE_DOWNLOADS.lock() {
         downloads.keys().cloned().collect()
     } else {
         Vec::new()
     }
+}
+
+/// Live byte progress for in-flight downloads (for UI hydration on tab open).
+pub fn get_live_download_progress() -> HashMap<String, (u64, u64)> {
+    // Progress is event-driven; this reads current .part size as best-effort snapshot.
+    let mut out = HashMap::new();
+    if let Ok(downloads) = ACTIVE_DOWNLOADS.lock() {
+        for model in downloads.keys() {
+            let have = get_partial_download_size(model);
+            let total = expected_size(model);
+            if have > 0 || total > 0 {
+                out.insert(model.clone(), (have, total));
+            }
+        }
+    }
+    out
 }
 
 pub fn get_model_size(model_name: &str) -> u64 {
@@ -310,6 +398,49 @@ pub fn expected_size(model_name: &str) -> u64 {
     }
 }
 
+const SERVER_MODEL_FALLBACKS: &[&str] = &[
+    "medium",
+    "small",
+    "base",
+    "tiny",
+    "medium.en",
+    "small.en",
+    "base.en",
+    "tiny.en",
+    "large-v3-turbo",
+    "large-v3",
+];
+
+/// Pick a model that is safe to load: the preferred one if complete, otherwise
+/// the best locally available complete model.
+pub fn resolve_model_for_server(preferred: &str) -> Option<String> {
+    if is_model_complete(preferred) {
+        return Some(preferred.to_string());
+    }
+
+    let actual = get_model_size(preferred);
+    if actual > 0 {
+        logging::log_message(&format!(
+            "[downloader] Model '{}' is incomplete ({} bytes, expected ~{} bytes)",
+            preferred,
+            actual,
+            expected_size(preferred)
+        ));
+    }
+
+    for model in SERVER_MODEL_FALLBACKS {
+        if *model != preferred && is_model_complete(model) {
+            logging::log_message(&format!(
+                "[downloader] Falling back from '{}' to complete model '{}'",
+                preferred, model
+            ));
+            return Some((*model).to_string());
+        }
+    }
+
+    None
+}
+
 /// Whether a model's `.bin` exists AND is fully downloaded (size matches expected
 /// within a small tolerance). A truncated file is NOT considered complete.
 pub fn is_model_complete(model_name: &str) -> bool {
@@ -326,16 +457,25 @@ pub fn is_model_complete(model_name: &str) -> bool {
     actual + 2 * 1024 * 1024 >= expected
 }
 
-/// Returns the size of a partially downloaded model (.part file), or 0 if none.
+/// Returns bytes already on disk for an incomplete model (.part, truncated .bin,
+/// or a quarantined .bin.incomplete file).
 pub fn get_partial_download_size(model_name: &str) -> u64 {
-    let filename = format!("ggml-{}.bin.part", model_name);
-    let path = crate::paths::config_dir_opt().map(|d| d.join("models").join(&filename));
-    match path {
-        Some(path) if path.exists() => {
-            std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0)
+    let Some(dir) = crate::paths::config_dir_opt().map(|d| d.join("models")) else {
+        return 0;
+    };
+
+    let mut best = 0u64;
+    for suffix in ["bin.part", "bin.incomplete", "bin"] {
+        let path = dir.join(format!("ggml-{}.{}", model_name, suffix));
+        if path.exists() {
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            if suffix == "bin" && is_model_complete(model_name) {
+                continue;
+            }
+            best = best.max(size);
         }
-        _ => 0
     }
+    best
 }
 
 /// Returns the expected total size for a model from the .expected file, or 0.
