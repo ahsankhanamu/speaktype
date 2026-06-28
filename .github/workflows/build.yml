@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-widget:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: rustup show
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: apps/widget-rust/src-tauri
+
+      - name: Install cmake
+        run: brew install cmake
+
+      - name: Build whisper.cpp sidecar
+        run: |
+          WHISPER_SRC="apps/widget-rust/src-tauri/scripts/build/whisper.cpp"
+          SIDECAR_BUILD="$WHISPER_SRC/build"
+          if [ ! -d "$WHISPER_SRC" ]; then
+            mkdir -p "$(dirname "$WHISPER_SRC")"
+            git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git "$WHISPER_SRC"
+          fi
+          mkdir -p "$SIDECAR_BUILD"
+          cd "$SIDECAR_BUILD"
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON ..
+          cmake --build . --target whisper-server -j"$(sysctl -n hw.ncpu)"
+          mkdir -p "$GITHUB_WORKSPACE/apps/widget-rust/src-tauri/binaries"
+          cp bin/whisper-server "$GITHUB_WORKSPACE/apps/widget-rust/src-tauri/binaries/whisper-server-aarch64-apple-darwin"
+
+      - name: Install tauri-cli
+        run: cargo install tauri-cli
+
+      - name: Compile check
+        working-directory: apps/widget-rust/src-tauri
+        run: cargo check

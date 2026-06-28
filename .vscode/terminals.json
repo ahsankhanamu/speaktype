@@ -3,29 +3,29 @@
   "autokill": true,
   "terminals": [
     {
-      "name": "SpeakType Whisper Server",
-      "description": "Local Whisper transcription API (port 8002)",
+      "name": "Whisper Server",
+      "description": "Python FastAPI transcription server (port 8002)",
       "icon": "mic",
       "color": "terminal.ansiWhite",
-      "command": "make speaktype",
+      "command": "make server",
       "open": true,
       "focus": true
     },
     {
-      "name": "SpeakType Client",
+      "name": "SpeakType CLI",
       "description": "Push-to-talk voice typing (F9 hotkey)",
       "icon": "record",
       "color": "terminal.ansiRed",
-      "command": "make speaktype-client",
+      "command": ".venv/bin/speaktype --api http://localhost:8002/transcribe",
       "open": false,
       "focus": false
     },
     {
       "name": "SpeakType Widget",
-      "description": "Floating widget with voice animation (Tauri)",
+      "description": "Floating widget (Tauri — build sidecar first)",
       "icon": "symbol-event",
       "color": "terminal.ansiBlue",
-      "command": "make speaktype-widget",
+      "command": "make dev",
       "open": false,
       "focus": false
     }

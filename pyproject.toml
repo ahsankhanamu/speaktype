@@ -6,7 +6,6 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 
-# Base dependencies — transcription server (packages/server/whisper_server.py)
 dependencies = [
     "numpy>=1.24.0",
     "faster-whisper>=0.10.0",
@@ -16,7 +15,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Client dependencies (packages/cli/speaktype.py — mic, keyboard, display on host)
 client = [
     "scipy>=1.10.0",
     "sounddevice>=0.4.6",
@@ -26,16 +24,24 @@ client = [
     "pyautogui>=0.9.53; sys_platform != 'linux'",
     "torch>=2.0.0",
 ]
-# Everything — server + client + local whisper
 all = [
     "speaktype[client]",
     "faster-whisper>=0.10.0",
 ]
-# GPU acceleration (NVIDIA)
 gpu = [
     "nvidia-cublas-cu12",
     "nvidia-cudnn-cu12",
 ]
+
+[project.scripts]
+speaktype = "cli.speaktype:main"
+speaktype-server = "server.whisper_server:main"
+
+[tool.setuptools.package-dir]
+"" = "packages"
+
+[tool.setuptools.packages.find]
+where = ["packages"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

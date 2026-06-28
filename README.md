@@ -2,152 +2,107 @@
 
 **Push-to-talk voice typing that works everywhere.**
 
-Press a hotkey, speak, press again — your words appear wherever you're typing. Local transcription on your machine. No cloud required.
+Press a hotkey, speak, press again — your words appear wherever you're typing. Local Whisper on your machine. No cloud required.
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+![macOS](https://img.shields.io/badge/macOS-widget%20%2B%20CLI-lightgrey)
+![Linux](https://img.shields.io/badge/Linux-CLI-lightgrey)
+![Windows](https://img.shields.io/badge/Windows-CLI-lightgrey)
 
 <p align="center">
-  <img src="assets/demo.webp" alt="SpeakType Demo" width="720">
+  <img src="assets/demo.gif" alt="SpeakType demo — press hotkey, speak, text appears" width="720">
 </p>
+
+<p align="center"><sub>More screenshots in <code>assets/</code> and <a href="https://github.com/ahsankhanamu/speaktype/releases">Releases</a>.</sub></p>
+
+## Quick start
+
+### macOS (recommended) — download the app
+
+1. Download the latest **`SpeakType_*_aarch64.dmg`** from [**GitHub Releases**](https://github.com/ahsankhanamu/speaktype/releases)
+2. Drag **SpeakType** to **Applications** and launch it
+3. Grant **Microphone** and **Accessibility** when prompted
+4. Download a model in **Settings → Models** (`base` is a good default)
+5. Press **⌘+Option+L** (default), speak, press again — text pastes into the focused window
+
+→ Full walkthrough: [docs/install/macos-widget.md](docs/install/macos-widget.md)
+
+### Linux / Windows — Python CLI
+
+```bash
+git clone https://github.com/ahsankhanamu/speaktype.git && cd speaktype
+make install          # or ./install.sh on Linux
+source .venv/bin/activate
+speaktype
+```
+
+→ [Linux](docs/install/linux.md) · [Windows](docs/install/windows.md) · [macOS CLI](docs/install/macos-cli.md)
 
 ## Why SpeakType?
 
-When you type, you self-edit and truncate. When you speak, you explain naturally and fully. SpeakType bridges that gap — talk to your terminal, your AI assistant, or any app, and have your words appear instantly.
-
+- **Speak naturally** — explain fully instead of typing truncated thoughts
 - **Works everywhere** — terminals, IDEs, browsers, Slack, email
 - **Private by default** — audio and transcription stay on your machine
-- **Fast** — the desktop app keeps a Whisper model loaded for inference
+- **Open source** — MIT licensed; inspect, fork, contribute
 
-## How it works
+## Privacy
 
-SpeakType has two parts:
+**No accounts, no telemetry, no cloud** — audio stays on your machine unless you explicitly configure an external API in the CLI.
 
-1. **Client** — listens for your hotkey, records the microphone, pastes the result into the focused window
-2. **Inference** — converts speech to text using OpenAI’s Whisper models, running locally
+→ [docs/privacy.md](docs/privacy.md)
 
-```
-[F9] → Record → [F9] → Inference → Paste into focused window
-```
+## Features
 
-The **desktop app** is a [Tauri](https://tauri.app/) native widget (floating UI, settings, tray). When you dictate, it sends audio to a bundled **whisper.cpp** sidecar on `http://127.0.0.1:8002/inference` — that sidecar runs the model, not the Tauri shell itself.
+- Floating always-on-top widget with recording animation (macOS)
+- Configurable global hotkey — ⌘+Option+L on the macOS app, F9 on the CLI
+- Smart paste — Ctrl+Shift+V in terminals, Ctrl+V elsewhere
+- Model picker — tiny through large-v3, downloaded once for offline use
+- History and settings — hotkey, models, server options
 
-The optional **CLI** (`packages/cli/speaktype.py`) is a separate Python tool for terminal workflows. It can run **faster-whisper** in-process, or call an external API.
+## Choose your path
 
-### Models
+| Path | Best for | Get started |
+|------|----------|-------------|
+| **Desktop widget** | Easiest macOS experience | [Download DMG](https://github.com/ahsankhanamu/speaktype/releases) → [install guide](docs/install/macos-widget.md) |
+| **Python CLI** | Linux, Windows, macOS terminal | [Getting started](docs/getting-started.md) → [client setup](docs/client-setup.md) |
+| **Build from source** | Contributors, custom builds | [Build guide](docs/build-widget-from-source.md) |
 
-Download once, use offline. Pick a size in **Settings → Models** (app) or with `--model` (CLI).
+Advanced: optional Python server and external APIs for CLI power users — see [docs](docs/README.md#advanced-cli-power-users).
 
-| Model | Download | Speed | Accuracy | RAM |
-|-------|----------|-------|----------|-----|
-| tiny | ~75MB | Fastest | Basic | ~1GB |
-| base | ~150MB | Fast | Good | ~1GB |
-| small | ~500MB | Medium | Better | ~2GB |
-| medium | ~1.5GB | Slow | Great | ~5GB |
-| large-v3 | ~3GB | Slowest | Best | ~10GB |
+> **Versions:** Desktop widget **v0.1.0** (pre-1.0). Python CLI **v1.0.0**.
 
-**`base`** is the default sweet spot. Use **`small`** if you want better accuracy and have the RAM.
+<details>
+<summary>Advanced (optional Python server)</summary>
 
-## Desktop app (recommended)
+For CLI users who restart often: run `speaktype-server` locally and point the client with `--api`. Not used by the macOS widget. See [advanced Python server](docs/advanced-python-server.md).
 
-Built with **Tauri** — native macOS widget:
+</details>
 
-- Floating always-on-top widget with recording animation
-- Settings — hotkey, server, models, history
-- System tray integration
-- Downloads `ggml` models and starts the whisper.cpp inference sidecar automatically
+## Permissions (macOS)
 
-### Build from source
+SpeakType needs **Microphone** and **Accessibility** only — no screen recording, no full disk access.
 
-Requires Rust, Node, and Xcode command-line tools on macOS.
+→ [docs/permissions.md](docs/permissions.md)
+
+## For developers
 
 ```bash
 git clone https://github.com/ahsankhanamu/speaktype.git && cd speaktype
-make install          # Python venv (optional CLI / Python server)
-make dev              # Run Tauri app in dev mode
-make build            # whisper.cpp sidecar + signed .dmg (see make/config.example)
+make install          # Python venv + pip install -e ".[all]"
+# Build whisper.cpp sidecar first — see build doc
+make dev              # Tauri widget (macOS)
+make build            # Signed DMG via scripts/build.sh
 ```
 
-For release builds, set `APPLE_DEVELOPER_ID` and `APPLE_TEAM_ID` (environment variables or a gitignored `make/local.mk`). See `make/config.example`. One-time notary setup: `make notary-setup`.
-
-App source: `apps/widget-rust/`
+Node.js is **not** required for the widget. See [docs/build-widget-from-source.md](docs/build-widget-from-source.md).
 
 Regenerate README media: `make assets`
 
-## CLI (optional — developers & Linux)
-
-Separate from the desktop app. Uses **faster-whisper** when run without `--api`:
-
-```bash
-git clone https://github.com/ahsankhanamu/speaktype.git && cd speaktype
-python3 -m venv .venv && source .venv/bin/activate
-pip install ".[all]"
-```
-
-### Linux dependencies
-
-```bash
-sudo apt install xdotool xclip portaudio19-dev   # Debian/Ubuntu
-```
-
-### macOS dependencies
-
-```bash
-brew install portaudio
-```
-
-Grant **Accessibility** permission to your terminal (System Settings → Privacy & Security → Accessibility).
-
-### Run
-
-```bash
-python packages/cli/speaktype.py
-```
-
-1. Press **F9** (default) to start recording  
-2. Speak  
-3. Press **F9** again — text is pasted into the focused window  
-
-```bash
-python packages/cli/speaktype.py --model small
-python packages/cli/speaktype.py --hotkey f8
-python packages/cli/speaktype.py --language en
-```
-
-### External APIs (optional)
-
-```bash
-python packages/cli/speaktype.py --api https://api.groq.com/openai/v1/audio/transcriptions --api-model whisper-large-v3
-```
-
-## Advanced: Python server (CLI only)
-
-If you use the CLI daily, you can keep `packages/server/whisper_server.py` running (**faster-whisper**, `POST /transcribe`). This is not used by the Tauri app.
-
-```bash
-# Terminal 1
-python packages/server/whisper_server.py --model base
-
-# Terminal 2
-python packages/cli/speaktype.py --api http://localhost:8002/transcribe
-```
-
-| Component | UI | Inference engine | Endpoint |
-|-----------|-----|------------------|----------|
-| Desktop app | Tauri | whisper.cpp sidecar | `POST /inference` |
-| CLI (default) | Python | faster-whisper | in-process |
-| Python server + CLI | Python | faster-whisper | `POST /transcribe` |
-
-## Troubleshooting
-
-**No speech detected** — check the correct mic is selected; speak at normal volume; try a smaller model.
-
-**Linux hotkey not working** — pynput needs X11. On Wayland, use an X11 session or `GDK_BACKEND=x11`.
-
-**macOS permissions** — Accessibility for the terminal or SpeakType app.
-
-**Slow inference** — use a smaller model, or use the desktop app so the sidecar keeps the model loaded.
-
 ## Contributing
 
-Contributions welcome — voice activity detection, Wayland support, streaming transcription, and custom prompts are all good starting points.
+Contributions welcome — Wayland support, streaming transcription, and docs improvements are great starting points.
+
+→ [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 
 ## License
 
@@ -155,4 +110,4 @@ MIT — see [LICENSE](LICENSE).
 
 ## Acknowledgments
 
-[Tauri](https://tauri.app/) · [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (app inference sidecar) · [OpenAI Whisper](https://github.com/openai/whisper) (models) · [faster-whisper](https://github.com/SYSTRAN/faster-whisper) (optional CLI / Python server)
+[Tauri](https://tauri.app/) · [whisper.cpp](https://github.com/ggerganov/whisper.cpp) · [OpenAI Whisper](https://github.com/openai/whisper) · [faster-whisper](https://github.com/SYSTRAN/faster-whisper)

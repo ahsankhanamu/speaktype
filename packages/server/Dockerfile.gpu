@@ -1,0 +1,52 @@
+# =============================================================================
+# SpeakType Whisper Server - GPU (NVIDIA CUDA) Image
+# =============================================================================
+# For GPU-accelerated transcription with NVIDIA GPUs.
+#
+# Build:  docker build -f packages/server/Dockerfile.gpu -t speaktype-whisper:gpu .
+# Run:    docker run --gpus all -p 8002:8002 speaktype-whisper:gpu
+# =============================================================================
+
+FROM nvidia/cuda:12.1.1-runtime-ubuntu22.04
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install Python and audio deps
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3 \
+        python3-pip \
+        libsndfile1 \
+        ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN groupadd --gid 1000 whisper && \
+    useradd --uid 1000 --gid whisper --create-home whisper
+
+WORKDIR /app
+
+COPY pyproject.toml .
+COPY packages/ ./packages/
+RUN pip3 install --no-cache-dir ".[all,gpu]"
+
+RUN mkdir -p /home/whisper/.cache && chown -R whisper:whisper /home/whisper/.cache
+VOLUME ["/home/whisper/.cache"]
+
+USER whisper
+
+ENV WHISPER_MODEL=base \
+    WHISPER_DEVICE=cuda \
+    WHISPER_COMPUTE=float16 \
+    WHISPER_HOST=0.0.0.0 \
+    WHISPER_PORT=8002
+
+EXPOSE 8002
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
+    CMD python3 -c "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')" || exit 1
+
+ENTRYPOINT ["speaktype-server"]
+CMD ["--host", "0.0.0.0", "--port", "8002", "--device", "cuda", "--compute", "float16"]

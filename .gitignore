@@ -4,7 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
-build/
+/build/
 develop-eggs/
 dist/
 downloads/
@@ -22,9 +22,10 @@ wheels/
 
 # Virtual environments
 venv/
+.venv/
+.venv-*/
 ENV/
 env/
-.venv/
 
 # IDE
 .idea/

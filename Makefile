@@ -22,9 +22,22 @@ assets: ## Regenerate README showcase images and demo animation
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 
-install: ## Create venv and install Python dependencies
-	python3 -m venv .venv
-	.venv/bin/pip install -e "packages/cli[all]"
+install: ## Create venv and install Python dependencies (requires Python 3.10+)
+	@PY=""; \
+	for candidate in python3.12 python3.11 python3; do \
+		if command -v $$candidate >/dev/null 2>&1 && \
+		   $$candidate -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then \
+			PY=$$candidate; \
+			break; \
+		fi; \
+	done; \
+	if [ -z "$$PY" ]; then \
+		echo "Error: Python 3.10+ is required. Install python3.12, python3.11, or upgrade python3."; \
+		exit 1; \
+	fi; \
+	echo "Using $$($$PY --version) ($$PY)"; \
+	$$PY -m venv .venv; \
+	.venv/bin/pip install -e ".[all]"
 
 clean: ## Remove build artifacts
 	rm -rf dist logs

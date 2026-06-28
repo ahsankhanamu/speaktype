@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# SpeakType installer for Linux
+# SpeakType installer for Linux (CLI only — see docs/install/linux.md)
 
 set -e
 
-echo "Installing SpeakType..."
+echo "Installing SpeakType CLI..."
 
-# Check if running on Linux
 if [[ "$OSTYPE" != "linux-gnu"* ]]; then
-    echo "This installer is for Linux. See README.md for other platforms."
+    echo "This installer is for Linux. See docs/getting-started.md for macOS and Windows."
     exit 1
 fi
 
-# Detect distribution
 DISTRO=""
 if [ -f /etc/os-release ]; then
     . /etc/os-release
@@ -24,12 +22,9 @@ elif [ -f /etc/arch-release ]; then
     DISTRO="arch"
 fi
 
-# Convert distro name to lowercase for easier matching
 DISTRO=$(echo "$DISTRO" | tr '[:upper:]' '[:lower:]')
-
 echo "Detected distribution: $DISTRO"
 
-# Install system dependencies based on distribution
 echo "Installing system dependencies..."
 case "$DISTRO" in
     ubuntu|debian|linuxmint)
@@ -37,7 +32,7 @@ case "$DISTRO" in
         sudo apt-get install -y -qq xdotool xclip portaudio19-dev python3-venv
         ;;
     fedora|centos|rhel)
-        sudo dnf check-update || sudo yum check-update # Check if dnf is available, otherwise try yum
+        sudo dnf check-update || sudo yum check-update
         sudo dnf install -y xdotool xclip portaudio-devel python3-venv || \
         sudo yum install -y xdotool xclip portaudio-devel python3-venv
         ;;
@@ -47,36 +42,39 @@ case "$DISTRO" in
         ;;
     suse|opensuse|sles)
         sudo zypper refresh
-        sudo zypper install -y xdotool xclip portaudio-devel # venv comes with python in arch
+        sudo zypper install -y xdotool xclip portaudio-devel
         ;;
     *)
         echo "Unsupported distribution: $DISTRO"
-        echo "Attempting to install common dependencies. This might fail."
-        echo "Please install 'xdotool', 'xclip', 'portaudio-dev' (or equivalent), and 'python3-venv' manually."
+        echo "Install xdotool, xclip, portaudio dev headers, and python3-venv manually."
         ;;
 esac
 
-# Create venv and install
 echo "Setting up Python environment..."
-# Check if python3-venv was successfully installed or is already present
-if command -v python3 >/dev/null 2>&1; then
-    python3 -m venv venv
-else
-    echo "Error: python3 is not available or python3-venv could not be installed."
-    echo "Please ensure Python 3 and its venv module are installed on your system."
+PYTHON=""
+for candidate in python3.12 python3.11 python3; do
+    if command -v "$candidate" >/dev/null 2>&1 && \
+       "$candidate" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+        PYTHON=$candidate
+        break
+    fi
+done
+
+if [ -z "$PYTHON" ]; then
+    echo "Error: Python 3.10+ is required. Install python3.12, python3.11, or upgrade python3."
     exit 1
 fi
 
-source venv/bin/activate
-pip install -q ".[all]"
+echo "Using $($PYTHON --version) ($PYTHON)"
+$PYTHON -m venv .venv
+source .venv/bin/activate
+pip install -q -e ".[all]"
 
 echo ""
 echo "Installation complete!"
 echo ""
-echo "To run SpeakType:"
-echo "  source venv/bin/activate"
-echo "  python packages/cli/speaktype.py"
+echo "Linux installs the Python CLI only. The desktop widget is macOS-only (download a .dmg or build from source — see docs/install/macos-widget.md)."
 echo ""
-echo "Or for faster startup, run the Whisper server first:"
-echo "  python packages/server/whisper_server.py &"
-echo "  python packages/cli/speaktype.py --api http://localhost:8002/transcribe"
+echo "To run SpeakType:"
+echo "  source .venv/bin/activate"
+echo "  speaktype"
