@@ -1,0 +1,8 @@
+# Copy to make/local.mk (gitignored) or export these before `make build`.
+#
+#   cp make/config.example make/local.mk
+#   # edit make/local.mk with your Developer ID and team ID
+
+export APPLE_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)"
+export APPLE_TEAM_ID="TEAMID"
+export NOTARY_PROFILE="SpeakType"

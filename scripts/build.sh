@@ -16,9 +16,13 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 APP_DIR="$PROJECT_ROOT/apps/widget-rust"
 
-APPLE_DEVELOPER_ID="${APPLE_DEVELOPER_ID:-Developer ID Application: Your Name (TEAMID)}"
+# shellcheck source=load-secrets.sh
+source "$SCRIPT_DIR/load-secrets.sh"
+speaktype_load_local_config "$PROJECT_ROOT/make/local.mk"
+
+: "${APPLE_DEVELOPER_ID:?Set APPLE_DEVELOPER_ID (export it or add to make/local.mk — see make/config.example)}"
+: "${APPLE_TEAM_ID:?Set APPLE_TEAM_ID (export it or add to make/local.mk — see make/config.example)}"
 NOTARY_PROFILE="${NOTARY_PROFILE:-SpeakType}"
-APPLE_TEAM_ID="${APPLE_TEAM_ID:-TEAMID}"
 
 APP_BUNDLE="$APP_DIR/src-tauri/target/release/bundle/macos/SpeakType.app"
 ENTITLEMENTS="$APP_DIR/src-tauri/Entitlements.plist"

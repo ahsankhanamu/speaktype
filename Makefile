@@ -1,11 +1,8 @@
 .DEFAULT_GOAL := help
 
-# ─── Config (override via env) ────────────────────────────────────────────────
-export APPLE_DEVELOPER_ID ?= Developer ID Application: Your Name (TEAMID)
-export APPLE_TEAM_ID       ?= TEAMID
-export NOTARY_PROFILE      ?= SpeakType
+include make/config.mk
 
-.PHONY: dev build clean install notary-setup server docker-build docker-up docker-down help
+.PHONY: dev build clean install notary-setup server assets help
 
 # ─── App (apps/widget-rust) ─────────────────────────────────────────────────────
 
@@ -20,14 +17,8 @@ build: ## Clean → sidecar → app → sign → DMG → notarize, all in one (o
 server: ## Run whisper server locally (Python)
 	.venv/bin/python packages/server/whisper_server.py --model base
 
-docker-build: ## Build server Docker image
-	docker compose -f packages/server/docker-compose.yml build
-
-docker-up: ## Start server in Docker
-	docker compose -f packages/server/docker-compose.yml up -d
-
-docker-down: ## Stop server Docker container
-	docker compose -f packages/server/docker-compose.yml down
+assets: ## Regenerate README showcase images and demo animation
+	python3 scripts/assets/compose_showcase.py
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 

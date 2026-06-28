@@ -77,4 +77,13 @@ apps/widget-rust/src-tauri/resources/python/
 # Log directory
 logs/
 
+# Local notes & drafts (never commit)
+docs-local/
+
+# Local signing config (never commit)
+make/local.mk
+
+# Generated widget bubble PNGs (from scripts/assets/render_widget_bubbles.py)
+assets/source/widgets/
+
 .cache/
