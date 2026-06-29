@@ -265,6 +265,15 @@ async fn process_recording(
     let _ = app.emit("sidecar:pasted", json!({"text": text}));
 }
 
+pub fn emit_permissions(app: &AppHandle) {
+    let microphone = crate::permissions::check_microphone();
+    let accessibility = crate::permissions::check_accessibility(false);
+    let _ = app.emit(
+        "sidecar:permissions",
+        json!({ "microphone": microphone, "accessibility": accessibility }),
+    );
+}
+
 #[tauri::command]
 pub fn check_permissions() -> Result<serde_json::Value, String> {
     let accessibility = crate::permissions::check_accessibility(false);
@@ -300,8 +309,10 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> Result<serde_json::V
 
 /// Trigger the macOS microphone permission prompt (step 1 of onboarding).
 #[tauri::command]
-pub fn request_microphone_access() -> Result<bool, String> {
-    Ok(crate::permissions::request_microphone())
+pub fn request_microphone_access(app: AppHandle) -> Result<bool, String> {
+    let granted = crate::permissions::request_microphone();
+    emit_permissions(&app);
+    Ok(granted)
 }
 
 /// Open (or focus) the onboarding window.
@@ -358,12 +369,15 @@ pub async fn finish_onboarding(app: AppHandle, state: State<'_, AppState>) -> Re
         let _ = window.show();
         let _ = window.set_focus();
     }
+    emit_permissions(&app);
     Ok(())
 }
 
 #[tauri::command]
-pub fn request_accessibility() -> Result<bool, String> {
-    Ok(crate::permissions::check_accessibility(true))
+pub fn request_accessibility(app: AppHandle) -> Result<bool, String> {
+    let granted = crate::permissions::check_accessibility(true);
+    emit_permissions(&app);
+    Ok(granted)
 }
 
 #[tauri::command]

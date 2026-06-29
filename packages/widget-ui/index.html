@@ -129,6 +129,22 @@
     let timerInterval = null;
     let recordingStart = 0;
 
+    function syncPermissionState(mic, acc) {
+      const warn = document.getElementById('permWarning');
+      permissionsMissing = !mic || !acc;
+      warn.style.display = permissionsMissing ? 'block' : 'none';
+    }
+
+    async function pollWidgetPermissions() {
+      try {
+        const result = await ttipc.checkPermissions();
+        if (!result) return;
+        syncPermissionState(!!result.microphone, !!result.accessibility);
+      } catch (e) {
+        console.error('[widget] permission poll error:', e);
+      }
+    }
+
     function setState(s) {
       currentState = s;
       widget.className = 'widget ' + s;
@@ -323,12 +339,7 @@
       L('sidecar:crashed', () => { stopTimer(); flashState('error', CRASH_FLASH_MS); });
       L('sidecar:permissions', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
-        const warn = document.getElementById('permWarning');
-        permissionsMissing = !d.microphone || !d.accessibility;
-        warn.style.display = permissionsMissing ? 'block' : 'none';
-        // The dedicated onboarding window (opened from Rust on launch / on a
-        // gated record attempt) now handles setup, so we no longer show the
-        // inline welcome overlay here.
+        syncPermissionState(!!d.microphone, !!d.accessibility);
       });
       L('sidecar:device_changed', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
@@ -357,6 +368,12 @@
     } else {
       console.warn('[widget] No Tauri event API');
     }
+
+    pollWidgetPermissions();
+    setInterval(pollWidgetPermissions, PERM_POLL_MS);
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) pollWidgetPermissions();
+    });
 
     console.log('[widget] loaded');
   </script>

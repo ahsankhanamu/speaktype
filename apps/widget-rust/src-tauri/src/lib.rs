@@ -81,33 +81,39 @@ pub fn run() {
             {
                 let app_handle = app.handle().clone();
                 std::thread::spawn(move || {
-                    // Non-prompting status checks — the onboarding window drives the
-                    // actual permission requests, one step at a time.
-                    let has_mic = permissions::check_microphone();
-                    let has_acc = permissions::check_accessibility(false);
-                    logging::log_message(&format!(
-                        "[permissions] microphone={} accessibility={}",
-                        has_mic, has_acc
-                    ));
+                    let mut last: Option<(bool, bool)> = None;
+                    let mut onboarding_opened = false;
 
-                    let _ = app_handle.emit(
-                        "sidecar:permissions",
-                        serde_json::json!({ "microphone": has_mic, "accessibility": has_acc }),
-                    );
+                    loop {
+                        let has_mic = permissions::check_microphone();
+                        let has_acc = permissions::check_accessibility(false);
 
-                    // If any launch requirement is missing, open the serial
-                    // onboarding window (microphone → accessibility → model).
-                    let model = Settings::load().model;
-                    let model_ok = crate::downloader::is_model_complete(&model);
-                    if !(has_mic && has_acc && model_ok) {
-                        logging::log_message(&format!(
-                            "[onboarding] Requirements unmet (mic={}, acc={}, model={}) — opening onboarding",
-                            has_mic, has_acc, model_ok
-                        ));
-                        std::thread::sleep(std::time::Duration::from_millis(400));
-                        if let Err(e) = commands::open_onboarding_window(&app_handle) {
-                            logging::log_message(&format!("[onboarding] Failed to open window: {}", e));
+                        if last != Some((has_mic, has_acc)) {
+                            last = Some((has_mic, has_acc));
+                            logging::log_message(&format!(
+                                "[permissions] microphone={} accessibility={}",
+                                has_mic, has_acc
+                            ));
+                            commands::emit_permissions(&app_handle);
                         }
+
+                        if !onboarding_opened {
+                            onboarding_opened = true;
+                            let model = Settings::load().model;
+                            let model_ok = crate::downloader::is_model_complete(&model);
+                            if !(has_mic && has_acc && model_ok) {
+                                logging::log_message(&format!(
+                                    "[onboarding] Requirements unmet (mic={}, acc={}, model={}) — opening onboarding",
+                                    has_mic, has_acc, model_ok
+                                ));
+                                std::thread::sleep(std::time::Duration::from_millis(400));
+                                if let Err(e) = commands::open_onboarding_window(&app_handle) {
+                                    logging::log_message(&format!("[onboarding] Failed to open window: {}", e));
+                                }
+                            }
+                        }
+
+                        std::thread::sleep(Duration::from_secs(1));
                     }
                 });
             }

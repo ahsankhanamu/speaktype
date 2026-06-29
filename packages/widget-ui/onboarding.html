@@ -5,104 +5,159 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Welcome to SpeakType</title>
   <style>
+    :root {
+      --bg: #18181b;
+      --surface: #232326;
+      --surface-hover: #2a2a2e;
+      --border: rgba(255, 255, 255, 0.07);
+      --text: #ececee;
+      --text-muted: #94949c;
+      --accent: #6b93e0;
+      --accent-soft: rgba(107, 147, 224, 0.14);
+      --accent-border: rgba(107, 147, 224, 0.32);
+      --success: #7aab85;
+      --success-soft: rgba(122, 171, 133, 0.14);
+      --success-border: rgba(122, 171, 133, 0.28);
+    }
+
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
       height: 100%;
       font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      background: #1a1a1a;
-      color: #e5e5e5;
+      background: var(--bg);
+      color: var(--text);
       overflow: hidden;
     }
     body { display: flex; flex-direction: column; padding: 22px 24px 18px; }
 
     .header { text-align: center; margin-bottom: 18px; }
-    .header .logo {
-      width: 44px; height: 44px; margin: 0 auto 10px;
-      color: #3b82f6;
+    .header .logo-wrap {
+      width: 48px; height: 48px; margin: 0 auto 12px;
+      background: linear-gradient(145deg, var(--accent-soft), rgba(107, 147, 224, 0.05));
+      border: 1px solid var(--accent-border);
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
     }
-    .header h1 { font-size: 19px; font-weight: 650; }
-    .header p { font-size: 13px; color: #9a9a9a; margin-top: 4px; }
+    .header .logo {
+      width: 24px; height: 24px;
+      color: #9eb8ef;
+    }
+    .header h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
+    .header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
 
     .steps { flex: 1; display: flex; flex-direction: column; gap: 10px; min-height: 0; }
 
     .step {
-      background: #232323;
-      border: 1px solid #2f2f2f;
+      background: var(--surface);
+      border: 1px solid var(--border);
       border-radius: 10px;
       padding: 14px;
+      transition: opacity .2s, border-color .2s, background .2s;
+    }
+    .step.locked { opacity: .42; pointer-events: none; }
+    .step.active {
+      border-color: var(--accent-border);
+      background: linear-gradient(160deg, #26262b 0%, var(--surface) 100%);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+    .step.done {
+      border-color: var(--success-border);
+      pointer-events: none;
+    }
+
+    .step-body { min-width: 0; }
+    .step-title {
       display: flex;
-      gap: 12px;
-      transition: opacity .2s, border-color .2s;
+      align-items: center;
+      gap: 8px;
+      font-size: 14px;
+      font-weight: 600;
     }
-    .step.locked { opacity: .45; pointer-events: none; }
-    .step.active { border-color: #3b82f6; }
-    .step.done { border-color: rgba(74,222,128,.35); }
-
-    .step-num {
-      flex: 0 0 26px; height: 26px; border-radius: 50%;
-      background: #333; color: #bbb;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 600;
+    .step-check {
+      width: 15px;
+      height: 15px;
+      flex-shrink: 0;
+      display: none;
+      color: var(--success);
     }
-    .step.active .step-num { background: #3b82f6; color: #fff; }
-    .step.done .step-num { background: #16a34a; color: #fff; }
+    .step.done .step-check { display: block; }
+    .step-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; line-height: 1.45; }
+    .step.done .step-desc { color: #a8b5aa; }
 
-    .step-body { flex: 1; min-width: 0; }
-    .step-title { font-size: 14px; font-weight: 600; }
-    .step-desc { font-size: 12px; color: #9a9a9a; margin-top: 2px; }
-
-    .step-actions { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
+    .step-actions { margin-top: 10px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
     .step.done .step-actions, .step.locked .step-actions { display: none; }
 
     .btn {
       border: none; border-radius: 7px; padding: 7px 13px;
       font-size: 12.5px; font-weight: 550; cursor: pointer;
       font-family: inherit;
+      transition: background .15s, border-color .15s;
     }
-    .btn.primary { background: #3b82f6; color: #fff; }
-    .btn.primary:hover { background: #2563eb; }
-    .btn.ghost { background: #333; color: #ddd; }
-    .btn.ghost:hover { background: #3d3d3d; }
+    .btn.settings {
+      width: 100%;
+      background: #0071e3;
+      color: #fff;
+      border: none;
+      display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    }
+    .btn.settings:hover { background: #0077ed; }
+    .btn.settings svg { width: 13px; height: 13px; flex-shrink: 0; opacity: 0.95; }
+    .btn.link {
+      background: none; color: var(--text-muted); padding: 2px 0;
+      font-size: 12px; font-weight: 500; text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .btn.link:hover { color: var(--text); }
 
-    /* model step */
     .model-list { margin-top: 10px; max-height: 168px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
     .model-row {
       display: flex; align-items: center; gap: 10px;
-      background: #1d1d1d; border: 1px solid #2c2c2c; border-radius: 8px;
+      background: rgba(0, 0, 0, 0.18); border: 1px solid var(--border); border-radius: 8px;
       padding: 9px 11px; cursor: pointer;
+      transition: border-color .15s, background .15s;
     }
-    .model-row:hover { border-color: #3a3a3a; }
-    .model-row.recommended { border-color: rgba(59,130,246,.45); }
-    .model-row.done { border-color: rgba(74,222,128,.4); }
+    .model-row:hover { border-color: rgba(255, 255, 255, 0.12); background: var(--surface-hover); }
+    .model-row.recommended { border-color: var(--accent-border); }
+    .model-row.done { border-color: var(--success-border); }
     .model-row-body { flex: 1; min-width: 0; }
     .model-row-name { font-size: 13px; font-weight: 600; }
-    .model-row-desc { font-size: 11px; color: #8a8a8a; margin-top: 1px; }
+    .model-row-desc { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
     .model-badge {
       font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 6px;
       white-space: nowrap;
     }
-    .badge-download { background: #1e3a5f; color: #93c5fd; }
-    .badge-resume { background: rgba(245,158,11,.15); color: #f59e0b; }
-    .badge-use { background: #2a2a2a; color: #bbb; }
-    .badge-ready { background: rgba(74,222,128,.15); color: #4ade80; }
-    .tag-rec { font-size: 10px; color: #93c5fd; font-weight: 600; }
+    .badge-download { background: var(--accent-soft); color: #a8c0f0; }
+    .badge-resume { background: rgba(245, 158, 11, 0.12); color: #d4a574; }
+    .badge-use { background: rgba(255, 255, 255, 0.06); color: var(--text-muted); }
+    .badge-ready { background: var(--success-soft); color: var(--success); }
+    .tag-rec { font-size: 10px; color: #8faee8; font-weight: 600; }
 
     .dl-progress { margin-top: 10px; }
     .dl-head { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
-    .dl-track { height: 6px; background: #333; border-radius: 3px; overflow: hidden; }
-    .dl-fill { height: 100%; background: linear-gradient(90deg,#3b82f6,#2563eb); width: 0%; transition: width .2s; }
-    .dl-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #8a8a8a; margin-top: 5px; }
+    .dl-track { height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; overflow: hidden; }
+    .dl-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #5a82d4, var(--accent));
+      width: 0%; transition: width .2s;
+    }
+    .dl-meta { display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: var(--text-muted); margin-top: 5px; }
 
     .footer { margin-top: 16px; }
     .start-btn {
       width: 100%; padding: 12px; border: none; border-radius: 9px;
-      background: #16a34a; color: #fff; font-size: 14px; font-weight: 650;
-      cursor: pointer; font-family: inherit;
+      background: rgba(255, 255, 255, 0.06); color: #666;
+      font-size: 14px; font-weight: 650;
+      cursor: default; font-family: inherit;
+      transition: background .15s, color .15s, box-shadow .15s;
     }
-    .start-btn:disabled { background: #2a2a2a; color: #666; cursor: default; }
-    .start-btn:not(:disabled):hover { background: #15803d; }
+    .start-btn:not(:disabled) {
+      background: linear-gradient(180deg, #7399e4 0%, #5f84d0 100%);
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    }
+    .start-btn:not(:disabled):hover { background: linear-gradient(180deg, #7ea3ea 0%, #688dd8 100%); }
 
-    .check-ic { width: 15px; height: 15px; }
     .spinner {
       width: 13px; height: 13px; border: 2px solid rgba(255,255,255,.25);
       border-top-color: #fff; border-radius: 50%; display: inline-block;
@@ -113,46 +168,55 @@
 </head>
 <body>
   <div class="header">
-    <svg class="logo" viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
-      <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
-    </svg>
+    <div class="logo-wrap">
+      <svg class="logo" viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+      </svg>
+    </div>
     <h1>Welcome to SpeakType</h1>
     <p>Three quick steps to get you set up.</p>
   </div>
 
   <div class="steps">
-    <!-- Step 1: Microphone -->
     <div class="step" id="step-mic">
-      <div class="step-num" id="num-mic">1</div>
       <div class="step-body">
-        <div class="step-title">Microphone access</div>
+        <div class="step-title">
+          <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <span>Microphone access</span>
+        </div>
         <div class="step-desc" id="desc-mic">Required to record your voice.</div>
         <div class="step-actions">
-          <button class="btn primary" id="btn-mic-allow">Allow Microphone</button>
-          <button class="btn ghost" id="btn-mic-settings">Open System Settings</button>
+          <button class="btn settings" id="btn-mic-settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open System Settings
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Step 2: Accessibility -->
     <div class="step locked" id="step-acc">
-      <div class="step-num" id="num-acc">2</div>
       <div class="step-body">
-        <div class="step-title">Accessibility access</div>
+        <div class="step-title">
+          <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <span>Accessibility access</span>
+        </div>
         <div class="step-desc" id="desc-acc">Required to paste text into other apps.</div>
         <div class="step-actions">
-          <button class="btn primary" id="btn-acc-allow">Allow Accessibility</button>
-          <button class="btn ghost" id="btn-acc-settings">Open System Settings</button>
+          <button class="btn settings" id="btn-acc-settings">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            Open System Settings
+          </button>
         </div>
       </div>
     </div>
 
-    <!-- Step 3: Model -->
     <div class="step locked" id="step-model">
-      <div class="step-num" id="num-model">3</div>
       <div class="step-body">
-        <div class="step-title">Download a speech model</div>
+        <div class="step-title">
+          <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"/></svg>
+          <span>Download a speech model</span>
+        </div>
         <div class="step-desc" id="desc-model">Runs fully on your Mac — no internet needed after download.</div>
         <div class="model-list" id="model-list"></div>
         <div class="dl-progress" id="dl-progress" style="display:none">
@@ -163,7 +227,7 @@
           <div class="dl-track"><div class="dl-fill" id="dl-fill"></div></div>
           <div class="dl-meta">
             <span id="dl-speed"></span>
-            <button class="btn ghost" id="dl-cancel" style="padding:3px 9px">Pause</button>
+            <button class="btn link" id="dl-cancel">Pause</button>
           </div>
         </div>
       </div>
@@ -192,6 +256,7 @@
     let status = { microphone: false, accessibility: false, model: false, active_model: '' };
     let downloadingModel = null;
     let modelsCache = [];
+    let micPromptRequested = false;
 
     const $ = id => document.getElementById(id);
 
@@ -201,14 +266,9 @@
       return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
     }
 
-    function setStep(el, numEl, state, doneText) {
+    function setStep(el, state) {
       el.classList.remove('locked', 'active', 'done');
       el.classList.add(state);
-      if (state === 'done') {
-        numEl.innerHTML = '<svg class="check-ic" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5"/></svg>';
-      } else {
-        numEl.textContent = numEl.dataset.n;
-      }
     }
 
     function render() {
@@ -216,20 +276,22 @@
       const accDone = status.accessibility;
       const modelDone = status.model;
 
-      // Step 1
-      setStep($('step-mic'), $('num-mic'), micDone ? 'done' : 'active');
-      $('desc-mic').textContent = micDone ? 'Microphone access granted.' : 'Click Allow, then choose “Allow” in the macOS prompt.';
+      setStep($('step-mic'), micDone ? 'done' : 'active');
+      $('desc-mic').textContent = micDone
+        ? 'Microphone access granted.'
+        : 'Enable SpeakType under Privacy & Security → Microphone in System Settings.';
 
-      // Step 2 — locked until mic done
-      setStep($('step-acc'), $('num-acc'),
-        !micDone ? 'locked' : (accDone ? 'done' : 'active'));
+      if (!micDone && !micPromptRequested) {
+        micPromptRequested = true;
+        inv('request_microphone_access').then(() => setTimeout(poll, 600));
+      }
+
+      setStep($('step-acc'), !micDone ? 'locked' : (accDone ? 'done' : 'active'));
       $('desc-acc').textContent = accDone
         ? 'Accessibility access granted.'
-        : 'Enable SpeakType under Accessibility, then return here.';
+        : 'Open System Settings and toggle SpeakType on under Privacy & Security → Accessibility.';
 
-      // Step 3 — locked until accessibility done
-      setStep($('step-model'), $('num-model'),
-        !accDone ? 'locked' : (modelDone ? 'done' : 'active'));
+      setStep($('step-model'), !accDone ? 'locked' : (modelDone ? 'done' : 'active'));
       if (modelDone) {
         $('desc-model').textContent = 'Model "' + status.active_model + '" is ready.';
         $('model-list').style.display = 'none';
@@ -321,19 +383,8 @@
       } catch (e) { /* ignore */ }
     }
 
-    // wire buttons
-    $('num-mic').dataset.n = '1'; $('num-acc').dataset.n = '2'; $('num-model').dataset.n = '3';
-
-    $('btn-mic-allow').onclick = async () => {
-      await inv('request_microphone_access');
-      setTimeout(poll, 600);
-    };
     $('btn-mic-settings').onclick = () => inv('open_system_pane', { pane: 'com.apple.preference.security?Privacy_Microphone' });
 
-    $('btn-acc-allow').onclick = async () => {
-      await inv('request_accessibility');
-      setTimeout(poll, 600);
-    };
     $('btn-acc-settings').onclick = () => inv('open_system_pane', { pane: 'com.apple.preference.security?Privacy_Accessibility' });
 
     $('dl-cancel').onclick = async () => {
@@ -350,7 +401,6 @@
       try { await inv('finish_onboarding'); } catch (e) { console.error(e); }
     };
 
-    // model download progress events
     lis('model:progress', (event) => {
       const p = typeof event.payload === 'string' ? JSON.parse(event.payload) : event.payload;
       if (!downloadingModel || p.model !== downloadingModel) return;

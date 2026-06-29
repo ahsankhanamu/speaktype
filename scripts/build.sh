@@ -80,7 +80,7 @@ echo "→ Signing with: $APPLE_DEVELOPER_ID"
 
 if [ -f "$MACOS_DIR/whisper-server" ]; then
     echo "   • sidecar (whisper-server)"
-    codesign_retry "$MACOS_DIR/whisper-server"
+    codesign_retry "$MACOS_DIR/whisper-server" --options=runtime --entitlements "$ENTITLEMENTS"
 fi
 
 echo "   • main binary ($MAIN_BINARY)"
@@ -96,12 +96,7 @@ DMG_PATH="$PROJECT_ROOT/dist/SpeakType_${VERSION}_aarch64.dmg"
 echo "→ Creating DMG at $DMG_PATH..."
 hdiutil detach "/Volumes/SpeakType" 2>/dev/null || true
 rm -f "$DMG_PATH"
-
-TMPDIR="$(mktemp -d)"
-cp -R "$APP_BUNDLE" "$TMPDIR/SpeakType.app"
-ln -s /Applications "$TMPDIR/Applications"
-hdiutil create -volname "SpeakType" -srcfolder "$TMPDIR" -ov -format UDZO -imagekey zlib-level=9 "$DMG_PATH"
-rm -rf "$TMPDIR"
+"$SCRIPT_DIR/create-dmg.sh" "$APP_BUNDLE" "$DMG_PATH" "SpeakType"
 
 echo "→ Signing DMG..."
 codesign_retry "$DMG_PATH"
@@ -109,7 +104,30 @@ codesign_retry "$DMG_PATH"
 # ── 6. Notarize (if credentials are set up) ─────────────────────────────────────
 if xcrun notarytool history --keychain-profile "$NOTARY_PROFILE" >/dev/null 2>&1; then
     echo "→ Notarizing (this can take a few minutes)..."
-    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARY_PROFILE" --team-id "$APPLE_TEAM_ID" --wait
+    NOTARY_JSON="$(mktemp)"
+    if ! xcrun notarytool submit "$DMG_PATH" \
+        --keychain-profile "$NOTARY_PROFILE" \
+        --team-id "$APPLE_TEAM_ID" \
+        --wait \
+        --output-format json > "$NOTARY_JSON"; then
+        echo "ERROR: notarytool submit failed."
+        rm -f "$NOTARY_JSON"
+        exit 1
+    fi
+
+    NOTARY_STATUS="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('status',''))" "$NOTARY_JSON")"
+    SUBMISSION_ID="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('id',''))" "$NOTARY_JSON")"
+    rm -f "$NOTARY_JSON"
+
+    if [ "$NOTARY_STATUS" != "Accepted" ]; then
+        echo "ERROR: Notarization failed with status: $NOTARY_STATUS"
+        if [ -n "$SUBMISSION_ID" ]; then
+            echo "→ Apple notarization log:"
+            xcrun notarytool log "$SUBMISSION_ID" --keychain-profile "$NOTARY_PROFILE" || true
+        fi
+        exit 1
+    fi
+
     echo "→ Stapling ticket..."
     xcrun stapler staple "$DMG_PATH"
     echo "   ✓ Notarized & stapled"
