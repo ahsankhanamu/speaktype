@@ -119,6 +119,7 @@
     const PERM_POLL_MS = 2000;
     const CRASH_FLASH_MS = 3000;
     const SERVER_READY_DISMISS_MS = 3000;
+    const LOCATE_HIGHLIGHT_MS = 2500;
 
     const widget = document.getElementById('widget');
     const timer = document.querySelector('.timer');
@@ -186,6 +187,14 @@
     function flashState(s, ms) {
       setState(s);
       setTimeout(() => setState('idle'), ms || DEFAULT_FLASH_MS);
+    }
+
+    let locateTimer = null;
+    function highlightWidget(ms) {
+      const duration = ms || LOCATE_HIGHLIGHT_MS;
+      widget.classList.add('locate');
+      clearTimeout(locateTimer);
+      locateTimer = setTimeout(() => widget.classList.remove('locate'), duration);
     }
 
     let _dragState = null;
@@ -363,6 +372,10 @@
         serverDot.className = 'server-status error';
         serverDot.title = 'Server error: ' + (d.reason || 'unknown');
         serverDot.style.display = 'block';
+      });
+      L('widget:highlight', (e) => {
+        const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : (e.payload || {});
+        highlightWidget(d.duration_ms);
       });
 
     } else {

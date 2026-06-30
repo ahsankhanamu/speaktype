@@ -37,6 +37,28 @@ html, body {
 .icon-container { position: relative; width: 22px; height: 22px; }
 .mic-icon { width: 22px; height: 22px; color: rgba(255,255,255,0.5); transition: color 0.2s, transform 0.15s; }
 .widget.idle:hover .mic-icon { color: rgba(255,255,255,0.9); transform: scale(1.1); }
+
+.widget.locate {
+  animation: locatePulse 0.85s ease-in-out infinite;
+}
+.widget.idle.locate {
+  box-shadow:
+    0 0 0 3px rgba(0, 113, 227, 0.75),
+    0 0 26px rgba(0, 113, 227, 0.5),
+    0 2px 12px rgba(0, 0, 0, 0.5);
+}
+.widget.idle.locate .mic-icon {
+  color: rgba(255, 255, 255, 0.95);
+  transform: scale(1.08);
+}
+@keyframes locatePulse {
+  0%, 100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(1.15);
+  }
+}
 .perm-warning {
   display: none;
   position: absolute;

@@ -71,6 +71,10 @@ const ttipc = {
     return this.invoke('save_window_position');
   },
 
+  resetWidgetPosition() {
+    return this.invoke('reset_widget_position');
+  },
+
   getHistory() {
     return this.invoke('get_history');
   },

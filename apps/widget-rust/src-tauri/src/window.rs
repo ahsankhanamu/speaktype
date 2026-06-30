@@ -2,6 +2,8 @@ use crate::logging;
 use tauri::{PhysicalPosition, WebviewWindow};
 
 const DEFAULT_MARGIN: i32 = 100;
+pub const DEFAULT_WIDGET_X: f64 = 100.0;
+pub const DEFAULT_WIDGET_Y: f64 = 100.0;
 
 /// Return a position guaranteed to be visible on at least one connected monitor.
 pub fn clamp_to_visible_screens(window: &WebviewWindow, x: f64, y: f64) -> (f64, f64) {
@@ -53,4 +55,8 @@ pub fn apply_saved_position(window: &WebviewWindow, x: f64, y: f64) -> (f64, f64
         y: cy as i32,
     }));
     (cx, cy)
+}
+
+pub fn reset_to_default_position(window: &WebviewWindow) -> (f64, f64) {
+    apply_saved_position(window, DEFAULT_WIDGET_X, DEFAULT_WIDGET_Y)
 }

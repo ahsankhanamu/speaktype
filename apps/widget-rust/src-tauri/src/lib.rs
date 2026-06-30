@@ -3,6 +3,7 @@ mod chunk_session;
 mod commands;
 mod download_queue;
 mod downloader;
+mod format;
 mod history;
 mod logging;
 mod paste;
@@ -68,6 +69,7 @@ pub fn run() {
             commands::minimize_widget,
             commands::quit_app,
             commands::save_window_position,
+            commands::reset_widget_position,
             commands::get_history,
             commands::delete_history_entry,
             commands::clear_history,

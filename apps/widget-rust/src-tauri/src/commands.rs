@@ -3,6 +3,7 @@ use crate::chunk_session::{ChunkSession, transcribe_chunked};
 use crate::download_queue;
 use crate::downloader;
 use crate::history::History;
+use crate::format::{catalog_model_size_bytes, format_byte_size, format_byte_size_approx};
 use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
 use crate::settings::Settings;
@@ -532,28 +533,39 @@ pub async fn pause_model_download(app: AppHandle, model: String) -> Result<serde
     Ok(json!({"paused": paused, "model": model}))
 }
 
+fn model_catalog_entry(id: &str, desc: &str, speed: &str) -> serde_json::Value {
+    let size_bytes = catalog_model_size_bytes(id);
+    json!({
+        "id": id,
+        "size": format_byte_size_approx(size_bytes),
+        "size_bytes": size_bytes,
+        "desc": desc,
+        "speed": speed,
+    })
+}
+
 #[tauri::command]
 pub async fn get_models() -> Result<serde_json::Value, String> {
     let mut available: Vec<serde_json::Value> = vec![
-        json!({"id": "tiny.en", "size": "~75MB", "desc": "Tiny (English only)", "speed": "fastest"}),
-        json!({"id": "tiny", "size": "~75MB", "desc": "Tiny (multilingual)", "speed": "fastest"}),
-        json!({"id": "base.en", "size": "~150MB", "desc": "Base (English only)", "speed": "fast"}),
-        json!({"id": "base", "size": "~150MB", "desc": "Base (multilingual)", "speed": "fast"}),
-        json!({"id": "small.en", "size": "~500MB", "desc": "Small (English only) — recommended", "speed": "medium"}),
-        json!({"id": "small", "size": "~500MB", "desc": "Small (multilingual)", "speed": "medium"}),
-        json!({"id": "medium.en", "size": "~1.5GB", "desc": "Medium (English only) — best for 16/24GB Mac", "speed": "slow"}),
-        json!({"id": "medium", "size": "~1.5GB", "desc": "Medium (multilingual)", "speed": "slow"}),
-        json!({"id": "large-v3", "size": "~3GB", "desc": "Large v3 (most accurate)", "speed": "slowest"}),
-        json!({"id": "large-v3-turbo", "size": "~1.5GB", "desc": "Large v3 Turbo (fast + accurate)", "speed": "medium"}),
+        model_catalog_entry("tiny.en", "Tiny (English only)", "fastest"),
+        model_catalog_entry("tiny", "Tiny (multilingual)", "fastest"),
+        model_catalog_entry("base.en", "Base (English only)", "fast"),
+        model_catalog_entry("base", "Base (multilingual)", "fast"),
+        model_catalog_entry("small.en", "Small (English only) — recommended", "medium"),
+        model_catalog_entry("small", "Small (multilingual)", "medium"),
+        model_catalog_entry("medium.en", "Medium (English only) — best for 16/24GB Mac", "slow"),
+        model_catalog_entry("medium", "Medium (multilingual)", "slow"),
+        model_catalog_entry("large-v3", "Large v3 (most accurate)", "slowest"),
+        model_catalog_entry("large-v3-turbo", "Large v3 Turbo (fast + accurate)", "medium"),
     ];
 
     for model in available.iter_mut() {
         let id = model["id"].as_str().unwrap_or("");
         if crate::downloader::is_model_complete(id) {
             let size = crate::downloader::get_model_size(id);
-            let size_mb = size as f64 / (1024.0 * 1024.0);
             model["downloaded"] = json!(true);
-            model["downloaded_size"] = json!(format!("{:.1}MB", size_mb));
+            model["downloaded_size"] = json!(format_byte_size(size));
+            model["size_bytes"] = json!(size);
         } else {
             // Incomplete: either a leftover `.part` or a truncated `.bin`.
             let part_bytes = crate::downloader::get_partial_download_size(id);
@@ -561,11 +573,13 @@ pub async fn get_models() -> Result<serde_json::Value, String> {
             let have = part_bytes.max(bin_bytes);
             if have > 0 {
                 let expected = crate::downloader::expected_size(id);
-                let have_mb = have as f64 / (1024.0 * 1024.0);
                 let partial_label = if expected > 0 {
-                    format!("Incomplete — {:.0}%", (have as f64 / expected as f64) * 100.0)
+                    format!(
+                        "Incomplete — {:.0}%",
+                        (have as f64 / expected as f64) * 100.0
+                    )
                 } else {
-                    format!("Incomplete ({:.1}MB)", have_mb)
+                    format!("Incomplete ({})", format_byte_size(have))
                 };
                 model["downloaded"] = json!(false);
                 model["partial"] = json!(true);
@@ -687,14 +701,19 @@ pub fn clear_history() -> Result<(), String> {
     History::clear()
 }
 
+fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), String> {
+    let _ = window.unminimize();
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn open_about(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("about") {
-        window.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
+        return show_and_focus_window(&window);
     }
 
-    WebviewWindowBuilder::new(&app, "about", WebviewUrl::App("about.html".into()))
+    let window = WebviewWindowBuilder::new(&app, "about", WebviewUrl::App("about.html".into()))
         .title("About SpeakType")
         .inner_size(320.0, 380.0)
         .resizable(false)
@@ -702,17 +721,16 @@ pub async fn open_about(app: AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    Ok(())
+    show_and_focus_window(&window)
 }
 
 #[tauri::command]
 pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
-        window.set_focus().map_err(|e| e.to_string())?;
-        return Ok(());
+        return show_and_focus_window(&window);
     }
 
-    WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+    let window = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
         .title("SpeakType Settings")
         .inner_size(520.0, 640.0)
         .resizable(false)
@@ -720,7 +738,7 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
         .build()
         .map_err(|e| e.to_string())?;
 
-    Ok(())
+    show_and_focus_window(&window)
 }
 
 #[tauri::command]
@@ -761,5 +779,35 @@ pub async fn save_window_position(
         settings.window_y = Some(cy);
         settings.save()?;
     }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn reset_widget_position(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    let Some(window) = app.get_webview_window("main") else {
+        return Err("Widget window not found".to_string());
+    };
+
+    let _ = crate::window::reset_to_default_position(&window);
+
+    {
+        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.window_x = None;
+        settings.window_y = None;
+        settings.save()?;
+    }
+
+    let _ = window.unminimize();
+    window.show().map_err(|e| e.to_string())?;
+    let _ = window.set_always_on_top(true);
+
+    let _ = window.emit(
+        "widget:highlight",
+        json!({ "duration_ms": 2500 }),
+    );
+
     Ok(())
 }

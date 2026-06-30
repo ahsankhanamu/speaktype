@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SpeakType Settings</title>
+  <link rel="stylesheet" href="styles/model-grid.css">
   <link rel="stylesheet" href="styles/settings.css">
 </head>
 <body>
@@ -100,9 +101,6 @@
         <input type="text" id="post-paste-keys-custom" placeholder="Or type custom: e.g. enter+tab" style="margin-top: 6px">
         <p class="hint">Keys to press automatically after text is pasted. Use + to chain keys (e.g., enter+tab).</p>
       </div>
-      <div class="field">
-        <button class="btn secondary" id="reset-position-btn">Reset Widget Position</button>
-      </div>
     </div>
 
     <div class="tab-content" id="tab-models">
@@ -118,17 +116,26 @@
     </div>
 
     <div class="actions" id="actions-settings">
-      <button class="btn secondary" id="restore-defaults-btn">Restore Defaults</button>
-      <button class="btn primary disabled" id="save-btn" disabled>Save</button>
+      <div class="actions-left">
+        <button class="btn secondary" id="reset-position-btn" hidden>Reset Widget Position</button>
+      </div>
+      <div class="actions-right">
+        <button class="btn secondary" id="restore-defaults-btn">Restore Defaults</button>
+        <button class="btn primary disabled" id="save-btn" disabled>Save</button>
+      </div>
     </div>
     <div class="actions" id="actions-history" style="display:none">
-      <button class="btn secondary" id="clear-history-btn">Clear History</button>
+      <div class="actions-right">
+        <button class="btn secondary" id="clear-history-btn">Clear History</button>
+      </div>
     </div>
     <div class="actions" id="actions-models" style="display:none">
     </div>
   </div>
 
   <script src="scripts/ipc.js"></script>
+  <script src="scripts/format.js"></script>
+  <script src="scripts/model-grid.js"></script>
   <script src="scripts/settings.js"></script>
 </body>
 </html>
