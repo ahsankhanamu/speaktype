@@ -207,7 +207,9 @@ pub fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<()
 
     {
         let mut session = state.chunk_session.lock().map_err(|e| e.to_string())?;
-        *session = None;
+        if let Some(active) = session.take() {
+            active.abort();
+        }
     }
 
     tray::set_tray_state(&app, TrayState::Idle);
@@ -239,6 +241,10 @@ fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
 
         let session = ChunkSession::start(settings, sample_rate, buffer);
         let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
+        if let Some(old) = chunk_session.take() {
+            log_message("[toggle_recording] Aborting stale chunk session before new recording");
+            old.abort();
+        }
         *chunk_session = Some(session);
         log_message("[toggle_recording] Chunk session started");
     }

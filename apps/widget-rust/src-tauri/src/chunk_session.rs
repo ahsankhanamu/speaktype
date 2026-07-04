@@ -70,11 +70,19 @@ impl ChunkSession {
                     continue;
                 }
 
+                // Single-threaded whisper sidecar: one in-flight chunk at a time.
+                if pending_count.load(Ordering::SeqCst) > 0 {
+                    continue;
+                }
+
                 let pending: Vec<f32> = {
                     let buf = match buffer.lock() {
                         Ok(b) => b,
                         Err(_) => continue,
                     };
+                    if committed >= buf.len() {
+                        continue;
+                    }
                     buf[committed..].to_vec()
                 };
 
@@ -85,13 +93,23 @@ impl ChunkSession {
                     continue;
                 }
 
-                let chunk = pending[..split].to_vec();
-                if !audio::has_speech(&chunk, sample_rate) {
-                    committed_samples.fetch_add(split, Ordering::SeqCst);
+                if committed_samples
+                    .compare_exchange(
+                        committed,
+                        committed + split,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    )
+                    .is_err()
+                {
                     continue;
                 }
 
-                committed_samples.fetch_add(split, Ordering::SeqCst);
+                let chunk = pending[..split].to_vec();
+                if !audio::has_speech(&chunk, sample_rate) {
+                    continue;
+                }
+
                 pipelined.store(true, Ordering::SeqCst);
 
                 let idx = next_chunk_idx.fetch_add(1, Ordering::SeqCst);
@@ -99,7 +117,7 @@ impl ChunkSession {
                     "[chunk] Pipelining chunk {} ({:.1}s, committed={}/{})",
                     idx,
                     chunk.len() as f64 / sample_rate as f64,
-                    committed_samples.load(Ordering::SeqCst),
+                    committed + split,
                     total_samples
                 ));
 
@@ -125,6 +143,18 @@ impl ChunkSession {
         }
 
         session
+    }
+
+    /// Stop the live monitor and optionally wait briefly for it to exit.
+    pub fn abort(&self) {
+        self.stop_monitor.store(true, Ordering::SeqCst);
+        if let Ok(mut guard) = self.monitor_handle.lock() {
+            if let Some(handle) = guard.take() {
+                tauri::async_runtime::block_on(async {
+                    let _ = tokio::time::timeout(Duration::from_millis(500), handle).await;
+                });
+            }
+        }
     }
 
     pub async fn finalize(self, samples: Vec<f32>, sample_rate: u32) -> Option<String> {
@@ -212,6 +242,15 @@ impl ChunkSession {
     }
 }
 
+impl Drop for ChunkSession {
+    fn drop(&mut self) {
+        self.stop_monitor.store(true, Ordering::SeqCst);
+        if let Ok(mut guard) = self.monitor_handle.lock() {
+            guard.take();
+        }
+    }
+}
+
 fn spawn_chunk_task(
     settings: Settings,
     sample_rate: u32,
@@ -228,6 +267,17 @@ fn spawn_chunk_task(
         let _done = scopeguard::guard((), |_| {
             pending_count_done.fetch_sub(1, Ordering::SeqCst);
         });
+
+        if let Ok(results) = chunk_results.lock() {
+            if results.contains_key(&idx) {
+                log_message(&format!(
+                    "[chunk] Chunk {} already in results — skipping duplicate",
+                    idx
+                ));
+                return;
+            }
+        }
+
         let prompt = prompt_tail.lock().ok().map(|p| p.clone()).unwrap_or_default();
         let prompt_ref = if prompt.is_empty() {
             None
@@ -238,7 +288,14 @@ fn spawn_chunk_task(
         match transcribe_samples(&chunk, sample_rate, &settings, prompt_ref).await {
             Ok(text) if !text.is_empty() && !transcribe::is_hallucination(&text) => {
                 if let Ok(mut results) = chunk_results.lock() {
-                    results.insert(idx, text.clone());
+                    if results.contains_key(&idx) {
+                        log_message(&format!(
+                            "[chunk] Chunk {} result already stored — ignoring duplicate",
+                            idx
+                        ));
+                    } else {
+                        results.insert(idx, text.clone());
+                    }
                 }
                 if let Ok(mut tail) = prompt_tail.lock() {
                     let combined = if tail.is_empty() {
@@ -332,4 +389,36 @@ pub async fn transcribe_chunked(
     }
 
     Ok(parts.join(" "))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+
+    fn test_session() -> ChunkSession {
+        let settings = Settings::default();
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        ChunkSession::start(settings, 16_000, buffer)
+    }
+
+    #[test]
+    fn abort_sets_stop_monitor() {
+        let session = test_session();
+        assert!(!session.stop_monitor.load(Ordering::SeqCst));
+        session.abort();
+        assert!(session.stop_monitor.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn drop_sets_stop_monitor() {
+        let stop = {
+            let session = test_session();
+            let stop = session.stop_monitor.clone();
+            drop(session);
+            stop
+        };
+        std::thread::sleep(Duration::from_millis(200));
+        assert!(stop.load(Ordering::SeqCst));
+    }
 }
