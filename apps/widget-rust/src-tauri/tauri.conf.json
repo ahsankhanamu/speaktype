@@ -13,16 +13,14 @@
       {
         "label": "main",
         "title": "SpeakType",
-        "width": 96,
-        "height": 96,
+        "width": 72,
+        "height": 88,
         "resizable": false,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,
         "skipTaskbar": true,
-        "visible": true,
-        "x": 100,
-        "y": 100
+        "visible": true
       }
     ]
   },

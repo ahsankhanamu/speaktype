@@ -510,3 +510,90 @@ pub fn remove_expected_size(model_name: &str) {
         let _ = std::fs::remove_file(&path);
     }
 }
+
+pub const VAD_MODEL_FILE: &str = "ggml-silero-v6.2.0.bin";
+const VAD_MODEL_URL: &str =
+    "https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v6.2.0.bin";
+
+pub fn vad_model_path() -> Option<PathBuf> {
+    crate::paths::config_dir_opt().map(|d| d.join("models").join(VAD_MODEL_FILE))
+}
+
+pub fn is_vad_model_ready() -> bool {
+    vad_model_path()
+        .and_then(|p| std::fs::metadata(p).ok())
+        .map(|m| m.len() > 1024)
+        .unwrap_or(false)
+}
+
+/// Download the Silero VAD model used by whisper.cpp (blocking, ~1MB).
+pub fn ensure_vad_model_blocking() -> Option<PathBuf> {
+    if is_vad_model_ready() {
+        return vad_model_path();
+    }
+
+    let path = vad_model_path()?;
+    if let Some(parent) = path.parent() {
+        if std::fs::create_dir_all(parent).is_err() {
+            return None;
+        }
+    }
+
+    let temp_path = path.with_extension("bin.part");
+    logging::log_message("[vad] Downloading Silero VAD model...");
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            logging::log_message(&format!("[vad] Failed to create HTTP client: {}", e));
+            return None;
+        }
+    };
+
+    let response = match client.get(VAD_MODEL_URL).send() {
+        Ok(r) => r,
+        Err(e) => {
+            logging::log_message(&format!("[vad] Download failed: {}", e));
+            return None;
+        }
+    };
+
+    if !response.status().is_success() {
+        logging::log_message(&format!(
+            "[vad] Download failed: HTTP {}",
+            response.status()
+        ));
+        return None;
+    }
+
+    let bytes = match response.bytes() {
+        Ok(b) => b,
+        Err(e) => {
+            logging::log_message(&format!("[vad] Failed to read VAD model body: {}", e));
+            return None;
+        }
+    };
+
+    if bytes.len() < 1024 {
+        logging::log_message("[vad] Downloaded VAD model looks too small — ignoring");
+        return None;
+    }
+
+    if std::fs::write(&temp_path, &bytes).is_err() {
+        return None;
+    }
+
+    if std::fs::rename(&temp_path, &path).is_err() {
+        let _ = std::fs::remove_file(&temp_path);
+        return None;
+    }
+
+    logging::log_message(&format!(
+        "[vad] Silero VAD model ready ({}KB)",
+        bytes.len() / 1024
+    ));
+    Some(path)
+}

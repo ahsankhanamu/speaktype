@@ -33,6 +33,48 @@ fn is_openai_api(url: &str) -> bool {
     patterns.iter().any(|p| lower.contains(p))
 }
 
+const HALLUCINATION_FRAGMENTS: &[&str] = &[
+    "thank you",
+    "thanks for",
+    "i'm alone",
+    "im alone",
+    "subscribe",
+    "see you next",
+    "bye bye",
+];
+
+fn looks_like_sound_effect_markup(text: &str) -> bool {
+    text.contains('*') && text.chars().filter(|c| *c == '*').count() >= 2
+}
+
+fn has_repetitive_clauses(text: &str) -> bool {
+    let normalized = text.to_lowercase();
+    let clauses: Vec<&str> = normalized
+        .split(|c| matches!(c, '.' | '!' | '?'))
+        .map(str::trim)
+        .filter(|s| s.len() > 5)
+        .collect();
+
+    if clauses.len() >= 2 {
+        let mut seen = std::collections::HashSet::new();
+        for clause in clauses {
+            if !seen.insert(clause) {
+                return true;
+            }
+        }
+    }
+
+    let words: Vec<&str> = normalized.split_whitespace().collect();
+    if words.len() >= 6 && words.len() % 2 == 0 {
+        let half = words.len() / 2;
+        if words[..half] == words[half..] {
+            return true;
+        }
+    }
+
+    false
+}
+
 pub fn is_hallucination(text: &str) -> bool {
     let t = text.to_lowercase();
     let t = t.trim();
@@ -45,8 +87,24 @@ pub fn is_hallucination(text: &str) -> bool {
         return true;
     }
 
+    if looks_like_sound_effect_markup(t) {
+        return true;
+    }
+
+    if has_repetitive_clauses(t) {
+        return true;
+    }
+
     if t.len() < 40 {
-        return HALLUCINATION_PHRASES.iter().any(|phrase| t.contains(phrase));
+        if HALLUCINATION_PHRASES.iter().any(|phrase| t.contains(phrase)) {
+            return true;
+        }
+    }
+
+    if t.len() < 120 {
+        if HALLUCINATION_FRAGMENTS.iter().any(|phrase| t.contains(phrase)) {
+            return true;
+        }
     }
 
     false
@@ -99,7 +157,12 @@ pub async fn transcribe_with_prompt(
             form = form.text("initial_prompt", prompt.to_string());
         }
     } else {
-        form = form.text("language", settings.language.clone());
+        form = form
+            .text("language", settings.language.clone())
+            .text("temperature", "0.0")
+            .text("no_speech_thold", "0.65")
+            .text("entropy_thold", "2.4")
+            .text("suppress_nst", "true");
         if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
             form = form.text("prompt", prompt.to_string());
             form = form.text("initial_prompt", prompt.to_string());
@@ -161,4 +224,25 @@ fn normalize_line_breaks(text: &str) -> String {
         .filter(|s| !s.is_empty())
         .collect();
     joined.join("\n\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_hallucination;
+
+    #[test]
+    fn rejects_silence_hallucination_with_sound_effects() {
+        let text = "*shriek* *shriek* ... ... I'm alone. I'm alone. I'm alone. Thank you. Thank you.";
+        assert!(is_hallucination(text));
+    }
+
+    #[test]
+    fn rejects_common_youtube_outro() {
+        assert!(is_hallucination("Thanks for watching!"));
+    }
+
+    #[test]
+    fn accepts_real_short_phrase() {
+        assert!(!is_hallucination("Send the report by Friday."));
+    }
 }

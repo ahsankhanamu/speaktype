@@ -10,7 +10,6 @@ pub fn config_dir_opt() -> Option<PathBuf> {
     dirs::config_dir().map(|d| d.join("speaktype"))
 }
 
-#[allow(dead_code)]
 pub fn models_dir() -> PathBuf {
     config_dir().join("models")
 }

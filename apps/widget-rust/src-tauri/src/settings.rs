@@ -10,30 +10,46 @@ pub struct Settings {
     pub language: String,
     pub window_x: Option<f64>,
     pub window_y: Option<f64>,
+    pub onboarding_window_x: Option<f64>,
+    pub onboarding_window_y: Option<f64>,
     /// "original" = paste to the app active when recording started
     /// "active"   = paste to the app active when recording stops
     #[serde(default = "default_paste_mode")]
     pub paste_mode: String,
     /// Keys to press after pasting (e.g., "enter", "tab", "enter+enter"). None = no keys.
-    #[serde(default)]
+    #[serde(default = "default_post_paste_keys")]
     pub post_paste_keys: Option<String>,
+    /// When true, save WAV files for each successful transcription (for reprocessing).
+    #[serde(default = "default_save_recordings")]
+    pub save_recordings: bool,
 }
 
 fn default_paste_mode() -> String {
-    "original".to_string()
+    "active".to_string()
+}
+
+fn default_post_paste_keys() -> Option<String> {
+    Some("enter".to_string())
+}
+
+fn default_save_recordings() -> bool {
+    false
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            hotkey: "CmdOrCtrl+Alt+L".to_string(),
+            hotkey: "Super+Control".to_string(),
             api_url: "http://127.0.0.1:8002/inference".to_string(),
             model: "medium".to_string(),
             language: "auto".to_string(),
             window_x: None,
             window_y: None,
-            paste_mode: "original".to_string(),
-            post_paste_keys: None,
+            onboarding_window_x: None,
+            onboarding_window_y: None,
+            paste_mode: "active".to_string(),
+            post_paste_keys: Some("enter".to_string()),
+            save_recordings: false,
         }
     }
 }
@@ -47,11 +63,23 @@ impl Settings {
         Self::config_dir().join("settings.json")
     }
 
+    /// Map legacy cross-platform modifiers to Super (Command on macOS, Windows key on Windows).
+    pub fn normalize_hotkey(hotkey: &str) -> String {
+        hotkey
+            .split('+')
+            .map(|part| match part.trim() {
+                "CmdOrCtrl" | "CommandOrControl" | "Command" | "Meta" => "Super".to_string(),
+                other => other.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join("+")
+    }
+
     pub fn load() -> Self {
         let path = Self::config_path();
-        if path.exists() {
+        let settings = if path.exists() {
             match fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str(&content) {
+                Ok(content) => match serde_json::from_str::<Settings>(&content) {
                     Ok(s) => s,
                     Err(e) => {
                         crate::logging::log_message(&format!(
@@ -73,6 +101,16 @@ impl Settings {
             }
         } else {
             Self::default()
+        };
+
+        let normalized = Self::normalize_hotkey(&settings.hotkey);
+        if normalized != settings.hotkey {
+            let mut migrated = settings;
+            migrated.hotkey = normalized;
+            let _ = migrated.save();
+            migrated
+        } else {
+            settings
         }
     }
 

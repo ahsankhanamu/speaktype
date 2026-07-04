@@ -57,7 +57,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      min-width: 180px;
+      min-width: 210px;
       min-height: 56px;
     }
   </style>
@@ -74,10 +74,20 @@
         </div>
       </div>
       <div class="state-recording">
-        <div class="waveform">
+        <button type="button" class="rec-btn rec-cancel" title="Cancel" aria-label="Cancel recording">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+            <path d="M6 6l12 12M18 6l-12 12"/>
+          </svg>
+        </button>
+        <div class="waveform" aria-hidden="true">
           <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
         </div>
-        <span class="timer">4.2s</span>
+        <span class="timer">3.2s</span>
+        <button type="button" class="rec-btn rec-stop" title="Stop and transcribe" aria-label="Stop recording">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <rect x="6" y="6" width="12" height="12" rx="2"/>
+          </svg>
+        </button>
       </div>
       <div class="state-transcribing">
         <div id="dots" class="dots dots-wave">

@@ -5,6 +5,7 @@ let status = { microphone: false, accessibility: false, model: false, active_mod
 let lastStatusKey = '';
 let micPromptRequested = false;
 let micSettingsOpened = false;
+let accSettingsOpened = false;
 let modelGridShown = false;
 
 const $ = id => document.getElementById(id);
@@ -68,7 +69,7 @@ function updateRelaunchHints(micDone, accDone) {
   $('hint-mic-relaunch').hidden = !showMicRelaunch;
   $('btn-quit-mic').hidden = !showMicRelaunch;
 
-  const showAccRelaunch = micDone && !accDone;
+  const showAccRelaunch = !accDone && accSettingsOpened;
   $('hint-acc-relaunch').hidden = !showAccRelaunch;
   $('btn-quit-acc').hidden = !showAccRelaunch;
 }
@@ -79,6 +80,7 @@ function render() {
   const modelDone = status.model;
 
   setStep($('step-mic'), micDone ? 'done' : 'active');
+  if (micDone) micSettingsOpened = false;
   $('desc-mic').textContent = micDone
     ? 'Microphone access granted.'
     : 'Allow microphone access when prompted, or enable SpeakType under Privacy & Security → Microphone in System Settings.';
@@ -89,6 +91,7 @@ function render() {
   }
 
   setStep($('step-acc'), !micDone ? 'locked' : (accDone ? 'done' : 'active'));
+  if (accDone) accSettingsOpened = false;
   $('desc-acc').textContent = accDone
     ? 'Accessibility access granted.'
     : 'Open System Settings and toggle SpeakType on under Privacy & Security → Accessibility.';
@@ -140,6 +143,8 @@ $('btn-mic-settings').onclick = () => {
 };
 
 $('btn-acc-settings').onclick = () => {
+  accSettingsOpened = true;
+  updateRelaunchHints(status.microphone, status.accessibility);
   ttipc.openSystemPane('com.apple.preference.security?Privacy_Accessibility');
 };
 

@@ -44,6 +44,62 @@
     .header h1 { font-size: 19px; font-weight: 650; letter-spacing: -0.01em; }
     .header p { font-size: 13px; color: var(--text-muted); margin-top: 4px; }
 
+    .widget-hint {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 14px 16px;
+      margin-bottom: 16px;
+      background: linear-gradient(135deg, rgba(239, 100, 60, 0.12) 0%, rgba(239, 100, 60, 0.04) 100%);
+      border: 1px solid rgba(239, 100, 60, 0.28);
+      border-radius: 12px;
+      flex-shrink: 0;
+      overflow: visible;
+    }
+    .widget-hint-visual {
+      position: relative;
+      flex-shrink: 0;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(30, 30, 30, 0.95);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 14px rgba(255, 110, 50, 0.35);
+    }
+    .widget-hint-visual::before,
+    .widget-hint-visual::after {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      border-radius: 50%;
+      border: 2px solid rgba(239, 100, 60, 0.65);
+      will-change: transform, opacity;
+      animation: hintRipple 2.4s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+      pointer-events: none;
+    }
+    .widget-hint-visual::after {
+      animation-delay: 1.2s;
+    }
+    .widget-hint-visual svg {
+      position: relative;
+      z-index: 1;
+      width: 20px;
+      height: 20px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+    @keyframes hintRipple {
+      0% { transform: scale(1); opacity: 0.8; }
+      100% { transform: scale(1.75); opacity: 0; }
+    }
+    .widget-hint-text {
+      font-size: 13px;
+      line-height: 1.45;
+      color: #c9b0a4;
+    }
+    .widget-hint-text strong { color: #ffe8dc; font-weight: 600; }
+
     .steps-scroll {
       flex: 1;
       min-height: 0;
@@ -214,6 +270,16 @@
     <p>Three quick steps to get you set up.</p>
   </div>
 
+  <div class="widget-hint">
+    <div class="widget-hint-visual">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+      </svg>
+    </div>
+    <p class="widget-hint-text">The <strong>pulsing orange mic bubble</strong> on your screen is SpeakType. Complete the steps below, then click it to start dictating.</p>
+  </div>
+
   <div class="steps-scroll" id="steps-scroll">
   <div class="steps">
     <div class="step" id="step-mic">
@@ -224,7 +290,7 @@
         </div>
         <div class="step-desc" id="desc-mic">Required to record your voice.</div>
         <p class="step-relaunch-hint" id="hint-mic-relaunch" hidden>
-          If you just enabled microphone access in System Settings, quit and reopen SpeakType.
+          Microphone access isn't active yet. If you just enabled it in System Settings, quit and reopen SpeakType once.
         </p>
         <div class="step-actions">
           <button class="btn settings" id="btn-mic-settings">
@@ -244,7 +310,7 @@
         </div>
         <div class="step-desc" id="desc-acc">Required to paste text into other apps.</div>
         <p class="step-relaunch-hint" id="hint-acc-relaunch" hidden>
-          After toggling SpeakType on in Accessibility, quit and reopen SpeakType for the change to take effect.
+          Accessibility isn't active yet. If you just enabled SpeakType there, quit and reopen once.
         </p>
         <div class="step-actions">
           <button class="btn settings" id="btn-acc-settings">

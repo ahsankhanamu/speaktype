@@ -117,11 +117,27 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
         }
     };
 
-    let sidecar_cmd = sidecar_cmd
+    let mut sidecar_cmd = sidecar_cmd
         .arg("-m")
         .arg(&model_path.to_string_lossy().to_string())
         .arg("--port")
         .arg(port.to_string());
+
+    if let Some(vad_path) = crate::downloader::ensure_vad_model_blocking() {
+        logging::log_message(&format!(
+            "[server] Enabling Silero VAD ({})",
+            vad_path.display()
+        ));
+        sidecar_cmd = sidecar_cmd
+            .arg("--vad")
+            .arg("--vad-model")
+            .arg(vad_path.to_string_lossy().to_string())
+            .arg("--vad-threshold")
+            .arg("0.45")
+            .arg("--suppress-nst");
+    } else {
+        logging::log_message("[server] Silero VAD unavailable — starting without VAD trim");
+    }
 
     match sidecar_cmd.spawn() {
         Ok((mut rx, child)) => {
@@ -241,6 +257,59 @@ pub async fn wait_for_server(port: u16) -> bool {
 /// The port the server is currently running on, if any.
 pub fn current_port() -> Option<u16> {
     SERVER_PORT.lock().ok().and_then(|p| *p)
+}
+
+pub fn is_running() -> bool {
+    current_port().is_some()
+}
+
+/// Start the embedded sidecar if it is not already running.
+/// Returns `None` when this build has no embedded server (external API mode).
+pub async fn ensure_running(app: &AppHandle, model: &str) -> Result<Option<ServerInfo>, String> {
+    if !has_embedded_server(app) {
+        return Ok(None);
+    }
+
+    if is_running() {
+        let port = current_port().ok_or_else(|| "Server is running but port is unknown".to_string())?;
+        return Ok(Some(ServerInfo {
+            port,
+            model: model.to_string(),
+        }));
+    }
+
+    if !crate::downloader::is_model_complete(model) {
+        return Err(format!("Model '{}' is not fully downloaded", model));
+    }
+
+    let _ = app.emit(
+        "server:starting",
+        serde_json::json!({ "reason": "load_on_demand" }),
+    );
+
+    let Some(info) = start_server(app, model) else {
+        let _ = app.emit(
+            "server:error",
+            serde_json::json!({ "reason": "Failed to start server — check that the model is fully downloaded." }),
+        );
+        return Err("Failed to start whisper server".to_string());
+    };
+
+    if !wait_for_server(info.port).await {
+        stop_server();
+        let _ = app.emit(
+            "server:error",
+            serde_json::json!({ "reason": "Server failed to start within timeout" }),
+        );
+        return Err("Server failed to start within timeout".to_string());
+    }
+
+    let _ = app.emit(
+        "server:ready",
+        serde_json::json!({ "port": info.port, "model": info.model }),
+    );
+
+    Ok(Some(info))
 }
 
 pub fn should_auto_restart() -> bool {

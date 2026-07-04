@@ -7,7 +7,26 @@
   <link rel="stylesheet" href="styles/widget.css">
 </head>
 <body>
-  <div id="widget" class="widget idle">
+  <div id="widget-root" class="widget-root">
+  <div id="ready-card" class="ready-card hidden">
+    <button class="ready-close" id="ready-close" title="Dismiss" aria-label="Dismiss">×</button>
+    <p class="ready-title">You're all set</p>
+    <p class="ready-hint" id="ready-hint">Click the mic to start dictating</p>
+  </div>
+  <svg id="ready-connector" class="ready-connector hidden" viewBox="0 0 28 12" aria-hidden="true">
+    <defs>
+      <marker id="ready-arrowhead" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto">
+        <path d="M1 1 L7 4 L1 7 Z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <line class="ready-connector-line" x1="1" y1="6" x2="20" y2="6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" marker-end="url(#ready-arrowhead)"/>
+  </svg>
+  <div class="widget-shell" id="widget-shell">
+    <div class="beacon-rings hidden" id="beacon-rings" aria-hidden="true">
+      <span class="beacon-ring"></span>
+      <span class="beacon-ring beacon-ring--delay"></span>
+    </div>
+    <div id="widget" class="widget idle">
     <div class="state-idle">
       <div class="icon-container">
         <svg class="mic-icon" viewBox="0 0 24 24" fill="currentColor">
@@ -19,10 +38,20 @@
       </div>
     </div>
     <div class="state-recording">
-      <div class="waveform">
+      <button type="button" class="rec-btn rec-cancel" id="rec-cancel" title="Cancel" aria-label="Cancel recording">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">
+          <path d="M6 6l12 12M18 6l-12 12"/>
+        </svg>
+      </button>
+      <div class="waveform" aria-hidden="true">
         <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
       </div>
       <span class="timer">0.0s</span>
+      <button type="button" class="rec-btn rec-stop" id="rec-stop" title="Stop and transcribe" aria-label="Stop recording">
+        <svg viewBox="0 0 24 24" fill="currentColor">
+          <rect x="6" y="6" width="12" height="12" rx="2"/>
+        </svg>
+      </button>
     </div>
     <div class="state-transcribing">
       <div class="dots">
@@ -39,6 +68,8 @@
         <path d="M6 6l12 12M18 6l-12 12"/>
       </svg>
     </div>
+  </div>
+  </div>
   </div>
 
   <div id="welcome-overlay" class="welcome-overlay" style="display:none">
@@ -72,6 +103,7 @@
     </div>
   </div>
 
+  <script src="scripts/format.js"></script>
   <script>
     function getInvoke() {
       if (window.__TAURI__ && window.__TAURI__.core) return window.__TAURI__.core.invoke;
@@ -96,6 +128,7 @@
         return fn(eventName, callback);
       },
       toggleRecording(isRecording) { return this.invoke('toggle_recording', { isRecording }); },
+      cancelRecording() { return this.invoke('cancel_recording'); },
       openSettings() { return this.invoke('open_settings'); },
       openOnboarding() { return this.invoke('open_onboarding'); },
       checkPermissions() { return this.invoke('check_permissions'); },
@@ -103,16 +136,20 @@
       openSystemPane(pane) { return this.invoke('open_system_pane', { pane }); },
     };
 
-    const IDLE_WIN_W = 80;
-    const ACTIVE_WIN_W = 180;
-    const WIN_H = 80;
-    const TIMER_TICK_MS = 100;
+    const BEACON_RING_EXTRA = 28;
+    const SHELL_VERT_SLACK = 14;
+    const READY_PAD_X = 24;
+    const READY_PAD_Y = 16;
+    const READY_MIN_W = 260;
+    const READY_MIN_H = 72;
+    const IDLE_SHELL_W = 48;
+    const ACTIVE_SHELL_W = 196;
     const LEVEL_AMP = 15;
-    const SMOOTHING = 0.3;
-    const BAR_MIN_H = 4;
-    const BAR_AMP = 24;
-    const BAR_JITTER_BASE = 0.7;
-    const BAR_JITTER_RANGE = 0.3;
+    const LEVEL_SMOOTH = 0.11;
+    const BAR_SMOOTH = 0.16;
+    const BAR_MAX_H = 28;
+    const BAR_MIN_SCALE = 4 / BAR_MAX_H;
+    const BAR_WOBBLE_SPEED = 3.8;
     const DEFAULT_FLASH_MS = 1500;
     const DRAG_THRESHOLD = 5;
     const OVERLAY_DISMISS_MS = 3000;
@@ -120,15 +157,251 @@
     const CRASH_FLASH_MS = 3000;
     const SERVER_READY_DISMISS_MS = 3000;
     const LOCATE_HIGHLIGHT_MS = 2500;
+    const GUIDE_READY_MS = 10000;
+    const ONBOARDING_POLL_MS = 2000;
 
+    const widgetRoot = document.getElementById('widget-root');
+    const beaconRings = document.getElementById('beacon-rings');
+    const readyCard = document.getElementById('ready-card');
+    const readyConnector = document.getElementById('ready-connector');
+    const readyHint = document.getElementById('ready-hint');
+    const readyClose = document.getElementById('ready-close');
+    const widgetShell = document.getElementById('widget-shell');
     const widget = document.getElementById('widget');
     const timer = document.querySelector('.timer');
-    const bars = document.querySelectorAll('.bar');
+    const recCancel = document.getElementById('rec-cancel');
+    const recStop = document.getElementById('rec-stop');
     const overlay = document.getElementById('welcome-overlay');
     let currentState = 'idle';
     let permissionsMissing = false;
+    let beaconActive = false;
+    let readyVisible = false;
+    let readyDismissed = false;
+    let onboardingSessionActive = false;
+    let readyGuideTimer = null;
+    let onboardingPollInterval = null;
+    let locateHighlightActive = false;
     let timerInterval = null;
     let recordingStart = 0;
+    let waveAnimFrame = null;
+    let targetLevel = 0;
+    let lastWindowWidth = IDLE_SHELL_W + 24;
+    const bars = document.querySelectorAll('.bar');
+    let resizeSeq = Promise.resolve();
+
+    async function setWindowSizeKeepRightEdge(w, h) {
+      resizeSeq = resizeSeq.then(() => setWindowSizeKeepRightEdgeImpl(w, h));
+      return resizeSeq;
+    }
+
+    async function setWindowSizeKeepRightEdgeImpl(w, h) {
+      const tauriWin = window.__TAURI__ && window.__TAURI__.window;
+      if (!tauriWin) {
+        setWindowSize(w, h);
+        lastWindowWidth = w;
+        return;
+      }
+      try {
+        const win = tauriWin.getCurrentWindow();
+        const scale = await win.scaleFactor();
+        const pos = await win.outerPosition();
+        const delta = w - lastWindowWidth;
+        if (delta !== 0) {
+          await win.setPosition(new window.__TAURI__.dpi.PhysicalPosition(
+            Math.round(pos.x - delta * scale),
+            pos.y
+          ));
+        }
+        await win.setSize(new window.__TAURI__.dpi.LogicalSize(w, h));
+        lastWindowWidth = w;
+      } catch (e) {
+        setWindowSize(w, h);
+        lastWindowWidth = w;
+      }
+    }
+
+    function setWindowSize(w, h) {
+      if (window.__TAURI__ && window.__TAURI__.window) {
+        const win = window.__TAURI__.window.getCurrentWindow();
+        win.setSize(new window.__TAURI__.dpi.LogicalSize(w, h)).catch(() => {});
+      } else {
+        ttipc.invoke('plugin:window|set_size', {
+          label: 'main',
+          value: { type: 'Logical', data: { width: w, height: h } },
+        }).catch(() => {});
+      }
+    }
+
+    function rootPadding() {
+      const s = getComputedStyle(widgetRoot);
+      return {
+        x: parseFloat(s.paddingLeft) + parseFloat(s.paddingRight),
+        y: parseFloat(s.paddingTop) + parseFloat(s.paddingBottom),
+      };
+    }
+
+    async function fitWindowToContent() {
+      await waitForLayout();
+
+      if (readyVisible && !readyCard.classList.contains('hidden')) {
+        await fitReadyWindow();
+        return;
+      }
+
+      const pad = rootPadding();
+      const shellW = widgetShell.offsetWidth || IDLE_SHELL_W;
+      const shellH = widgetShell.offsetHeight || IDLE_SHELL_W;
+      const showBeaconRipple =
+        currentState === 'idle' && (beaconActive || locateHighlightActive);
+
+      let contentW = shellW;
+      let contentH = shellH + SHELL_VERT_SLACK * 2;
+      if (showBeaconRipple) {
+        contentW = shellW + BEACON_RING_EXTRA;
+        contentH = Math.max(contentH, shellH + BEACON_RING_EXTRA * 2);
+      }
+      if (currentState === 'recording') {
+        contentH = Math.max(contentH, shellH + 40);
+      }
+
+      const w = Math.ceil(contentW + pad.x);
+      const h = Math.ceil(contentH + pad.y);
+
+      await setWindowSizeKeepRightEdge(w, h);
+    }
+
+    function syncWindowSize() {
+      fitWindowToContent().catch(() => {});
+    }
+
+    async function initWidgetLayout() {
+      const tauriWin = window.__TAURI__ && window.__TAURI__.window;
+      if (tauriWin) {
+        try {
+          const win = tauriWin.getCurrentWindow();
+          const size = await win.innerSize();
+          const scale = await win.scaleFactor();
+          lastWindowWidth = Math.round(size.width / scale);
+        } catch (e) {
+          lastWindowWidth = IDLE_SHELL_W + 24;
+        }
+      }
+      syncWindowSize();
+    }
+
+    function syncBeaconVisuals() {
+      const show = beaconActive && currentState === 'idle';
+      widget.classList.toggle('beacon', show);
+      widgetRoot.classList.toggle('beacon-active', show);
+      beaconRings.classList.toggle('hidden', !show);
+      syncWindowSize();
+    }
+
+    function setBeacon(on) {
+      beaconActive = on;
+      syncBeaconVisuals();
+    }
+
+    function waitForLayout() {
+      return new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(resolve));
+      });
+    }
+
+    function clearBeaconVisuals() {
+      beaconActive = false;
+      widget.classList.remove('beacon', 'locate');
+      widgetRoot.classList.remove('beacon-active');
+      beaconRings.classList.add('hidden');
+    }
+
+    async function fitReadyWindow() {
+      await waitForLayout();
+      if (readyCard.classList.contains('hidden')) return;
+
+      const shellW = widgetShell.offsetWidth || 48;
+      const cardW = readyCard.offsetWidth || 168;
+      const connW = readyConnector.classList.contains('hidden') ? 0 : (readyConnector.offsetWidth || 28);
+      const gaps = 12;
+      const rootPad = 24;
+      const w = cardW + connW + shellW + gaps + rootPad + READY_PAD_X;
+      const h = Math.max(readyCard.offsetHeight, shellW) + READY_PAD_Y;
+
+      await setWindowSizeKeepRightEdge(
+        Math.max(w, READY_MIN_W),
+        Math.max(h, READY_MIN_H)
+      );
+    }
+
+    async function showReadyTooltip(hotkey) {
+      readyDismissed = false;
+      readyVisible = true;
+      clearBeaconVisuals();
+      readyHint.textContent = 'Click the mic or press ' + formatHotkey(hotkey, { compact: true });
+      widgetRoot.classList.add('ready');
+      readyCard.classList.remove('hidden');
+      readyConnector.classList.remove('hidden');
+      await fitReadyWindow();
+      clearTimeout(readyGuideTimer);
+      readyGuideTimer = setTimeout(() => dismissReady(), GUIDE_READY_MS);
+    }
+
+    function dismissReady() {
+      readyDismissed = true;
+      readyVisible = false;
+      readyCard.classList.add('hidden');
+      readyConnector.classList.add('hidden');
+      widgetRoot.classList.remove('ready');
+      clearTimeout(readyGuideTimer);
+      syncWindowSize();
+    }
+
+    async function maybeShowReadyGuide() {
+      if (readyDismissed || readyVisible) return;
+      try {
+        const s = await ttipc.invoke('get_onboarding_status');
+        if (!s?.microphone || !s?.accessibility || !s?.model) return;
+        const settings = await ttipc.invoke('get_settings');
+        await showReadyTooltip(settings?.hotkey || 'Super+Control');
+      } catch (e) {
+        console.error('[ready] guide error:', e);
+      }
+    }
+
+    readyClose.onclick = (e) => {
+      e.stopPropagation();
+      dismissReady();
+    };
+
+    async function pollOnboardingBeacon() {
+      if (readyVisible || readyDismissed) return;
+      try {
+        const s = await ttipc.invoke('get_onboarding_status');
+        if (!s) return;
+        syncPermissionState(!!s.microphone, !!s.accessibility);
+        const allDone = s.microphone && s.accessibility && s.model;
+        if (allDone && !onboardingSessionActive) {
+          setBeacon(false);
+          if (onboardingPollInterval) {
+            clearInterval(onboardingPollInterval);
+            onboardingPollInterval = null;
+          }
+          return;
+        }
+        if (!allDone || onboardingSessionActive) {
+          onboardingSessionActive = onboardingSessionActive || !allDone;
+          setBeacon(true);
+        }
+      } catch (e) {
+        console.error('[beacon] poll error:', e);
+      }
+    }
+
+    function startOnboardingPolling() {
+      if (onboardingPollInterval) return;
+      pollOnboardingBeacon();
+      onboardingPollInterval = setInterval(pollOnboardingBeacon, ONBOARDING_POLL_MS);
+    }
 
     function syncPermissionState(mic, acc) {
       const warn = document.getElementById('permWarning');
@@ -149,39 +422,88 @@
     function setState(s) {
       currentState = s;
       widget.className = 'widget ' + s;
-      const w = (s === 'recording' || s === 'transcribing') ? ACTIVE_WIN_W : IDLE_WIN_W;
-      if (window.__TAURI__ && window.__TAURI__.window) {
-        const win = window.__TAURI__.window.getCurrentWindow();
-        win.setSize(new window.__TAURI__.dpi.LogicalSize(w, WIN_H)).catch(() => {});
+      if (s === 'recording' || s === 'transcribing') {
+        dismissReady();
+        widget.classList.remove('beacon', 'locate');
+        widgetRoot.classList.remove('beacon-active');
+        beaconRings.classList.add('hidden');
       } else {
-        ttipc.invoke('plugin:window|set_size', {
-          label: 'main',
-          value: { type: 'Logical', data: { width: w, height: WIN_H } },
-        }).catch(() => {});
+        syncBeaconVisuals();
       }
+      syncWindowSize();
     }
 
     function startTimer() {
       recordingStart = Date.now();
       timer.textContent = '0.0s';
-      timerInterval = setInterval(() => {
-        timer.textContent = ((Date.now() - recordingStart) / 1000).toFixed(1) + 's';
-      }, TIMER_TICK_MS);
     }
 
-    function stopTimer() { clearInterval(timerInterval); timerInterval = null; }
+    function stopTimer() {
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+    }
 
     const barWeights = [0.4, 0.55, 0.75, 0.9, 1.0, 0.9, 0.75, 0.55, 0.4];
+    const barPhases = [...bars].map((_, i) => i * 0.65);
+    const barScales = [...bars].map(() => BAR_MIN_SCALE);
     let smoothedLevel = 0;
+    let waveAnimStart = 0;
 
-    function updateWaveform(level) {
-      const target = Math.min(level * LEVEL_AMP, 1);
-      smoothedLevel += (target - smoothedLevel) * SMOOTHING;
-      widget.style.setProperty('--level', smoothedLevel.toFixed(3));
+    function resetWaveform() {
+      targetLevel = 0;
+      smoothedLevel = 0;
+      waveAnimStart = 0;
+      widget.style.setProperty('--level', '0');
       bars.forEach((b, i) => {
-        const h = BAR_MIN_H + BAR_AMP * smoothedLevel * barWeights[i] * (BAR_JITTER_BASE + Math.random() * BAR_JITTER_RANGE);
-        b.style.height = Math.round(h) + 'px';
+        barScales[i] = BAR_MIN_SCALE;
+        b.style.transform = `scaleY(${BAR_MIN_SCALE})`;
       });
+    }
+
+    function setTargetLevel(level) {
+      targetLevel = Math.min(level * LEVEL_AMP, 1);
+    }
+
+    function tickWaveform(ts) {
+      if (currentState !== 'recording') {
+        waveAnimFrame = null;
+        return;
+      }
+
+      if (!waveAnimStart) waveAnimStart = ts;
+      const t = (ts - waveAnimStart) / 1000;
+
+      smoothedLevel += (targetLevel - smoothedLevel) * LEVEL_SMOOTH;
+      widget.style.setProperty('--level', smoothedLevel.toFixed(4));
+
+      bars.forEach((b, i) => {
+        const wobble = 0.82 + 0.18 * Math.sin(t * BAR_WOBBLE_SPEED + barPhases[i]);
+        const targetScale = BAR_MIN_SCALE + (1 - BAR_MIN_SCALE) * smoothedLevel * barWeights[i] * wobble;
+        barScales[i] += (targetScale - barScales[i]) * BAR_SMOOTH;
+        b.style.transform = `scaleY(${barScales[i].toFixed(4)})`;
+      });
+
+      const elapsed = (Date.now() - recordingStart) / 1000;
+      timer.textContent = elapsed >= 60
+        ? formatDuration(elapsed)
+        : elapsed.toFixed(1) + 's';
+
+      waveAnimFrame = requestAnimationFrame(tickWaveform);
+    }
+
+    function startWaveformLoop() {
+      waveAnimStart = 0;
+      if (!waveAnimFrame) waveAnimFrame = requestAnimationFrame(tickWaveform);
+    }
+
+    function stopWaveformLoop() {
+      if (waveAnimFrame) {
+        cancelAnimationFrame(waveAnimFrame);
+        waveAnimFrame = null;
+      }
+      resetWaveform();
     }
 
     function flashState(s, ms) {
@@ -190,19 +512,50 @@
     }
 
     let locateTimer = null;
+
     function highlightWidget(ms) {
       const duration = ms || LOCATE_HIGHLIGHT_MS;
+      locateHighlightActive = true;
       widget.classList.add('locate');
+      widgetRoot.classList.add('beacon-active');
+      beaconRings.classList.remove('hidden');
+      syncWindowSize();
       clearTimeout(locateTimer);
-      locateTimer = setTimeout(() => widget.classList.remove('locate'), duration);
+      locateTimer = setTimeout(() => {
+        locateHighlightActive = false;
+        widget.classList.remove('locate');
+        if (!beaconActive) {
+          widgetRoot.classList.remove('beacon-active');
+          beaconRings.classList.add('hidden');
+        }
+        syncWindowSize();
+      }, duration);
     }
 
     let _dragState = null;
 
-    widget.addEventListener('mousedown', (e) => {
+    function startDragTracking(e, source) {
       if (e.button !== 0) return;
-      _dragState = { x: e.screenX, y: e.screenY, dragging: false };
-    });
+      if (source === 'widget') {
+        if (currentState === 'transcribing') return;
+        _dragState = { x: e.screenX, y: e.screenY, dragging: false, source: 'widget' };
+        return;
+      }
+      if (currentState === 'recording' || currentState === 'transcribing') return;
+      _dragState = { x: e.screenX, y: e.screenY, dragging: false, source };
+    }
+
+    function bindDragSurface(el, { source, ignoreSelector } = {}) {
+      if (!el) return;
+      el.addEventListener('mousedown', (e) => {
+        if (ignoreSelector && e.target.closest(ignoreSelector)) return;
+        startDragTracking(e, source);
+      });
+    }
+
+    bindDragSurface(widgetShell, { source: 'widget', ignoreSelector: '.rec-btn' });
+    bindDragSurface(readyCard, { source: 'ready', ignoreSelector: '.ready-close' });
+    bindDragSurface(readyConnector, { source: 'ready' });
 
     document.addEventListener('mousemove', (e) => {
       if (!_dragState || _dragState.dragging) return;
@@ -222,26 +575,39 @@
     document.addEventListener('mouseup', (e) => {
       if (!_dragState) return;
       const wasDrag = _dragState.dragging;
+      const source = _dragState.source;
       _dragState = null;
       if (wasDrag) {
         ttipc.invoke('save_window_position').catch(() => {});
         return;
       }
 
-      if (currentState === 'idle') {
-        if (permissionsMissing) {
-          ttipc.openOnboarding();
-        } else {
-          // toggle_recording hard-gates on requirements and reopens onboarding
-          // itself if a model is still missing, so just attempt to start.
-          ttipc.toggleRecording(false).catch(e2 => console.error('[toggle] start error:', e2));
-        }
-      } else if (currentState === 'recording') {
-        ttipc.toggleRecording(true).catch(e2 => console.error('[toggle] stop error:', e2));
+      if (source !== 'widget') return;
+
+      if (currentState === 'transcribing') return;
+
+      if (currentState === 'recording') return;
+
+      if (permissionsMissing) {
+        ttipc.openOnboarding();
+      } else {
+        ttipc.toggleRecording(currentState === 'recording').catch(e2 => console.error('[toggle] error:', e2));
       }
     });
 
     widget.addEventListener('contextmenu', (e) => { e.preventDefault(); ttipc.openSettings().catch(() => {}); });
+
+    recStop.onclick = (e) => {
+      e.stopPropagation();
+      if (currentState !== 'recording') return;
+      ttipc.toggleRecording(true).catch(e2 => console.error('[stop] error:', e2));
+    };
+
+    recCancel.onclick = (e) => {
+      e.stopPropagation();
+      if (currentState !== 'recording') return;
+      ttipc.cancelRecording().catch(e2 => console.error('[cancel] error:', e2));
+    };
 
     async function updatePermissionOverlay() {
       try {
@@ -329,23 +695,39 @@
     if (listenFn) {
       const L = (ev, fn) => ttipc.listen(ev, fn);
       L('sidecar:ready', () => console.log('[sidecar] ready'));
-      L('sidecar:recording_started', () => { setState('recording'); startTimer(); });
+      L('sidecar:recording_started', () => {
+        setState('recording');
+        startTimer();
+        startWaveformLoop();
+      });
       L('sidecar:audio_level', (e) => {
         if (currentState !== 'recording') return;
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
-        updateWaveform(d.level || 0);
+        setTargetLevel(d.level || 0);
       });
-      L('sidecar:recording_stopped', () => { stopTimer(); smoothedLevel = 0; });
-      L('sidecar:transcribing', () => { stopTimer(); bars.forEach(b => b.style.height = '4px'); setState('transcribing'); });
+      L('sidecar:recording_stopped', () => {
+        stopTimer();
+        stopWaveformLoop();
+      });
+      L('sidecar:recording_cancelled', () => {
+        stopTimer();
+        stopWaveformLoop();
+        setState('idle');
+      });
+      L('sidecar:transcribing', () => {
+        stopTimer();
+        stopWaveformLoop();
+        setState('transcribing');
+      });
       L('sidecar:long_audio', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
         console.log('[widget] Long audio detected:', d.duration_secs, 's');
       });
       L('sidecar:pasted', (e) => { flashState('success'); });
-      L('sidecar:no_speech', () => { stopTimer(); flashState('error'); });
-      L('sidecar:busy', () => { stopTimer(); flashState('error'); });
-      L('sidecar:error', (e) => { stopTimer(); flashState('error'); });
-      L('sidecar:crashed', () => { stopTimer(); flashState('error', CRASH_FLASH_MS); });
+      L('sidecar:no_speech', () => { stopTimer(); stopWaveformLoop(); flashState('error'); });
+      L('sidecar:busy', () => { stopTimer(); stopWaveformLoop(); flashState('error'); });
+      L('sidecar:error', (e) => { stopTimer(); stopWaveformLoop(); flashState('error'); });
+      L('sidecar:crashed', () => { stopTimer(); stopWaveformLoop(); flashState('error', CRASH_FLASH_MS); });
       L('sidecar:permissions', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
         syncPermissionState(!!d.microphone, !!d.accessibility);
@@ -377,6 +759,25 @@
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : (e.payload || {});
         highlightWidget(d.duration_ms);
       });
+      L('onboarding:opened', () => {
+        onboardingSessionActive = true;
+        setBeacon(true);
+        startOnboardingPolling();
+      });
+      L('onboarding:finished', (e) => {
+        const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : (e.payload || {});
+        onboardingSessionActive = false;
+        if (onboardingPollInterval) {
+          clearInterval(onboardingPollInterval);
+          onboardingPollInterval = null;
+        }
+        showReadyTooltip(d.hotkey || 'Super+Control');
+      });
+      L('sidecar:onboarding_required', () => {
+        onboardingSessionActive = true;
+        setBeacon(true);
+        startOnboardingPolling();
+      });
 
     } else {
       console.warn('[widget] No Tauri event API');
@@ -384,10 +785,23 @@
 
     pollWidgetPermissions();
     setInterval(pollWidgetPermissions, PERM_POLL_MS);
+    startOnboardingPolling();
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) pollWidgetPermissions();
+      if (!document.hidden) {
+        pollWidgetPermissions();
+        if (!readyDismissed && !readyVisible) pollOnboardingBeacon();
+      }
     });
 
+    if (typeof ResizeObserver !== 'undefined') {
+      const resizeObserver = new ResizeObserver(() => syncWindowSize());
+      resizeObserver.observe(widgetShell);
+      resizeObserver.observe(readyCard);
+    }
+
+    initWidgetLayout().then(() => {
+      setTimeout(maybeShowReadyGuide, 500);
+    });
     console.log('[widget] loaded');
   </script>
 </body>

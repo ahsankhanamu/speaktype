@@ -5,6 +5,7 @@ mod download_queue;
 mod downloader;
 mod format;
 mod history;
+mod hotkey;
 mod logging;
 mod paste;
 mod paths;
@@ -25,10 +26,8 @@ use std::time::Duration;
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
-    Emitter, Listener, Manager,
+    Emitter, Listener, Manager, WindowEvent,
 };
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
-
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn object_setClass(
@@ -43,8 +42,22 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .on_window_event(|window, event| {
+            if window.label() != "onboarding" {
+                return;
+            }
+            match event {
+                WindowEvent::Moved(_) | WindowEvent::CloseRequested { .. } => {
+                    if let Some(onboarding) = window.app_handle().get_webview_window("onboarding") {
+                        commands::persist_onboarding_window_position(&onboarding);
+                    }
+                }
+                _ => {}
+            }
+        })
         .invoke_handler(tauri::generate_handler![
             commands::toggle_recording,
+            commands::cancel_recording,
             commands::check_permissions,
             commands::request_accessibility,
             commands::request_microphone_access,
@@ -52,10 +65,15 @@ pub fn run() {
             commands::open_onboarding,
             commands::finish_onboarding,
             commands::open_system_pane,
+            commands::open_models_folder,
+            commands::open_recordings_folder,
             commands::get_settings,
             commands::save_settings,
             commands::update_hotkey,
             commands::check_server,
+            commands::get_server_status,
+            commands::stop_whisper_server,
+            commands::restart_whisper_server,
             commands::load_model,
             commands::queue_model_download,
             commands::restart_model_download,
@@ -72,7 +90,10 @@ pub fn run() {
             commands::reset_widget_position,
             commands::get_history,
             commands::delete_history_entry,
+            commands::delete_history_audio,
             commands::clear_history,
+            commands::get_history_audio,
+            commands::reprocess_history_entry,
         ])
         .setup(|app| {
             logging::init_logging();
@@ -122,14 +143,19 @@ pub fn run() {
 
             let settings = Settings::load();
 
-            if let (Some(x), Some(y)) = (settings.window_x, settings.window_y) {
-                if let Some(window) = app.get_webview_window("main") {
-                    let (cx, cy) = window::apply_saved_position(&window, x, y);
-                    if (cx, cy) != (x, y) {
-                        let mut corrected = settings.clone();
-                        corrected.window_x = Some(cx);
-                        corrected.window_y = Some(cy);
-                        let _ = corrected.save();
+            if let Some(window) = app.get_webview_window("main") {
+                match (settings.window_x, settings.window_y) {
+                    (Some(x), Some(y)) => {
+                        let (cx, cy) = window::apply_saved_position(&window, x, y);
+                        if (cx, cy) != (x, y) {
+                            let mut corrected = settings.clone();
+                            corrected.window_x = Some(cx);
+                            corrected.window_y = Some(cy);
+                            let _ = corrected.save();
+                        }
+                    }
+                    _ => {
+                        window::place_at_default_position(&window);
                     }
                 }
             }
@@ -159,6 +185,7 @@ pub fn run() {
                         panel.setStyleMask(mask);
                         panel.setFloatingPanel(true);
                         panel.setBecomesKeyOnlyIfNeeded(true);
+                        panel.setHasShadow(false);
 
                         logging::log_message("[panel] Widget set as non-activating panel");
                     }
@@ -308,35 +335,9 @@ pub fn run() {
             }
 
             let hotkey_str = settings.hotkey.clone();
-            let app_handle = app.handle().clone();
             let is_rec_for_shortcut = is_recording.clone();
 
-            if let Ok(shortcut) = hotkey_str.parse::<Shortcut>() {
-                app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
-                    if event.state != ShortcutState::Pressed {
-                        return;
-                    }
-                    let currently_recording = is_rec_for_shortcut.load(Ordering::SeqCst);
-
-                    let app_clone = app_handle.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let state = app_clone.state::<AppState>();
-                        if let Err(e) = commands::toggle_recording(
-                            app_clone.clone(),
-                            state,
-                            currently_recording,
-                        ) {
-                            logging::log_message(&format!(
-                                "[shortcut] toggle_recording error: {}",
-                                e
-                            ));
-                        }
-                    });
-                })?;
-                logging::log_message(&format!("[shortcut] Registered: {}", hotkey_str));
-            } else {
-                logging::log_message(&format!("[shortcut] Invalid hotkey: {}", hotkey_str));
-            }
+            hotkey::register_app_hotkey(app.handle(), &hotkey_str, is_rec_for_shortcut);
 
             let record_item =
                 MenuItemBuilder::with_id("record", "Start Recording").build(app)?;
@@ -373,15 +374,13 @@ pub fn run() {
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "record" => {
-                        let currently_recording = is_recording.load(Ordering::SeqCst);
                         let app_clone = app.clone();
                         let record_item = record_item.clone();
                         tauri::async_runtime::spawn(async move {
                             let state = app_clone.state::<AppState>();
-                            if let Err(e) = commands::toggle_recording(
-                                app_clone.clone(),
-                                state,
-                                currently_recording,
+                            if let Err(e) = commands::toggle_recording_impl(
+                                &app_clone,
+                                &state,
                             ) {
                                 logging::log_message(&format!(
                                     "[tray] toggle_recording error: {}",

@@ -369,3 +369,48 @@ pub fn to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
 
     Ok(buf)
 }
+
+/// Decode a mono 16-bit PCM WAV file produced by `to_wav`.
+pub fn from_wav(data: &[u8]) -> Result<(Vec<f32>, u32), String> {
+    if data.len() < 44 {
+        return Err("WAV file too short".into());
+    }
+    if &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
+        return Err("Invalid WAV file".into());
+    }
+
+    let audio_format = u16::from_le_bytes(data[20..22].try_into().map_err(|_| "Invalid WAV")?);
+    if audio_format != 1 {
+        return Err("Only PCM WAV files are supported".into());
+    }
+
+    let sample_rate = u32::from_le_bytes(data[24..28].try_into().map_err(|_| "Invalid WAV")?);
+    let bits_per_sample = u16::from_le_bytes(data[34..36].try_into().map_err(|_| "Invalid WAV")?);
+    if bits_per_sample != 16 {
+        return Err("Only 16-bit WAV files are supported".into());
+    }
+
+    let data_offset = data
+        .windows(4)
+        .position(|w| w == b"data")
+        .ok_or_else(|| "WAV data chunk not found".to_string())?
+        + 4;
+    if data.len() < data_offset + 4 {
+        return Err("WAV data chunk truncated".into());
+    }
+    let data_size = u32::from_le_bytes(
+        data[data_offset..data_offset + 4]
+            .try_into()
+            .map_err(|_| "Invalid WAV data size")?,
+    ) as usize;
+    let pcm_start = data_offset + 4;
+    let pcm_end = pcm_start.saturating_add(data_size).min(data.len());
+    let pcm = &data[pcm_start..pcm_end];
+
+    let samples: Vec<f32> = pcm
+        .chunks_exact(2)
+        .map(|chunk| i16::from_le_bytes([chunk[0], chunk[1]]) as f32 / 32767.0)
+        .collect();
+
+    Ok((samples, sample_rate))
+}

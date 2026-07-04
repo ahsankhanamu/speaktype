@@ -19,6 +19,7 @@ import argparse
 import io
 import json
 import platform
+import re
 import subprocess
 import sys
 import threading
@@ -604,6 +605,10 @@ HALLUCINATION_PHRASES = [
     "see you next time", "the end", "silence", "no speech",
     "inaudible", "[music]", "(music)",
 ]
+HALLUCINATION_FRAGMENTS = [
+    "thank you", "thanks for", "i'm alone", "im alone",
+    "subscribe", "see you next", "bye bye",
+]
 # Single words that are hallucinations when they're the ENTIRE output
 HALLUCINATION_WORDS = {"you", "i", "so", "uh", "um", "hmm", "huh", "ah", "oh", "bye", "goodbye"}
 
@@ -613,12 +618,17 @@ def is_hallucination(text: str) -> bool:
     t = text.lower().strip()
     if len(t) < 3:
         return True
-    # Check if entire text is just a hallucination word
     if t in HALLUCINATION_WORDS:
         return True
-    # Check for hallucination phrases in short outputs
+    if t.count("*") >= 2:
+        return True
+    clauses = [c.strip() for c in re.split(r"[.!?]+", t) if len(c.strip()) > 5]
+    if len(clauses) >= 2 and len(clauses) != len(set(clauses)):
+        return True
     if len(t) < 40:
         return any(phrase in t for phrase in HALLUCINATION_PHRASES)
+    if len(t) < 120:
+        return any(phrase in t for phrase in HALLUCINATION_FRAGMENTS)
     return False
 
 

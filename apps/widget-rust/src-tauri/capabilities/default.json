@@ -19,6 +19,7 @@
     "global-shortcut:default",
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
+    "global-shortcut:allow-unregister-all",
     "global-shortcut:allow-is-registered",
     "core:event:default",
     "core:event:allow-listen",

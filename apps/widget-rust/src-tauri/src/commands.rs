@@ -2,7 +2,7 @@ use crate::audio::{self, AudioRecorder};
 use crate::chunk_session::{ChunkSession, transcribe_chunked};
 use crate::download_queue;
 use crate::downloader;
-use crate::history::History;
+use crate::history::{self, History};
 use crate::format::{catalog_model_size_bytes, format_byte_size, format_byte_size_approx};
 use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
@@ -13,9 +13,11 @@ use crate::tray::{self, TrayState};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
 
 static MODEL_OPERATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
+static RECORDING_START_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 fn emit_model_progress(app: &AppHandle, model: &str, phase: &str, message: &str) {
     let _ = app.emit(
@@ -42,17 +44,19 @@ pub struct AppState {
 pub fn toggle_recording(
     app: AppHandle,
     state: State<'_, AppState>,
-    is_recording: bool,
+    #[allow(unused_variables)] is_recording: bool,
 ) -> Result<(), String> {
+    toggle_recording_impl(&app, &state)
+}
+
+pub fn toggle_recording_impl(app: &AppHandle, state: &AppState) -> Result<(), String> {
+    let currently_recording = state.is_recording.load(Ordering::SeqCst);
     log_message(&format!(
-        "[toggle_recording] is_recording={}",
-        is_recording
+        "[toggle_recording] currently_recording={}",
+        currently_recording
     ));
 
-    if is_recording {
-        if !state.is_recording.load(Ordering::SeqCst) {
-            return Ok(());
-        }
+    if currently_recording {
         state.is_recording.store(false, Ordering::SeqCst);
 
         let (samples, sample_rate) = {
@@ -135,34 +139,130 @@ pub fn toggle_recording(
             return Err("Currently transcribing, please wait".to_string());
         }
 
-        {
-            let mut tw = state.target_window.lock().map_err(|e| e.to_string())?;
-            let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
-            *tw = last.clone();
+        if crate::server::has_embedded_server(app) && !crate::server::is_running() {
+            if RECORDING_START_IN_FLIGHT
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                log_message("[toggle_recording] Model load already in progress");
+                return Ok(());
+            }
+
+            let app = app.clone();
+            let model = model.clone();
+            tauri::async_runtime::spawn(async move {
+                let state = app.state::<AppState>();
+                let result = async {
+                    match crate::server::ensure_running(&app, &model).await {
+                        Ok(Some(info)) => {
+                            let api_url = format!("http://127.0.0.1:{}/inference", info.port);
+                            if let Ok(mut s) = state.settings.lock() {
+                                s.api_url = api_url;
+                                s.model = info.model.clone();
+                                if let Err(e) = s.save() {
+                                    log_message(&format!(
+                                        "[toggle_recording] Failed to save settings after load: {}",
+                                        e
+                                    ));
+                                }
+                            }
+                            begin_recording(&app, &state)
+                        }
+                        Ok(None) => begin_recording(&app, &state),
+                        Err(e) => Err(e),
+                    }
+                }
+                .await;
+
+                RECORDING_START_IN_FLIGHT.store(false, Ordering::SeqCst);
+
+                if let Err(e) = result {
+                    log_message(&format!("[toggle_recording] Model load failed: {}", e));
+                    tones::play(Tone::Error);
+                    let _ = app.emit("server:error", json!({"reason": e}));
+                }
+            });
+            return Ok(());
         }
 
-        {
-            let settings = {
-                let s = state.settings.lock().map_err(|e| e.to_string())?;
-                s.clone()
-            };
-            let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
-            let buffer = recorder.buffer();
-            let sample_rate = recorder.sample_rate();
-            recorder.start(app.clone())?;
-
-            let session = ChunkSession::start(settings, sample_rate, buffer);
-            let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
-            *chunk_session = Some(session);
-            log_message("[toggle_recording] Chunk session started");
-        }
-
-        state.is_recording.store(true, Ordering::SeqCst);
-        tray::set_tray_state(&app, TrayState::Recording);
-        tones::play(Tone::RecordingStart);
-        let _ = app.emit("sidecar:recording_started", json!({}));
+        begin_recording(app, state)?;
     }
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    if !state.is_recording.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    log_message("[cancel_recording] Cancelling active recording");
+    state.is_recording.store(false, Ordering::SeqCst);
+
+    {
+        let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+        let _ = recorder.stop();
+    }
+
+    {
+        let mut session = state.chunk_session.lock().map_err(|e| e.to_string())?;
+        *session = None;
+    }
+
+    tray::set_tray_state(&app, TrayState::Idle);
+    tones::play(Tone::RecordingStop);
+    let _ = app.emit("sidecar:recording_cancelled", json!({}));
+    Ok(())
+}
+
+fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
+    if state.is_recording.load(Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    {
+        let mut tw = state.target_window.lock().map_err(|e| e.to_string())?;
+        let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
+        *tw = last.clone();
+    }
+
+    {
+        let settings = {
+            let s = state.settings.lock().map_err(|e| e.to_string())?;
+            s.clone()
+        };
+        let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+        let buffer = recorder.buffer();
+        let sample_rate = recorder.sample_rate();
+        recorder.start(app.clone())?;
+
+        let session = ChunkSession::start(settings, sample_rate, buffer);
+        let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
+        *chunk_session = Some(session);
+        log_message("[toggle_recording] Chunk session started");
+    }
+
+    state.is_recording.store(true, Ordering::SeqCst);
+    tray::set_tray_state(app, TrayState::Recording);
+    tones::play(Tone::RecordingStart);
+    let _ = app.emit("sidecar:recording_started", json!({}));
+    Ok(())
+}
+
+async fn ensure_settings_api_ready(app: &AppHandle, settings: &mut Settings) -> Result<(), String> {
+    let Some(info) = crate::server::ensure_running(app, &settings.model).await? else {
+        return Ok(());
+    };
+    settings.api_url = format!("http://127.0.0.1:{}/inference", info.port);
+    settings.model = info.model.clone();
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut s) = state.settings.lock() {
+            s.api_url = settings.api_url.clone();
+            s.model = settings.model.clone();
+            let _ = s.save();
+        }
+    }
     Ok(())
 }
 
@@ -170,7 +270,7 @@ async fn process_recording(
     app: AppHandle,
     samples: Vec<f32>,
     sample_rate: u32,
-    settings: Settings,
+    mut settings: Settings,
     target_window: Option<WindowInfo>,
     is_transcribing: Arc<AtomicBool>,
     chunk_session: Option<ChunkSession>,
@@ -185,6 +285,14 @@ async fn process_recording(
     });
 
     let _ = app.emit("sidecar:transcribing", json!({}));
+
+    if let Err(e) = ensure_settings_api_ready(&app, &mut settings).await {
+        log_message(&format!("[process] Failed to load model for transcription: {}", e));
+        tones::play(Tone::Error);
+        tray::flash_error(&app);
+        let _ = app.emit("sidecar:error", json!({"reason": e}));
+        return;
+    }
 
     let duration_secs = samples.len() as f64 / sample_rate as f64;
 
@@ -201,6 +309,19 @@ async fn process_recording(
         return;
     }
 
+    let entry_id = history::new_entry_id();
+    let saved_recording = if settings.save_recordings {
+        match History::save_recording(&entry_id, &samples, sample_rate) {
+            Ok((path, duration)) => Some((path, duration)),
+            Err(e) => {
+                log_message(&format!("[history] Failed to save recording: {}", e));
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let text = if let Some(session) = chunk_session {
         match session.finalize(samples.clone(), sample_rate).await {
             Some(t) if !t.is_empty() => t,
@@ -209,6 +330,7 @@ async fn process_recording(
                 match transcribe_chunked(samples, sample_rate, &settings).await {
                     Ok(t) => t,
                     Err(e) => {
+                        History::discard_saved_recording(&saved_recording);
                         log_message(&format!("[process] Transcription error: {}", e));
                         tones::play(Tone::Error);
                         tray::flash_error(&app);
@@ -222,6 +344,7 @@ async fn process_recording(
         match transcribe_chunked(samples, sample_rate, &settings).await {
             Ok(t) => t,
             Err(e) => {
+                History::discard_saved_recording(&saved_recording);
                 log_message(&format!("[process] Transcription error: {}", e));
                 tones::play(Tone::Error);
                 tray::flash_error(&app);
@@ -232,6 +355,7 @@ async fn process_recording(
     };
 
     if text.is_empty() || transcribe::is_hallucination(&text) {
+        History::discard_saved_recording(&saved_recording);
         log_message(&format!("[process] Empty or hallucination: {:?}", text));
         tones::play(Tone::Error);
         tray::flash_error(&app);
@@ -251,6 +375,7 @@ async fn process_recording(
     .await;
 
     if let Err(e) = paste_result {
+        History::discard_saved_recording(&saved_recording);
         log_message(&format!("[process] Paste task error: {}", e));
         tones::play(Tone::Error);
         tray::flash_error(&app);
@@ -258,7 +383,13 @@ async fn process_recording(
         return;
     }
 
-    if let Err(e) = History::add_entry(&text) {
+    if let Err(e) = History::add_entry(
+        &entry_id,
+        &text,
+        saved_recording.as_ref().map(|(path, _)| path.clone()),
+        saved_recording.as_ref().map(|_| sample_rate),
+        saved_recording.map(|(_, duration)| duration),
+    ) {
         log_message(&format!("[history] Save error: {}", e));
     }
 
@@ -322,23 +453,72 @@ pub async fn open_onboarding(app: AppHandle) -> Result<(), String> {
     open_onboarding_window(&app)
 }
 
+pub fn persist_onboarding_window_position(window: &WebviewWindow) {
+    let app = window.app_handle();
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let Ok(pos) = window.outer_position() else {
+        return;
+    };
+    let (cx, cy) = crate::window::clamp_to_visible_screens(window, pos.x as f64, pos.y as f64);
+    let save_result = {
+        let Ok(mut settings) = state.settings.lock() else {
+            return;
+        };
+        settings.onboarding_window_x = Some(cx);
+        settings.onboarding_window_y = Some(cy);
+        settings.save()
+    };
+    let _ = save_result;
+}
+
 pub fn open_onboarding_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("onboarding") {
         let _ = window.show();
         window.set_focus().map_err(|e| e.to_string())?;
+        position_widget_for_onboarding(app);
+        let _ = app.emit("onboarding:opened", json!({}));
         return Ok(());
     }
 
-    WebviewWindowBuilder::new(app, "onboarding", WebviewUrl::App("onboarding.html".into()))
+    let (saved_x, saved_y) = onboarding_window_position(app);
+
+    let window = WebviewWindowBuilder::new(app, "onboarding", WebviewUrl::App("onboarding.html".into()))
         .title("Welcome to SpeakType")
         .inner_size(440.0, 600.0)
         .resizable(false)
-        .center()
         .always_on_top(true)
         .build()
         .map_err(|e| e.to_string())?;
 
+    if let (Some(x), Some(y)) = (saved_x, saved_y) {
+        crate::window::apply_saved_position(&window, x, y);
+    } else {
+        let _ = window.center();
+    }
+
+    position_widget_for_onboarding(app);
+    let _ = app.emit("onboarding:opened", json!({}));
     Ok(())
+}
+
+fn onboarding_window_position(app: &AppHandle) -> (Option<f64>, Option<f64>) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(settings) = state.settings.lock() {
+            return (settings.onboarding_window_x, settings.onboarding_window_y);
+        }
+    }
+    let settings = Settings::load();
+    (settings.onboarding_window_x, settings.onboarding_window_y)
+}
+
+fn position_widget_for_onboarding(app: &AppHandle) {
+    if let Some(main) = app.get_webview_window("main") {
+        let _ = main.show();
+        let _ = main.set_always_on_top(true);
+        let _ = crate::window::place_at_default_position(&main);
+    }
 }
 
 /// Called when the user finishes onboarding: ensure the server is running for the
@@ -364,12 +544,18 @@ pub async fn finish_onboarding(app: AppHandle, state: State<'_, AppState>) -> Re
     }
 
     if let Some(window) = app.get_webview_window("onboarding") {
+        persist_onboarding_window_position(&window);
         let _ = window.close();
     }
+    let hotkey = {
+        let s = state.settings.lock().map_err(|e| e.to_string())?;
+        s.hotkey.clone()
+    };
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
     }
+    let _ = app.emit("onboarding:finished", json!({ "hotkey": hotkey }));
     emit_permissions(&app);
     Ok(())
 }
@@ -398,24 +584,98 @@ pub fn open_system_pane(_pane: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn open_models_folder(app: AppHandle) -> Result<(), String> {
+    let dir = crate::paths::models_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create models directory: {}", e))?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| format!("Failed to open models folder: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
+    let dir = History::recordings_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Failed to create recordings directory: {}", e))?;
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| format!("Failed to open recordings folder: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
     let settings = state.settings.lock().map_err(|e| e.to_string())?;
     Ok(settings.clone())
 }
 
 #[tauri::command]
-pub fn save_settings(state: State<'_, AppState>, settings: Settings) -> Result<(), String> {
+pub fn save_settings(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    mut settings: Settings,
+) -> Result<(), String> {
+    settings.hotkey = Settings::normalize_hotkey(&settings.hotkey);
+
+    let old_hotkey = {
+        let current = state.settings.lock().map_err(|e| e.to_string())?;
+        current.hotkey.clone()
+    };
+    let hotkey_changed = settings.hotkey != old_hotkey;
+    let new_hotkey = settings.hotkey.clone();
+
     settings.save()?;
-    let mut current = state.settings.lock().map_err(|e| e.to_string())?;
-    *current = settings;
+    {
+        let mut current = state.settings.lock().map_err(|e| e.to_string())?;
+        *current = settings;
+    }
+
+    if hotkey_changed {
+        let ok = crate::hotkey::reregister_app_hotkey(
+            &app,
+            &new_hotkey,
+            state.is_recording.clone(),
+        );
+        let _ = app.emit(
+            "hotkey:registered",
+            json!({ "hotkey": new_hotkey, "success": ok }),
+        );
+    }
+
     Ok(())
 }
 
 #[tauri::command]
-pub fn update_hotkey(state: State<'_, AppState>, hotkey: String) -> Result<(), String> {
-    let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-    settings.hotkey = hotkey;
-    settings.save()
+pub fn update_hotkey(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    hotkey: String,
+) -> Result<(), String> {
+    let normalized = Settings::normalize_hotkey(&hotkey);
+    let old_hotkey = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.hotkey.clone()
+    };
+    if normalized == old_hotkey {
+        return Ok(());
+    }
+
+    {
+        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
+        settings.hotkey = normalized.clone();
+        settings.save()?;
+    }
+
+    let ok = crate::hotkey::reregister_app_hotkey(
+        &app,
+        &normalized,
+        state.is_recording.clone(),
+    );
+    let _ = app.emit(
+        "hotkey:registered",
+        json!({ "hotkey": normalized, "success": ok }),
+    );
+    Ok(())
 }
 
 async fn restart_server_with_model(
@@ -687,6 +947,99 @@ pub async fn check_server(api_url: String) -> Result<serde_json::Value, String> 
 }
 
 #[tauri::command]
+pub fn get_server_status(app: AppHandle) -> Result<serde_json::Value, String> {
+    Ok(json!({
+        "embedded": crate::server::has_embedded_server(&app),
+        "running": crate::server::is_running(),
+        "port": crate::server::current_port(),
+    }))
+}
+
+#[tauri::command]
+pub fn stop_whisper_server(app: AppHandle) -> Result<serde_json::Value, String> {
+    if !crate::server::has_embedded_server(&app) {
+        return Err("No embedded whisper server in this build".to_string());
+    }
+    let was_running = crate::server::is_running();
+    crate::server::stop_server();
+    if was_running {
+        log_message("[server] Model unloaded from memory (model files unchanged on disk)");
+    }
+    let _ = app.emit("server:stopped", json!({ "unloaded": was_running }));
+    Ok(json!({ "stopped": was_running, "unloaded": was_running }))
+}
+
+#[tauri::command]
+pub async fn restart_whisper_server(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    if !crate::server::has_embedded_server(&app) {
+        return Err("No embedded whisper server in this build".to_string());
+    }
+    if MODEL_OPERATION_IN_PROGRESS.load(Ordering::SeqCst) {
+        return Err("A model operation is already in progress".to_string());
+    }
+    if state.is_recording.load(Ordering::SeqCst) {
+        return Err("Stop recording before restarting the server".to_string());
+    }
+
+    let model = {
+        let s = state.settings.lock().map_err(|e| e.to_string())?;
+        s.model.clone()
+    };
+
+    if !downloader::is_model_complete(&model) {
+        return Err(format!(
+            "Model '{}' is not fully downloaded",
+            model
+        ));
+    }
+
+    let _ = app.emit("server:starting", json!({}));
+    crate::server::stop_server();
+    tokio::time::sleep(std::time::Duration::from_millis(600)).await;
+
+    let Some(info) = crate::server::start_server(&app, &model) else {
+        let _ = app.emit(
+            "server:error",
+            json!({ "reason": "Failed to start server — check that the model is fully downloaded." }),
+        );
+        return Err("Failed to start server".to_string());
+    };
+
+    if !crate::server::wait_for_server(info.port).await {
+        crate::server::stop_server();
+        let _ = app.emit(
+            "server:error",
+            json!({ "reason": "Server failed to start within timeout" }),
+        );
+        return Err("Server failed to start within timeout".to_string());
+    }
+
+    let api_url = format!("http://127.0.0.1:{}/inference", info.port);
+    if let Ok(mut s) = state.settings.lock() {
+        s.api_url = api_url.clone();
+        s.model = info.model.clone();
+        if let Err(e) = s.save() {
+            log_message(&format!("[server] Failed to save settings after restart: {}", e));
+        }
+    }
+
+    log_message(&format!("[server] Manual restart succeeded on port {}", info.port));
+    let _ = app.emit(
+        "server:ready",
+        json!({ "port": info.port, "model": info.model }),
+    );
+    Ok(json!({
+        "status": "ready",
+        "port": info.port,
+        "api_url": api_url,
+        "model": info.model,
+    }))
+}
+
+#[tauri::command]
 pub fn get_history() -> Result<History, String> {
     Ok(History::load())
 }
@@ -697,8 +1050,53 @@ pub fn delete_history_entry(index: usize) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn delete_history_audio(index: usize) -> Result<(), String> {
+    History::delete_entry_audio(index)
+}
+
+#[tauri::command]
 pub fn clear_history() -> Result<(), String> {
     History::clear()
+}
+
+#[tauri::command]
+pub fn get_history_audio(index: usize) -> Result<Vec<u8>, String> {
+    History::read_entry_audio_bytes(index)
+}
+
+#[tauri::command]
+pub async fn reprocess_history_entry(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    index: usize,
+) -> Result<serde_json::Value, String> {
+    if state.is_recording.load(Ordering::SeqCst) {
+        return Err("Cannot reprocess while recording".to_string());
+    }
+    if state.is_transcribing.load(Ordering::SeqCst) {
+        return Err("Cannot reprocess while transcribing".to_string());
+    }
+
+    let mut settings = {
+        let s = state.settings.lock().map_err(|e| e.to_string())?;
+        s.clone()
+    };
+
+    ensure_settings_api_ready(&app, &mut settings).await?;
+
+    let (samples, sample_rate) = History::read_entry_audio(index)?;
+
+    let text = transcribe_chunked(samples, sample_rate, &settings)
+        .await
+        .map_err(|e| format!("Transcription failed: {}", e))?;
+
+    if text.is_empty() || transcribe::is_hallucination(&text) {
+        return Err("No speech detected in recording".to_string());
+    }
+
+    History::update_text(index, &text)?;
+
+    Ok(json!({ "text": text, "index": index }))
 }
 
 fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), String> {
@@ -759,6 +1157,9 @@ pub fn minimize_widget(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn quit_app(app: AppHandle) {
+    if let Some(window) = app.get_webview_window("onboarding") {
+        persist_onboarding_window_position(&window);
+    }
     app.exit(0);
 }
 

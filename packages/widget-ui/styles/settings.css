@@ -217,6 +217,21 @@ select {
   flex: 1;
 }
 
+.server-actions {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.server-actions .btn {
+  flex: 1;
+}
+
+.server-actions .btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
 .status-dot {
   width: 12px;
   height: 12px;
@@ -378,6 +393,49 @@ select {
 }
 
 /* History */
+.recordings-folder-hint {
+  margin-bottom: 12px;
+}
+
+.folder-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: #aaa;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.folder-link-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ccc;
+}
+
+.folder-link-btn:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.folder-link-btn:focus-visible {
+  outline: 2px solid #ef643c;
+  outline-offset: 2px;
+}
+
+.folder-link-icon {
+  flex-shrink: 0;
+  display: block;
+}
+
+.folder-link-label {
+  line-height: 1;
+}
+
 .history-list {
   display: flex;
   flex-direction: column;
@@ -393,25 +451,93 @@ select {
 
 .history-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 8px;
   margin-bottom: 4px;
 }
 
 .history-entry .history-time {
+  flex: 1;
+  min-width: 0;
   font-size: 11px;
   color: #666;
+}
+
+.history-audio-tag {
+  font-size: 10px;
+  color: #888;
+  background: #1f1f1f;
+  border: 1px solid #333;
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.history-audio-player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #2e2e2e;
+}
+
+.history-audio-player audio {
+  display: none;
+}
+
+.history-play-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #3a3a3a;
+  border-radius: 50%;
+  background: #1f1f1f;
+  color: #e0e0e0;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.history-play-btn:hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: #555;
+}
+
+.history-play-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.history-seek {
+  flex: 1;
+  min-width: 0;
+  height: 4px;
+  accent-color: #3b82f6;
+  cursor: pointer;
+}
+
+.history-seek:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.history-audio-time {
+  font-size: 10px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 88px;
+  text-align: right;
 }
 
 .history-entry-actions {
   display: flex;
   gap: 4px;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.history-entry:hover .history-entry-actions {
-  opacity: 1;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .history-action-btn {
@@ -436,6 +562,47 @@ select {
   color: #ef4444;
   background: rgba(239, 68, 68, 0.1);
   border-color: rgba(239, 68, 68, 0.3);
+}
+
+.history-action-btn.delete-audio:hover {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.history-action-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.history-action-btn.confirm-armed {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.35);
+  min-width: 52px;
+  justify-content: center;
+}
+
+.history-action-btn.confirm-armed.delete-audio {
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.35);
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #e0e0e0;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #3b82f6;
+  cursor: pointer;
 }
 
 .history-entry .history-text {

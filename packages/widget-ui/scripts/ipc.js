@@ -31,6 +31,10 @@ const ttipc = {
     return this.invoke('toggle_recording', { isRecording });
   },
 
+  cancelRecording() {
+    return this.invoke('cancel_recording');
+  },
+
   getSettings() {
     return this.invoke('get_settings');
   },
@@ -45,6 +49,18 @@ const ttipc = {
 
   checkServer(apiUrl) {
     return this.invoke('check_server', { apiUrl });
+  },
+
+  getServerStatus() {
+    return this.invoke('get_server_status');
+  },
+
+  stopWhisperServer() {
+    return this.invoke('stop_whisper_server');
+  },
+
+  restartWhisperServer() {
+    return this.invoke('restart_whisper_server');
   },
 
   openAbout() {
@@ -83,8 +99,20 @@ const ttipc = {
     return this.invoke('delete_history_entry', { index });
   },
 
+  deleteHistoryAudio(index) {
+    return this.invoke('delete_history_audio', { index });
+  },
+
   clearHistory() {
     return this.invoke('clear_history');
+  },
+
+  reprocessHistoryEntry(index) {
+    return this.invoke('reprocess_history_entry', { index });
+  },
+
+  getHistoryAudio(index) {
+    return this.invoke('get_history_audio', { index });
   },
 
   checkPermissions() {
@@ -97,6 +125,14 @@ const ttipc = {
 
   openSystemPane(pane) {
     return this.invoke('open_system_pane', { pane });
+  },
+
+  openModelsFolder() {
+    return this.invoke('open_models_folder');
+  },
+
+  openRecordingsFolder() {
+    return this.invoke('open_recordings_folder');
   },
 
   loadModel(model) {
