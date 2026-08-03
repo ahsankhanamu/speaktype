@@ -12,6 +12,7 @@ Build the SpeakType desktop widget on macOS. End users should **download the `.d
 | Xcode Command Line Tools | `xcode-select --install` |
 | Rust | 1.93+ (see `apps/widget-rust/rust-toolchain.toml`) |
 | cmake | `brew install cmake` |
+| librsvg | `brew install librsvg` — provides `rsvg-convert` for DMG background |
 | Tauri CLI 2 | `cargo install tauri-cli` |
 | Python (optional) | 3.10+ for `make install` — prefers `python3.12` or `python3.11` if installed |
 

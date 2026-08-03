@@ -12,6 +12,7 @@ SpeakType is push-to-talk voice typing with local Whisper transcription. Pick th
 | Python CLI on Windows | [Windows setup](install/windows.md) |
 | Decide between widget and CLI | [Getting started](getting-started.md) |
 | Build the widget from source | [Widget build guide](build-widget-from-source.md) |
+| New Mac developer setup (CLI + signing) | [Setup on a new Mac](setup-new-mac.md) |
 | macOS permissions (mic + accessibility) | [Permissions](permissions.md) |
 | Privacy and data handling | [Privacy](privacy.md) |
 | CLI deep dive (flags, options) | [Client setup](client-setup.md) |

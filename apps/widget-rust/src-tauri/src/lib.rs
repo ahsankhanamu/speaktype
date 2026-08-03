@@ -369,7 +369,8 @@ pub fn run() {
             };
             let _tray = TrayIconBuilder::with_id(tray::TRAY_ID)
                 .icon(tray_icon)
-                .icon_as_template(false)
+                .icon_as_template(true)
+                .title("ST")
                 .menu(&menu)
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
@@ -421,6 +422,8 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
+
+            logging::log_message("[tray] Menu bar icon created (id=speaktype-tray)");
 
             Ok(())
         })

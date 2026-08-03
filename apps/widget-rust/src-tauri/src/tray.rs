@@ -32,17 +32,17 @@ pub fn set_tray_state(app: &tauri::AppHandle, state: TrayState) {
         return;
     };
 
-    let (icon_bytes, tooltip, record_label) = match state {
-        TrayState::Idle => (ICON_IDLE, "SpeakType", "Start Recording"),
-        TrayState::Recording => (ICON_RECORDING, "SpeakType — Recording...", "Stop Recording"),
-        TrayState::Transcribing => (ICON_TRANSCRIBING, "SpeakType — Transcribing...", "Stop Recording"),
-        TrayState::Error => (ICON_ERROR, "SpeakType — Error", "Start Recording"),
+    let (icon_bytes, tooltip, record_label, as_template) = match state {
+        TrayState::Idle => (ICON_IDLE, "SpeakType", "Start Recording", true),
+        TrayState::Recording => (ICON_RECORDING, "SpeakType — Recording...", "Stop Recording", false),
+        TrayState::Transcribing => (ICON_TRANSCRIBING, "SpeakType — Transcribing...", "Stop Recording", true),
+        TrayState::Error => (ICON_ERROR, "SpeakType — Error", "Start Recording", false),
     };
 
     match tauri::image::Image::from_bytes(icon_bytes) {
         Ok(image) => {
             let _ = tray.set_icon(Some(image));
-            let _ = tray.set_icon_as_template(false);
+            let _ = tray.set_icon_as_template(as_template);
             let _ = tray.set_tooltip(Some(tooltip));
             // Update the record menu item label
             if let Ok(guard) = RECORD_ITEM.lock() {

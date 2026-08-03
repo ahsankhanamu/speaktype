@@ -24,8 +24,12 @@ client = [
     "pyautogui>=0.9.53; sys_platform != 'linux'",
     "torch>=2.0.0",
 ]
+assets = [
+    "pillow>=10.0.0",
+]
 all = [
     "speaktype[client]",
+    "speaktype[assets]",
     "faster-whisper>=0.10.0",
 ]
 gpu = [
