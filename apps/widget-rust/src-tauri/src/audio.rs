@@ -25,27 +25,18 @@ impl AudioRecorder {
         self.sample_rate
     }
     pub fn new() -> Result<Self, String> {
-        let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| "No input device available".to_string())?;
-
-        let config = device
-            .default_input_config()
-            .map_err(|e| format!("Failed to get default input config: {}", e))?;
-
-        let sample_rate = config.sample_rate().0;
+        // Defer device probing until start() so launch succeeds without a mic
+        // (e.g. Mac mini with no input device). Onboarding covers the no-mic case.
+        const DEFAULT_SAMPLE_RATE: u32 = 16_000;
         log_message(&format!(
-            "[audio] Device: {:?}, sample_rate: {}, channels: {}",
-            device.name().unwrap_or_default(),
-            sample_rate,
-            config.channels()
+            "[audio] Recorder ready (sample_rate default {}Hz; device opens on start)",
+            DEFAULT_SAMPLE_RATE
         ));
 
         Ok(Self {
             stream: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
-            sample_rate,
+            sample_rate: DEFAULT_SAMPLE_RATE,
         })
     }
 
@@ -61,6 +52,13 @@ impl AudioRecorder {
 
         self.sample_rate = config.sample_rate().0;
         let channels = config.channels() as usize;
+
+        log_message(&format!(
+            "[audio] Device: {:?}, sample_rate: {}, channels: {}",
+            device.name().unwrap_or_default(),
+            self.sample_rate,
+            channels
+        ));
 
         {
             let mut buf = self.buffer.lock().unwrap();
