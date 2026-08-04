@@ -44,7 +44,9 @@ async fn download_model_inner(
     model_name: String,
 ) -> Result<PathBuf, String> {
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
+        .connect_timeout(std::time::Duration::from_secs(30))
+        .pool_idle_timeout(std::time::Duration::from_secs(90))
+        .timeout(std::time::Duration::from_secs(600))
         .build()
         .map_err(|e| format!("Failed to create HTTP client: {}", e))?;
 
@@ -61,42 +63,31 @@ async fn download_model_inner(
     let file_path = models_dir.join(&filename);
     let temp_path = models_dir.join(format!("{}.part", filename));
 
-    // 1. Ask the server how big the complete file is.
-    let head_res = client.head(&url).send().await.map_err(|e| e.to_string())?;
-    if !head_res.status().is_success() {
-        return Err(format!("Failed to fetch model info (status: {})", head_res.status()));
+    // Known size hint (segmented path discovers authoritative size via Range).
+    let known = expected_size(&model_name);
+    if known > 0 {
+        save_expected_size(&model_name, known);
     }
 
-    let total_size = head_res
-        .headers()
-        .get(reqwest::header::CONTENT_LENGTH)
-        .and_then(|val| val.to_str().ok())
-        .and_then(|s| s.parse::<u64>().ok())
-        .unwrap_or(0);
-
-    if total_size > 0 {
-        save_expected_size(&model_name, total_size);
-    }
-
-    // 2. A finished .bin already on disk → nothing to do.
+    // Finished .bin already on disk.
     if file_path.exists() {
         let bin_size = std::fs::metadata(&file_path).map_err(|e| e.to_string())?.len();
-        if total_size > 0 && bin_size >= total_size {
+        let total_hint = expected_size(&model_name);
+        if total_hint > 0 && bin_size >= total_hint {
             remove_expected_size(&model_name);
+            crate::segmented_download::remove_parts_file(&model_name);
             logging::log_message(&format!("[downloader] Model {} already fully downloaded.", model_name));
             let _ = app.emit("model:progress", serde_json::json!({
                 "model": model_name,
                 "percent": 100,
                 "bytes_downloaded": bin_size,
-                "total_bytes": total_size,
+                "total_bytes": total_hint,
                 "speed": 0,
                 "eta_secs": 0,
                 "phase": "done"
             }));
             return Ok(file_path);
         }
-        // 3. A truncated .bin (interrupted in an older build) and no .part yet:
-        //    move it to .part so we can resume instead of restarting from zero.
         if bin_size > 0 && !temp_path.exists() {
             std::fs::rename(&file_path, &temp_path).map_err(|e| e.to_string())?;
             logging::log_message(&format!(
@@ -106,46 +97,126 @@ async fn download_model_inner(
         }
     }
 
-    // 4. Resume point is whatever is already in .part.
-    let mut downloaded = 0u64;
-    if temp_path.exists() {
-        downloaded = std::fs::metadata(&temp_path).map_err(|e| e.to_string())?.len();
-    }
-
-    // .part is already complete → finalize.
-    if total_size > 0 && downloaded >= total_size {
-        std::fs::rename(&temp_path, &file_path).map_err(|e| e.to_string())?;
-        remove_expected_size(&model_name);
-        let _ = app.emit("model:progress", serde_json::json!({
-            "model": model_name,
-            "percent": 100,
-            "bytes_downloaded": downloaded,
-            "total_bytes": total_size,
-            "speed": 0,
-            "eta_secs": 0,
-            "phase": "done"
-        }));
-        return Ok(file_path);
-    }
-
     let cancel_flag = ACTIVE_DOWNLOADS
         .lock()
         .ok()
         .and_then(|d| d.get(&model_name).cloned())
         .unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
-    download_inner(
-        app, model_name, filename, url, models_dir,
-        file_path, temp_path, downloaded, total_size, cancel_flag, &client,
-    ).await
+    // Prefer sliding-window segmented download; fall back to single-stream.
+    match crate::segmented_download::download_segmented(
+        app.clone(),
+        &client,
+        model_name.clone(),
+        url.clone(),
+        file_path.clone(),
+        temp_path.clone(),
+        cancel_flag.clone(),
+    )
+    .await
+    {
+        Ok(path) => Ok(path),
+        Err(crate::segmented_download::SegmentedError::FallBackToSingle(reason)) => {
+            logging::log_message(&format!(
+                "[downloader] Segmented fallback for {}: {}",
+                model_name, reason
+            ));
+            let mut downloaded = 0u64;
+            if temp_path.exists() {
+                // Prefer parts.json completed sum when present (sparse file length is not progress).
+                downloaded = crate::segmented_download::completed_bytes_from_parts(&model_name)
+                    .unwrap_or_else(|| {
+                        std::fs::metadata(&temp_path)
+                            .map(|m| m.len())
+                            .unwrap_or(0)
+                    });
+                // Single-stream path expects contiguous prefix — if we only have
+                // a sparse/partial map, truncate to contiguous prefix from parts.
+                if let Some(prefix) = contiguous_prefix_len(&model_name) {
+                    downloaded = prefix;
+                    // Rewrite as contiguous file for append-based single stream.
+                    if prefix == 0 {
+                        let _ = std::fs::remove_file(&temp_path);
+                    } else {
+                        truncate_part_to_prefix(&temp_path, prefix)?;
+                    }
+                }
+            }
+            let total_size = expected_size(&model_name);
+            if total_size > 0 && downloaded >= total_size {
+                std::fs::rename(&temp_path, &file_path).map_err(|e| e.to_string())?;
+                remove_expected_size(&model_name);
+                crate::segmented_download::remove_parts_file(&model_name);
+                return Ok(file_path);
+            }
+            download_inner_single(
+                app,
+                model_name,
+                filename,
+                url,
+                file_path,
+                temp_path,
+                downloaded,
+                total_size,
+                cancel_flag,
+                &client,
+            )
+            .await
+        }
+        Err(crate::segmented_download::SegmentedError::Failed(e)) => Err(e),
+    }
 }
 
-async fn download_inner(
+fn contiguous_prefix_len(model_name: &str) -> Option<u64> {
+    let dir = crate::paths::config_dir_opt()?.join("models");
+    let path = dir.join(format!("ggml-{}.parts.json", model_name));
+    if !path.exists() {
+        return None;
+    }
+    let text = std::fs::read_to_string(&path).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let completed = v.get("completed")?.as_array()?;
+    let mut ranges: Vec<(u64, u64)> = completed
+        .iter()
+        .filter_map(|r| {
+            let a = r.as_array()?;
+            Some((a.first()?.as_u64()?, a.get(1)?.as_u64()?))
+        })
+        .collect();
+    ranges.sort_by_key(|r| r.0);
+    let mut prefix = 0u64;
+    for (s, e) in ranges {
+        if s > prefix {
+            break;
+        }
+        prefix = prefix.max(e);
+    }
+    Some(prefix)
+}
+
+fn truncate_part_to_prefix(temp_path: &PathBuf, prefix: u64) -> Result<(), String> {
+    use std::io::{Read, Write};
+    let data = {
+        let mut f = std::fs::File::open(temp_path).map_err(|e| e.to_string())?;
+        let mut buf = vec![0u8; prefix as usize];
+        f.read_exact(&mut buf).map_err(|e| e.to_string())?;
+        buf
+    };
+    let mut f = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .open(temp_path)
+        .map_err(|e| e.to_string())?;
+    f.write_all(&data).map_err(|e| e.to_string())?;
+    f.set_len(prefix).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+async fn download_inner_single(
     app: AppHandle,
     model_name: String,
     _filename: String,
     url: String,
-    _models_dir: PathBuf,
     file_path: PathBuf,
     temp_path: PathBuf,
     mut downloaded: u64,
@@ -162,13 +233,9 @@ async fn download_inner(
             model_name, downloaded, total_size, (downloaded as f64 / total_size as f64) * 100.0));
     } else {
         downloaded = 0;
-        // Not resuming: discard any stale partial so we start clean.
         let _ = std::fs::remove_file(&temp_path);
     }
 
-    // Always download into the .part file; it is only renamed to the final
-    // .bin once the full byte count has been written. This guarantees a .bin
-    // on disk is always complete.
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -184,6 +251,20 @@ async fn download_inner(
 
     if !res.status().is_success() {
         return Err(format!("Failed to download model (status: {})", res.status()));
+    }
+
+    // If we fell back mid-way, refresh total from Content-Length when possible.
+    let mut total_size = total_size;
+    if total_size == 0 {
+        if let Some(cl) = res
+            .headers()
+            .get(reqwest::header::CONTENT_LENGTH)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+        {
+            total_size = downloaded + cl;
+            save_expected_size(&model_name, total_size);
+        }
     }
 
     let mut stream = res.bytes_stream();
@@ -261,9 +342,16 @@ async fn download_inner(
         }
     }
 
-    std::fs::rename(&temp_path, &file_path).map_err(|e| e.to_string())?;
+    if total_size > 0 && downloaded < total_size {
+        return Err(format!(
+            "Incomplete download: {} / {} bytes",
+            downloaded, total_size
+        ));
+    }
 
+    std::fs::rename(&temp_path, &file_path).map_err(|e| e.to_string())?;
     remove_expected_size(&model_name);
+    crate::segmented_download::remove_parts_file(&model_name);
 
     let _ = app.emit("model:progress", serde_json::json!({
         "model": model_name,
@@ -281,7 +369,7 @@ async fn download_inner(
     Ok(file_path)
 }
 
-fn take_pause_request(model_name: &str) -> bool {
+pub(crate) fn take_pause_request(model_name: &str) -> bool {
     PAUSE_REQUESTS
         .lock()
         .ok()
@@ -321,7 +409,7 @@ pub fn clear_model_files(model_name: &str) -> Result<(), String> {
     let Some(dir) = crate::paths::config_dir_opt().map(|d| d.join("models")) else {
         return Err("Could not determine config directory".to_string());
     };
-    for suffix in ["bin", "bin.part", "expected", "bin.incomplete"] {
+    for suffix in ["bin", "bin.part", "expected", "bin.incomplete", "parts.json"] {
         let path = dir.join(format!("ggml-{}.{}", model_name, suffix));
         if path.exists() {
             std::fs::remove_file(&path).map_err(|e| e.to_string())?;
@@ -329,6 +417,42 @@ pub fn clear_model_files(model_name: &str) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Keep a cancel flag registered while the queue is in a retry backoff sleep.
+pub fn register_active_download(model_name: &str, cancel_flag: Arc<AtomicBool>) {
+    if let Ok(mut downloads) = ACTIVE_DOWNLOADS.lock() {
+        downloads.insert(model_name.to_string(), cancel_flag);
+    }
+}
+
+pub fn unregister_active_download(model_name: &str) {
+    cleanup_download(model_name);
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DownloadErrorKind {
+    UserStop,
+    Permanent,
+    Transient,
+}
+
+/// Classify download failures for queue-level auto-retry.
+pub fn classify_download_error(err: &str) -> DownloadErrorKind {
+    let lower = err.to_lowercase();
+    if err == "Download paused" || err == "Download cancelled" {
+        return DownloadErrorKind::UserStop;
+    }
+    if lower.contains("not enough disk space")
+        || lower.contains("no space")
+        || lower.contains("status: 404")
+        || lower.contains("(status: 401)")
+        || lower.contains("(status: 403)")
+        || lower.contains("etag mismatch")
+    {
+        return DownloadErrorKind::Permanent;
+    }
+    DownloadErrorKind::Transient
 }
 
 pub fn get_downloading_models() -> Vec<String> {
@@ -460,10 +584,16 @@ pub fn is_model_complete(model_name: &str) -> bool {
 /// Returns bytes already on disk for an incomplete model (.part, truncated .bin,
 /// or a quarantined .bin.incomplete file).
 pub fn get_partial_download_size(model_name: &str) -> u64 {
+    // Segmented downloads: only trust completed ranges (sparse .part length is total size).
+    if let Some(from_parts) = crate::segmented_download::completed_bytes_from_parts(model_name) {
+        return from_parts;
+    }
+
     let Some(dir) = crate::paths::config_dir_opt().map(|d| d.join("models")) else {
         return 0;
     };
 
+    let expected = expected_size(model_name);
     let mut best = 0u64;
     for suffix in ["bin.part", "bin.incomplete", "bin"] {
         let path = dir.join(format!("ggml-{}.{}", model_name, suffix));
@@ -472,10 +602,33 @@ pub fn get_partial_download_size(model_name: &str) -> u64 {
             if suffix == "bin" && is_model_complete(model_name) {
                 continue;
             }
+            // Preallocated sparse .part reports full logical size with no parts.json yet.
+            if suffix == "bin.part" && expected > 0 && size >= expected {
+                continue;
+            }
             best = best.max(size);
         }
     }
     best
+}
+
+/// True when on-disk artifacts mean a download can be resumed (even if byte
+/// progress is still 0, e.g. sparse preallocate before the first chunk landed).
+pub fn has_partial_download(model_name: &str) -> bool {
+    if is_model_complete(model_name) {
+        return false;
+    }
+    let Some(dir) = crate::paths::config_dir_opt().map(|d| d.join("models")) else {
+        return false;
+    };
+    let parts = dir.join(format!("ggml-{}.parts.json", model_name));
+    let part = dir.join(format!("ggml-{}.bin.part", model_name));
+    let incomplete = dir.join(format!("ggml-{}.bin.incomplete", model_name));
+    let bin = dir.join(format!("ggml-{}.bin", model_name));
+    parts.exists()
+        || part.exists()
+        || incomplete.exists()
+        || (bin.exists() && get_model_size(model_name) > 0)
 }
 
 /// Returns the expected total size for a model from the .expected file, or 0.

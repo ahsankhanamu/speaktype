@@ -833,19 +833,21 @@ pub async fn get_models() -> Result<serde_json::Value, String> {
             model["downloaded_size"] = json!(format_byte_size(size));
             model["size_bytes"] = json!(size);
         } else {
-            // Incomplete: either a leftover `.part` or a truncated `.bin`.
+            // Incomplete: leftover `.part` / `.parts.json` / truncated `.bin`.
             let part_bytes = crate::downloader::get_partial_download_size(id);
             let bin_bytes = crate::downloader::get_model_size(id);
             let have = part_bytes.max(bin_bytes);
-            if have > 0 {
+            if crate::downloader::has_partial_download(id) {
                 let expected = crate::downloader::expected_size(id);
-                let partial_label = if expected > 0 {
+                let partial_label = if expected > 0 && have > 0 {
                     format!(
                         "Incomplete — {:.0}%",
-                        (have as f64 / expected as f64) * 100.0
+                        (have as f64 / expected as f64 * 100.0).min(99.0)
                     )
-                } else {
+                } else if have > 0 {
                     format!("Incomplete ({})", format_byte_size(have))
+                } else {
+                    "Incomplete — Resume".to_string()
                 };
                 model["downloaded"] = json!(false);
                 model["partial"] = json!(true);

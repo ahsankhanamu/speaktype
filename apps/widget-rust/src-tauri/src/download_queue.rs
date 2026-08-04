@@ -192,7 +192,124 @@ async fn run_download(
         let _ = downloader::clear_model_files(&model);
     }
 
-    let result = downloader::download_model_with_cancel(app.clone(), model.clone(), cancel_flag).await;
+    const MAX_ATTEMPTS: u32 = 5;
+    let mut attempt: u32 = 0;
+    let result = loop {
+        attempt += 1;
+        // Reset cancel flag between attempts unless user already stopped.
+        if !cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+            // ok
+        }
+
+        let result =
+            downloader::download_model_with_cancel(app.clone(), model.clone(), cancel_flag.clone())
+                .await;
+
+        match &result {
+            Ok(_) => break result,
+            Err(e)
+                if downloader::classify_download_error(e) == downloader::DownloadErrorKind::UserStop =>
+            {
+                break result;
+            }
+            Err(e)
+                if downloader::classify_download_error(e)
+                    == downloader::DownloadErrorKind::Permanent =>
+            {
+                break result;
+            }
+            Err(e) if attempt >= MAX_ATTEMPTS => {
+                log_message(&format!(
+                    "[queue] Giving up on {} after {} attempts: {}",
+                    model, attempt, e
+                ));
+                break Err(format!(
+                    "{} (auto-retry exhausted after {} attempts)",
+                    e, MAX_ATTEMPTS
+                ));
+            }
+            Err(e) => {
+                let wait_secs = match attempt {
+                    1 => 2u64,
+                    2 => 4,
+                    3 => 8,
+                    4 => 16,
+                    _ => 30,
+                };
+                // ±20% jitter
+                let jitter = (wait_secs as f64 * 0.2 * (attempt as f64 * 0.37 % 1.0)) as u64;
+                let wait = wait_secs.saturating_sub(jitter / 2) + (jitter % (jitter.max(1)));
+                let wait = wait.clamp(1, 30);
+
+                log_message(&format!(
+                    "[queue] Transient failure for {} (attempt {}/{}): {} — retrying in {}s",
+                    model, attempt, MAX_ATTEMPTS, e, wait
+                ));
+
+                let have = downloader::get_partial_download_size(&model);
+                let total = downloader::expected_size(&model);
+                let _ = app.emit(
+                    "model:progress",
+                    json!({
+                        "model": model,
+                        "phase": "retrying",
+                        "message": format!("Connection lost — retrying in {}s… ({}/{})", wait, attempt, MAX_ATTEMPTS),
+                        "attempt": attempt,
+                        "max_attempts": MAX_ATTEMPTS,
+                        "bytes_downloaded": have,
+                        "total_bytes": total,
+                        "percent": if total > 0 {
+                            (have as f64 / total as f64 * 100.0).round()
+                        } else {
+                            0.0
+                        },
+                    }),
+                );
+
+                // Stay registered so Pause/Cancel during backoff still works.
+                downloader::register_active_download(&model, cancel_flag.clone());
+                let mut remaining = wait;
+                let mut user_stop: Option<String> = None;
+                while remaining > 0 {
+                    if cancel_flag.load(std::sync::atomic::Ordering::Relaxed) {
+                        let is_pause = downloader::take_pause_request(&model);
+                        let phase = if is_pause { "paused" } else { "cancelled" };
+                        let message = if is_pause {
+                            "Download paused — tap Resume to continue"
+                        } else {
+                            "Download cancelled"
+                        };
+                        let _ = app.emit(
+                            "model:progress",
+                            json!({
+                                "model": model,
+                                "phase": phase,
+                                "message": message,
+                                "bytes_downloaded": have,
+                                "total_bytes": total,
+                            }),
+                        );
+                        user_stop = Some(if is_pause {
+                            "Download paused".to_string()
+                        } else {
+                            "Download cancelled".to_string()
+                        });
+                        break;
+                    }
+                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                    remaining -= 1;
+                }
+                downloader::unregister_active_download(&model);
+
+                if let Some(stop) = user_stop {
+                    break Err(stop);
+                }
+
+                cancel_flag.store(false, std::sync::atomic::Ordering::Relaxed);
+                continue;
+            }
+        }
+    };
 
     {
         if let Ok(mut q) = QUEUE.lock() {
@@ -218,7 +335,35 @@ async fn run_download(
             }
         }
         Err(e) if e == "Download paused" || e == "Download cancelled" => {
-            // Progress event already emitted by the downloader.
+            // Re-emit after leaving the active queue so the UI refresh sees Resume,
+            // not a stuck "Downloading" state from the race with the first event.
+            let have = downloader::get_partial_download_size(&model);
+            let total = downloader::expected_size(&model);
+            let phase = if e == "Download paused" {
+                "paused"
+            } else {
+                "cancelled"
+            };
+            let message = if e == "Download paused" {
+                "Download paused — tap Resume to continue"
+            } else {
+                "Download cancelled"
+            };
+            let _ = app.emit(
+                "model:progress",
+                json!({
+                    "model": model,
+                    "phase": phase,
+                    "message": message,
+                    "bytes_downloaded": have,
+                    "total_bytes": total,
+                    "percent": if total > 0 {
+                        (have as f64 / total as f64 * 100.0).round().min(99.0)
+                    } else {
+                        0.0
+                    },
+                }),
+            );
         }
         Err(e) => {
             let _ = app.emit(
