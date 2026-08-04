@@ -20,6 +20,7 @@ class ModelGrid {
     this.unlistenQueue = null;
     this.lastListKey = '';
     this.pausePending = new Set();
+    this.forceResumeModels = new Set();
   }
 
   static ICONS = {
@@ -43,9 +44,10 @@ class ModelGrid {
 
   listKey(models, downloading, waiting) {
     const modelPart = models
-      .map(m => [m.id, m.downloaded, m.partial].join(':'))
+      .map(m => [m.id, m.downloaded, m.partial, m.partial_size || 0].join(':'))
       .join('|');
-    return `${modelPart}::${downloading.join(',')}::${waiting.join(',')}::${this.getActiveModel()}`;
+    const forced = [...this.forceResumeModels].sort().join(',');
+    return `${modelPart}::${downloading.join(',')}::${waiting.join(',')}::${this.getActiveModel()}::${forced}`;
   }
 
   formatEta(eta) {
@@ -149,8 +151,12 @@ class ModelGrid {
     const etaEl = progressEl.querySelector('.card-progress-eta');
     if (pctEl) pctEl.textContent = `${pct}%`;
     if (fillEl) fillEl.style.width = `${pct}%`;
-    if (speedEl) speedEl.textContent = formatSpeedMbps(live.speed_mbps);
-    if (etaEl) etaEl.textContent = this.formatEta(live.eta_secs);
+    if (speedEl) {
+      speedEl.textContent = live.message
+        ? live.message
+        : formatSpeedMbps(live.speed_mbps);
+    }
+    if (etaEl) etaEl.textContent = live.message ? '' : this.formatEta(live.eta_secs);
     this.bindPauseButton(progressEl, model);
   }
 
@@ -166,7 +172,11 @@ class ModelGrid {
     try {
       const result = await this.ipc.pauseModelDownload(model);
       if (result && result.paused) {
+        this.forceResumeModels.add(model);
         this.clearCardProgress(model);
+        // Keep pausePending until the backend confirms phase=paused, but invalidate
+        // the list cache so the next refresh can show Resume.
+        this.lastListKey = '';
         await this.refresh(true);
         return;
       }
@@ -193,6 +203,8 @@ class ModelGrid {
   async queueDownload(model, { restart = false, activate = false } = {}) {
     await this.ensureListeners();
     this.hooks.onHideStatus?.();
+    this.forceResumeModels.delete(model);
+    this.pausePending.delete(model);
     try {
       const result = activate
         ? (restart ? await this.ipc.restartModelDownload(model) : await this.ipc.loadModel(model))
@@ -253,13 +265,15 @@ class ModelGrid {
     }
   }
 
-  handleProgress(p) {
+  async handleProgress(p) {
     if (!p || !p.model) return;
 
     const model = p.model;
     const message = p.message || '';
 
-    if (this.pausePending.has(model) && p.phase === 'downloading') return;
+    if (this.pausePending.has(model) && (p.phase === 'downloading' || p.phase === 'retrying')) {
+      return;
+    }
 
     if (p.phase === 'preparing' || p.phase === 'stopping' || p.phase === 'starting' || p.phase === 'loading') {
       this.setBusy(model, true);
@@ -270,18 +284,34 @@ class ModelGrid {
     if (p.phase === 'waiting') {
       this.hooks.onHideStatus?.();
       this.cardProgress[model] = { phase: 'waiting', queue_position: p.queue_position };
-      this.refresh(true);
+      await this.refresh(true);
       return;
     }
 
-    if (p.phase === 'downloading') {
+    if (p.phase === 'downloading' || p.phase === 'retrying') {
       this.hooks.onHideStatus?.();
       const pct = p.percent || (p.total_bytes > 0 ? (p.bytes_downloaded / p.total_bytes) * 100 : 0);
+      // If the card still looks idle (common on onboarding before a full refresh),
+      // rebuild once so Pause/progress chrome appears.
+      const card = this.findCard(model);
+      if (!card || (!card.classList.contains('downloading') && !card.classList.contains('waiting'))) {
+        this.cardProgress[model] = {
+          phase: 'downloading',
+          percent: pct,
+          speed_mbps: p.speed_mbps || 0,
+          eta_secs: p.eta_secs || 0,
+          message: p.phase === 'retrying' ? (p.message || 'Retrying…') : undefined,
+        };
+        this.lastListKey = '';
+        await this.refresh(true);
+        return;
+      }
       this.updateCardProgress(model, {
         phase: 'downloading',
         percent: pct,
         speed_mbps: p.speed_mbps || 0,
         eta_secs: p.eta_secs || 0,
+        message: p.phase === 'retrying' ? (p.message || 'Retrying…') : undefined,
       });
       return;
     }
@@ -291,19 +321,24 @@ class ModelGrid {
       this.setBusy(null, false);
       this.pausePending.delete(model);
       this.clearCardProgress(model);
-      this.refresh(true);
+      this.forceResumeModels.add(model);
+      this.lastListKey = '';
+      await this.refresh(true);
       this.hooks.onPaused?.(model);
       return;
     }
 
     if (p.phase === 'done') {
       this.setBusy(null, false);
+      this.pausePending.delete(model);
+      this.forceResumeModels.delete(model);
       this.clearCardProgress(model);
+      this.lastListKey = '';
       if (this.mode === 'settings') {
         this.hooks.onStatus?.('success', message || `${model} model ready`);
         this.hooks.onScheduleHideStatus?.(5000);
       }
-      this.refresh(true);
+      await this.refresh(true);
       this.hooks.onReady?.(model, message);
       return;
     }
@@ -311,20 +346,25 @@ class ModelGrid {
     if (p.phase === 'cancelled') {
       this.hooks.onHideStatus?.();
       this.setBusy(null, false);
+      this.pausePending.delete(model);
+      this.forceResumeModels.delete(model);
       this.clearCardProgress(model);
-      this.refresh(true);
+      this.lastListKey = '';
+      await this.refresh(true);
       return;
     }
 
     if (p.phase === 'error') {
       this.hooks.onHideStatus?.();
       this.setBusy(null, false);
+      this.pausePending.delete(model);
       this.clearCardProgress(model);
+      this.lastListKey = '';
       if (this.mode === 'settings') {
         this.hooks.onStatus?.('error', message || 'Model operation failed');
         this.hooks.onScheduleHideStatus?.(6000);
       }
-      this.refresh(true);
+      await this.refresh(true);
       this.hooks.onError?.(message || 'Model operation failed');
     }
   }
@@ -464,14 +504,20 @@ class ModelGrid {
 
       models.forEach(m => {
         const isDownloaded = m.downloaded;
-        const isPartial = m.partial;
+        const isPartial = !!(m.partial || this.forceResumeModels.has(m.id));
         const isActive = m.id === activeModel && isDownloaded;
         const liveDl = this.cardProgress[m.id];
-        const isDownloading = downloading.includes(m.id)
+        const backendDownloading = downloading.includes(m.id)
           || (liveDl && liveDl.phase === 'downloading');
+        // forceResume wins over a stale active-queue race after Pause.
+        const isDownloading = backendDownloading && !this.forceResumeModels.has(m.id);
         const isWaiting = waiting.includes(m.id);
         const isSelected = m.id === selectedModel && !isActive;
         const isRecommended = this.recommendedModel && m.id === this.recommendedModel;
+
+        if (this.forceResumeModels.has(m.id) && m.partial && !downloading.includes(m.id)) {
+          this.forceResumeModels.delete(m.id);
+        }
 
         const card = document.createElement('div');
         card.className = 'model-card'

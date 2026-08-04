@@ -23,9 +23,11 @@ const modelGrid = new ModelGrid({
     },
     onError(message) {
       $('desc-model').textContent = (message || 'Model operation failed') + ' — try again.';
-      render();
+      modelGrid.refresh(true);
+      render({ refreshModels: false });
     },
     onPaused() {
+      modelGrid.refresh(true);
       poll(true);
     },
     onRefresh() {
@@ -74,7 +76,8 @@ function updateRelaunchHints(micDone, accDone) {
   $('btn-quit-acc').hidden = !showAccRelaunch;
 }
 
-function render() {
+function render(opts = {}) {
+  const refreshModels = opts.refreshModels === true;
   const micDone = status.microphone;
   const accDone = status.accessibility;
   const modelDone = status.model;
@@ -109,7 +112,8 @@ function render() {
     $('desc-model').textContent = 'Pick a model to download. ' + RECOMMENDED + ' is recommended for most Macs.' + SETTINGS_MODELS_HINT;
     host.hidden = false;
     modelGrid.ensureListeners();
-    if (!modelGridShown) {
+    // Always refresh when first shown, or when explicitly requested (pause/ready/poll force).
+    if (!modelGridShown || refreshModels) {
       modelGridShown = true;
       modelGrid.refresh(true);
     }
@@ -130,7 +134,7 @@ async function poll(forceRender) {
       if (forceRender || sk !== lastStatusKey) {
         lastStatusKey = sk;
         status = s;
-        render();
+        render({ refreshModels: forceRender });
       }
     }
   } catch (e) { /* ignore */ }
