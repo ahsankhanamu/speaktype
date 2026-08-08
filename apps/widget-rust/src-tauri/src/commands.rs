@@ -8,7 +8,6 @@ use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
 use crate::settings::Settings;
 use crate::tones::{self, Tone};
-use crate::transcribe;
 use crate::tray::{self, TrayState};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -360,9 +359,9 @@ async fn process_recording(
         }
     };
 
-    if text.is_empty() || transcribe::is_hallucination(&text) {
+    if text.is_empty() {
         History::discard_saved_recording(&saved_recording);
-        log_message(&format!("[process] Empty or hallucination: {:?}", text));
+        log_message("[process] No usable text left after hallucination scoring");
         tones::play(Tone::Error);
         tray::flash_error(&app);
         let _ = app.emit("sidecar:no_speech", json!({}));
@@ -1111,7 +1110,7 @@ pub async fn reprocess_history_entry(
         .await
         .map_err(|e| format!("Transcription failed: {}", e))?;
 
-    if text.is_empty() || transcribe::is_hallucination(&text) {
+    if text.is_empty() {
         return Err("No speech detected in recording".to_string());
     }
 

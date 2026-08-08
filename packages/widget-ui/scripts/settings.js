@@ -208,6 +208,7 @@ function getFormValues() {
     paste_mode: document.getElementById('paste-mode-select').value,
     post_paste_keys: getPostPasteKeys(),
     save_recordings: document.getElementById('save-recordings').checked,
+    hallucination_guard: document.getElementById('hallucination-guard').checked,
     theme: getThemePref(),
   };
 }
@@ -221,6 +222,7 @@ function checkDirty() {
     current.paste_mode !== loadedSnapshot.paste_mode ||
     current.post_paste_keys !== loadedSnapshot.post_paste_keys ||
     current.save_recordings !== loadedSnapshot.save_recordings ||
+    current.hallucination_guard !== loadedSnapshot.hallucination_guard ||
     current.theme !== loadedSnapshot.theme;
 
   saveBtn.disabled = !dirty;
@@ -234,6 +236,7 @@ function checkDirty() {
   document.getElementById(id).addEventListener('change', checkDirty);
 });
 document.getElementById('save-recordings').addEventListener('change', checkDirty);
+document.getElementById('hallucination-guard').addEventListener('change', checkDirty);
 document.querySelectorAll('input[name="theme-pref"]').forEach(input => {
   input.addEventListener('change', () => {
     const pref = getThemePref();
@@ -293,6 +296,7 @@ async function loadSettings() {
     }
 
     document.getElementById('save-recordings').checked = !!settings.save_recordings;
+    document.getElementById('hallucination-guard').checked = settings.hallucination_guard !== false;
 
     const themePref = setThemePref(settings.theme);
     if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(themePref);
@@ -305,6 +309,7 @@ async function loadSettings() {
       paste_mode: pasteModeSelect.value,
       post_paste_keys: postPasteKeys,
       save_recordings: !!settings.save_recordings,
+      hallucination_guard: settings.hallucination_guard !== false,
       theme: themePref,
     };
 
@@ -594,6 +599,7 @@ document.getElementById('restore-defaults-btn').addEventListener('click', () => 
     paste_mode: 'active',
     post_paste_keys: 'enter',
     save_recordings: false,
+    hallucination_guard: true,
     theme: 'auto',
   };
 
@@ -607,6 +613,7 @@ document.getElementById('restore-defaults-btn').addEventListener('click', () => 
   document.getElementById('post-paste-keys-select').value = defaults.post_paste_keys;
   document.getElementById('post-paste-keys-custom').value = '';
   document.getElementById('save-recordings').checked = defaults.save_recordings;
+  document.getElementById('hallucination-guard').checked = defaults.hallucination_guard;
   setThemePref(defaults.theme);
   if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(defaults.theme);
 
@@ -632,6 +639,7 @@ saveBtn.addEventListener('click', async () => {
     settings.paste_mode = document.getElementById('paste-mode-select').value;
     settings.post_paste_keys = getPostPasteKeys() || null;
     settings.save_recordings = document.getElementById('save-recordings').checked;
+    settings.hallucination_guard = document.getElementById('hallucination-guard').checked;
     settings.theme = getThemePref();
 
     const modelChanged = settings.model !== loadedSnapshot.model;
@@ -649,6 +657,7 @@ saveBtn.addEventListener('click', async () => {
       paste_mode: settings.paste_mode,
       post_paste_keys: settings.post_paste_keys || '',
       save_recordings: settings.save_recordings,
+      hallucination_guard: settings.hallucination_guard,
       theme: settings.theme,
     };
     capturedHotkey = '';

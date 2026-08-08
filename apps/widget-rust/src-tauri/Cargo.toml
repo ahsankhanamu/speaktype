@@ -21,6 +21,7 @@ arboard = "3"
 futures-util = "0.3.32"
 tauri-plugin-shell = "2.3.5"
 scopeguard = "1.2"
+flate2 = "1"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.10"

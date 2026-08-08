@@ -125,6 +125,13 @@
         </label>
         <p class="hint">Keep WAV files for each transcription so you can reprocess them from History. Stored locally in ~/Library/Application Support/speaktype/recordings/</p>
       </div>
+      <div class="field">
+        <label class="checkbox-label">
+          <input type="checkbox" id="hallucination-guard">
+          Filter hallucinated text
+        </label>
+        <p class="hint">Scores each transcription for invented text (silence transcribed as speech, repetition loops, low confidence), removes the bad parts, and re-runs the audio when a result looks wrong.</p>
+      </div>
     </div>
 
     <div class="tab-content" id="tab-models">
