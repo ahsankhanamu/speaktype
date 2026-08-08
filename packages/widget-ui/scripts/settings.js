@@ -187,6 +187,18 @@ function getPostPasteKeys() {
   return document.getElementById('post-paste-keys-select').value;
 }
 
+function getThemePref() {
+  const checked = document.querySelector('input[name="theme-pref"]:checked');
+  return checked ? checked.value : 'auto';
+}
+
+function setThemePref(pref) {
+  const normalized = pref === 'light' || pref === 'dark' ? pref : 'auto';
+  const target = document.querySelector(`input[name="theme-pref"][value="${normalized}"]`);
+  if (target) target.checked = true;
+  return normalized;
+}
+
 function getFormValues() {
   return {
     hotkey: capturedHotkey || loadedSnapshot.hotkey || '',
@@ -196,6 +208,7 @@ function getFormValues() {
     paste_mode: document.getElementById('paste-mode-select').value,
     post_paste_keys: getPostPasteKeys(),
     save_recordings: document.getElementById('save-recordings').checked,
+    theme: getThemePref(),
   };
 }
 
@@ -207,7 +220,8 @@ function checkDirty() {
     current.language !== loadedSnapshot.language ||
     current.paste_mode !== loadedSnapshot.paste_mode ||
     current.post_paste_keys !== loadedSnapshot.post_paste_keys ||
-    current.save_recordings !== loadedSnapshot.save_recordings;
+    current.save_recordings !== loadedSnapshot.save_recordings ||
+    current.theme !== loadedSnapshot.theme;
 
   saveBtn.disabled = !dirty;
   saveBtn.classList.toggle('disabled', !dirty);
@@ -220,6 +234,14 @@ function checkDirty() {
   document.getElementById(id).addEventListener('change', checkDirty);
 });
 document.getElementById('save-recordings').addEventListener('change', checkDirty);
+document.querySelectorAll('input[name="theme-pref"]').forEach(input => {
+  input.addEventListener('change', () => {
+    const pref = getThemePref();
+    if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(pref);
+    ttipc.emit('theme:changed', { theme: pref });
+    checkDirty();
+  });
+});
 document.getElementById('post-paste-keys-custom').addEventListener('input', checkDirty);
 
 document.getElementById('post-paste-keys-custom').addEventListener('input', () => {
@@ -272,6 +294,9 @@ async function loadSettings() {
 
     document.getElementById('save-recordings').checked = !!settings.save_recordings;
 
+    const themePref = setThemePref(settings.theme);
+    if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(themePref);
+
     loadedSnapshot = {
       hotkey: settings.hotkey || '',
       api_url: settings.api_url || '',
@@ -280,6 +305,7 @@ async function loadSettings() {
       paste_mode: pasteModeSelect.value,
       post_paste_keys: postPasteKeys,
       save_recordings: !!settings.save_recordings,
+      theme: themePref,
     };
 
     checkDirty();
@@ -568,6 +594,7 @@ document.getElementById('restore-defaults-btn').addEventListener('click', () => 
     paste_mode: 'active',
     post_paste_keys: 'enter',
     save_recordings: false,
+    theme: 'auto',
   };
 
   capturedHotkey = defaults.hotkey;
@@ -580,6 +607,8 @@ document.getElementById('restore-defaults-btn').addEventListener('click', () => 
   document.getElementById('post-paste-keys-select').value = defaults.post_paste_keys;
   document.getElementById('post-paste-keys-custom').value = '';
   document.getElementById('save-recordings').checked = defaults.save_recordings;
+  setThemePref(defaults.theme);
+  if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(defaults.theme);
 
   checkDirty();
 });
@@ -603,12 +632,14 @@ saveBtn.addEventListener('click', async () => {
     settings.paste_mode = document.getElementById('paste-mode-select').value;
     settings.post_paste_keys = getPostPasteKeys() || null;
     settings.save_recordings = document.getElementById('save-recordings').checked;
+    settings.theme = getThemePref();
 
     const modelChanged = settings.model !== loadedSnapshot.model;
     const hotkeyChanged = settings.hotkey !== loadedSnapshot.hotkey;
 
     await ttipc.saveSettings(settings);
     setHotkeyDisplay(formatCapturedHotkey(settings.hotkey));
+    if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(settings.theme);
 
     loadedSnapshot = {
       hotkey: settings.hotkey,
@@ -618,6 +649,7 @@ saveBtn.addEventListener('click', async () => {
       paste_mode: settings.paste_mode,
       post_paste_keys: settings.post_paste_keys || '',
       save_recordings: settings.save_recordings,
+      theme: settings.theme,
     };
     capturedHotkey = '';
     checkDirty();

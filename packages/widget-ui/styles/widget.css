@@ -44,8 +44,8 @@ html, body {
   pointer-events: auto;
   cursor: grab;
   border-radius: 8px;
-  background: rgb(22, 22, 24);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--widget-panel);
+  border: 1px solid var(--widget-panel-border);
   animation: readyFade 0.25s ease-out;
 }
 
@@ -65,7 +65,7 @@ html, body {
   width: 28px;
   height: 12px;
   flex-shrink: 0;
-  color: rgba(255, 255, 255, 0.42);
+  color: var(--widget-text-faint);
   overflow: visible;
   z-index: 2;
 }
@@ -97,7 +97,7 @@ html, body {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: rgba(255, 255, 255, 0.4);
+  color: var(--widget-text-faint);
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
@@ -106,21 +106,21 @@ html, body {
 }
 
 .ready-close:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.08);
+  color: var(--widget-icon-hover);
+  background: var(--widget-btn-hover);
 }
 
 .ready-title {
   font-size: 13px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--widget-text);
   letter-spacing: -0.01em;
   line-height: 1.3;
 }
 
 .ready-hint {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.58);
+  color: var(--widget-text-muted);
   margin-top: 3px;
   line-height: 1.35;
   word-break: break-word;
@@ -210,11 +210,11 @@ html, body {
 }
 
 /* IDLE */
-.widget.idle { background: rgba(30,30,30,0.95); box-shadow: 0 2px 12px rgba(0,0,0,0.5); }
+.widget.idle { background: var(--widget-idle); box-shadow: 0 2px 12px var(--shadow); }
 .widget.idle .state-idle { display: flex; }
 .icon-container { position: relative; width: 22px; height: 22px; }
-.mic-icon { width: 22px; height: 22px; color: rgba(255,255,255,0.5); transition: color 0.2s, transform 0.15s; }
-.widget.idle:hover .mic-icon { color: rgba(255,255,255,0.9); transform: scale(1.1); }
+.mic-icon { width: 22px; height: 22px; color: var(--widget-icon); transition: color 0.2s, transform 0.15s; }
+.widget.idle:hover .mic-icon { color: var(--widget-icon-hover); transform: scale(1.1); }
 
 .widget.idle.beacon {
   box-shadow:
@@ -252,7 +252,7 @@ html, body {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #eab308;
+  background: var(--warning);
   box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
   animation: permPulse 1.5s ease-in-out infinite;
   pointer-events: none;
@@ -270,16 +270,16 @@ html, body {
   pointer-events: none;
 }
 .server-status.starting {
-  background: #eab308;
+  background: var(--warning);
   box-shadow: 0 0 6px rgba(234, 179, 8, 0.6);
   animation: permPulse 1.5s ease-in-out infinite;
 }
 .server-status.ready {
-  background: #4ade80;
+  background: var(--success);
   box-shadow: 0 0 6px rgba(74, 222, 128, 0.6);
 }
 .server-status.error {
-  background: #ef4444;
+  background: var(--danger);
   box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
 }
 
@@ -287,8 +287,8 @@ html, body {
 /* RECORDING */
 .widget.recording {
   --level: 0;
-  background: linear-gradient(145deg, rgba(45,45,50,0.97), rgba(28,28,32,0.97));
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--widget-shell);
+  border: 1px solid var(--widget-panel-border);
   box-shadow:
     0 0 calc(6px + 12px * var(--level)) rgba(239,100,60, calc(0.12 + 0.3 * var(--level))),
     0 2px 8px rgba(0,0,0,0.35),
@@ -321,8 +321,8 @@ html, body {
   height: 28px;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.04);
-  color: rgba(255, 255, 255, 0.45);
+  background: var(--widget-btn-bg);
+  color: var(--widget-text-faint);
   cursor: pointer;
   pointer-events: auto;
   transition: background 0.15s, color 0.15s;
@@ -335,7 +335,7 @@ html, body {
 
 .rec-btn:hover {
   background: rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--widget-text);
 }
 
 .rec-cancel:hover {
@@ -381,12 +381,12 @@ html, body {
   transform-origin: center center;
   will-change: transform;
 }
-.timer { color: rgba(255,255,255,0.5); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 36px; margin-right: 2px; text-align: right; pointer-events: none; }
+.timer { color: var(--widget-icon); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 36px; margin-right: 2px; text-align: right; pointer-events: none; }
 
 /* TRANSCRIBING */
 .widget.transcribing {
-  background: linear-gradient(145deg, rgba(45,45,50,0.97), rgba(28,28,32,0.97));
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--widget-shell);
+  border: 1px solid var(--widget-panel-border);
   box-shadow:
     0 0 14px rgba(255,255,255,0.12),
     0 2px 8px rgba(0,0,0,0.35),
@@ -412,8 +412,8 @@ html, body {
 
 /* SUCCESS */
 .widget.success {
-  background: linear-gradient(145deg, rgba(45,45,50,0.97), rgba(28,28,32,0.97));
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--widget-shell);
+  border: 1px solid var(--widget-panel-border);
   box-shadow:
     0 0 16px rgba(74,222,128,0.35),
     0 2px 8px rgba(0,0,0,0.35),
@@ -437,8 +437,8 @@ html, body {
 
 /* ERROR */
 .widget.error {
-  background: linear-gradient(145deg, rgba(45,45,50,0.97), rgba(28,28,32,0.97));
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--widget-shell);
+  border: 1px solid var(--widget-panel-border);
   box-shadow:
     0 0 14px rgba(248,113,60,0.3),
     0 2px 8px rgba(0,0,0,0.35),
@@ -476,8 +476,8 @@ html, body {
 }
 
 .welcome-card {
-  background: #1e1e1e;
-  border: 1px solid #333;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 16px;
   padding: 28px;
   width: 320px;
@@ -511,7 +511,7 @@ html, body {
 .welcome-desc {
   text-align: center;
   font-size: 13px;
-  color: #888;
+  color: var(--text-dim);
   margin-bottom: 20px;
 }
 
@@ -519,8 +519,8 @@ html, body {
   display: flex;
   gap: 12px;
   padding: 12px;
-  background: #252525;
-  border: 1px solid #333;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
   border-radius: 10px;
   margin-bottom: 8px;
 }
@@ -531,8 +531,8 @@ html, body {
 }
 
 .permission-step.clickable:hover {
-  background: #2a2a2a;
-  border-color: #555;
+  background: var(--surface-3);
+  border-color: var(--border-strong);
 }
 
 .step-status {
@@ -549,12 +549,12 @@ html, body {
 
 .step-status.step-pending {
   background: rgba(234, 179, 8, 0.15);
-  color: #eab308;
+  color: var(--warning);
 }
 
 .step-status.step-done {
   background: rgba(74, 222, 128, 0.15);
-  color: #4ade80;
+  color: var(--success);
 }
 
 .step-content {
@@ -565,13 +565,13 @@ html, body {
 .step-title {
   font-size: 14px;
   font-weight: 500;
-  color: #e0e0e0;
+  color: var(--text);
   margin-bottom: 2px;
 }
 
 .step-desc {
   font-size: 12px;
-  color: #888;
+  color: var(--text-dim);
   line-height: 1.4;
 }
 

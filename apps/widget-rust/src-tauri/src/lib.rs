@@ -114,10 +114,41 @@ pub fn run() {
 
                         if last != Some((has_mic, has_acc)) {
                             last = Some((has_mic, has_acc));
-                            logging::log_message(&format!(
-                                "[permissions] microphone={} accessibility={}",
-                                has_mic, has_acc
-                            ));
+                            if has_acc {
+                                logging::log_message(&format!(
+                                    "[permissions] microphone={} accessibility=true",
+                                    has_mic
+                                ));
+                            } else {
+                                logging::log_message(&format!(
+                                    "[permissions] microphone={} accessibility=false exe={}",
+                                    has_mic,
+                                    permissions::accessibility_exe_path()
+                                ));
+                                let owner = permissions::responsible_app_name();
+                                if permissions::is_dev_binary() && !permissions::is_bundled() {
+                                    logging::log_message(&format!(
+                                        "[permissions] This is a bare executable, so macOS attributes Accessibility \
+                                         to the app that launched it ({}) rather than to SpeakType. Run `make dev` \
+                                         instead — it launches a real SpeakType Dev.app that can hold its own grant.",
+                                        owner.as_deref().unwrap_or("your terminal app")
+                                    ));
+                                } else if let Some(owner) = owner {
+                                    logging::log_message(&format!(
+                                        "[permissions] Enable \"{}\" under Privacy & Security → Accessibility, \
+                                         then Quit & Reopen. If an old entry with the same name is present, \
+                                         remove it first — stale entries point at a different signature.",
+                                        owner
+                                    ));
+                                } else {
+                                    logging::log_message(
+                                        "[permissions] If System Settings shows SpeakType ON but this is still false: \
+                                         the toggle is for a different binary/signature. Remove stale SpeakType entries \
+                                         from Accessibility, quit ALL SpeakType processes, enable this install, \
+                                         then Quit & Reopen once.",
+                                    );
+                                }
+                            }
                             commands::emit_permissions(&app_handle);
                         }
 

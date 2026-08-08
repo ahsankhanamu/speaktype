@@ -14,6 +14,12 @@ function getListen() {
   return null;
 }
 
+function getEmit() {
+  if (window.__TAURI__ && window.__TAURI__.event) return window.__TAURI__.event.emit;
+  if (window.__TAURI_INTERNALS__ && window.__TAURI_INTERNALS__.emit) return window.__TAURI_INTERNALS__.emit;
+  return null;
+}
+
 const ttipc = {
   invoke(cmd, args) {
     const fn = getInvoke();
@@ -25,6 +31,12 @@ const ttipc = {
     const fn = getListen();
     if (!fn) return Promise.resolve();
     return fn(eventName, callback);
+  },
+
+  emit(eventName, payload) {
+    const fn = getEmit();
+    if (!fn) return Promise.resolve();
+    return fn(eventName, payload);
   },
 
   toggleRecording(isRecording) {

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SpeakType Settings</title>
+  <link rel="stylesheet" href="styles/theme.css">
   <link rel="stylesheet" href="styles/model-grid.css">
   <link rel="stylesheet" href="styles/settings.css">
 </head>
@@ -68,6 +69,18 @@
     </div>
 
     <div class="tab-content" id="tab-general">
+      <div class="field">
+        <label id="theme-label">Appearance</label>
+        <div class="segmented" role="radiogroup" aria-labelledby="theme-label">
+          <input type="radio" name="theme-pref" id="theme-auto" value="auto">
+          <label class="segment" for="theme-auto">Auto</label>
+          <input type="radio" name="theme-pref" id="theme-light" value="light">
+          <label class="segment" for="theme-light">Light</label>
+          <input type="radio" name="theme-pref" id="theme-dark" value="dark">
+          <label class="segment" for="theme-dark">Dark</label>
+        </div>
+        <p class="hint">Auto follows macOS appearance.</p>
+      </div>
       <div class="field">
         <label>Permissions</label>
         <div class="permissions-list">
@@ -191,6 +204,7 @@
     </div>
   </div>
 
+  <script src="scripts/theme.js"></script>
   <script src="scripts/ipc.js"></script>
   <script src="scripts/format.js"></script>
   <script src="scripts/model-grid.js"></script>

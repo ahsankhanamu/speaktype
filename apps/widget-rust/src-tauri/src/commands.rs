@@ -442,6 +442,11 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> Result<serde_json::V
         "accessibility": crate::permissions::check_accessibility(false),
         "model": crate::downloader::is_model_complete(&model),
         "active_model": model,
+        "exe_path": crate::permissions::accessibility_exe_path(),
+        "is_dev": crate::permissions::is_dev_binary(),
+        "is_bundled": crate::permissions::is_bundled(),
+        "responsible_app": crate::permissions::responsible_app_name(),
+        "responsible_app_path": crate::permissions::responsible_app_path(),
     }))
 }
 
@@ -623,10 +628,16 @@ pub fn save_settings(
 ) -> Result<(), String> {
     settings.hotkey = Settings::normalize_hotkey(&settings.hotkey);
 
+    settings.theme = match settings.theme.as_str() {
+        "light" | "dark" | "auto" => settings.theme.clone(),
+        _ => "auto".to_string(),
+    };
+
     let old_hotkey = {
         let current = state.settings.lock().map_err(|e| e.to_string())?;
         current.hotkey.clone()
     };
+    let theme = settings.theme.clone();
     let hotkey_changed = settings.hotkey != old_hotkey;
     let new_hotkey = settings.hotkey.clone();
 
@@ -635,6 +646,8 @@ pub fn save_settings(
         let mut current = state.settings.lock().map_err(|e| e.to_string())?;
         *current = settings;
     }
+
+    let _ = app.emit("theme:changed", json!({ "theme": theme }));
 
     if hotkey_changed {
         let ok = crate::hotkey::reregister_app_hotkey(
