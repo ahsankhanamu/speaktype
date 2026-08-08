@@ -1,24 +1,38 @@
 use crate::logging::log_message;
+use crate::quality::{self, Report, Segment, Thresholds};
 use crate::settings::Settings;
 
-const HALLUCINATION_PHRASES: &[&str] = &[
-    "thanks for watching",
-    "thank you for watching",
-    "thanks for listening",
-    "thank you for listening",
-    "subscribe",
-    "like and subscribe",
-    "see you next time",
-    "the end",
-    "silence",
-    "no speech",
-    "inaudible",
-    "[music]",
-    "(music)",
-];
+/// One decode configuration. The first pass runs greedy and deterministic with
+/// whisper's internal temperature fallback disabled, so any invented text comes
+/// from a path we control rather than a silent server-side retry.
+#[derive(Debug, Clone, Copy)]
+struct Attempt {
+    temperature: f32,
+    use_prompt: bool,
+    allow_internal_fallback: bool,
+}
 
-const HALLUCINATION_WORDS: &[&str] = &[
-    "you", "i", "so", "uh", "um", "hmm", "huh", "ah", "oh", "bye", "goodbye",
+const FIRST_PASS: Attempt = Attempt {
+    temperature: 0.0,
+    use_prompt: true,
+    allow_internal_fallback: false,
+};
+
+/// Tried in order when the previous pass looks hallucinated. Dropping the
+/// prompt comes first because carried-over context is what seeds most
+/// repetition loops; raising the temperature then breaks a degenerate greedy
+/// path that would otherwise repeat verbatim.
+const RETRY_LADDER: &[Attempt] = &[
+    Attempt {
+        temperature: 0.0,
+        use_prompt: false,
+        allow_internal_fallback: false,
+    },
+    Attempt {
+        temperature: 0.4,
+        use_prompt: false,
+        allow_internal_fallback: true,
+    },
 ];
 
 fn is_openai_api(url: &str) -> bool {
@@ -33,83 +47,6 @@ fn is_openai_api(url: &str) -> bool {
     patterns.iter().any(|p| lower.contains(p))
 }
 
-const HALLUCINATION_FRAGMENTS: &[&str] = &[
-    "thank you",
-    "thanks for",
-    "i'm alone",
-    "im alone",
-    "subscribe",
-    "see you next",
-    "bye bye",
-];
-
-fn looks_like_sound_effect_markup(text: &str) -> bool {
-    text.contains('*') && text.chars().filter(|c| *c == '*').count() >= 2
-}
-
-fn has_repetitive_clauses(text: &str) -> bool {
-    let normalized = text.to_lowercase();
-    let clauses: Vec<&str> = normalized
-        .split(|c| matches!(c, '.' | '!' | '?'))
-        .map(str::trim)
-        .filter(|s| s.len() > 5)
-        .collect();
-
-    if clauses.len() >= 2 {
-        let mut seen = std::collections::HashSet::new();
-        for clause in clauses {
-            if !seen.insert(clause) {
-                return true;
-            }
-        }
-    }
-
-    let words: Vec<&str> = normalized.split_whitespace().collect();
-    if words.len() >= 6 && words.len() % 2 == 0 {
-        let half = words.len() / 2;
-        if words[..half] == words[half..] {
-            return true;
-        }
-    }
-
-    false
-}
-
-pub fn is_hallucination(text: &str) -> bool {
-    let t = text.to_lowercase();
-    let t = t.trim();
-
-    if t.len() < 3 {
-        return true;
-    }
-
-    if HALLUCINATION_WORDS.iter().any(|w| *w == t) {
-        return true;
-    }
-
-    if looks_like_sound_effect_markup(t) {
-        return true;
-    }
-
-    if has_repetitive_clauses(t) {
-        return true;
-    }
-
-    if t.len() < 40 {
-        if HALLUCINATION_PHRASES.iter().any(|phrase| t.contains(phrase)) {
-            return true;
-        }
-    }
-
-    if t.len() < 120 {
-        if HALLUCINATION_FRAGMENTS.iter().any(|phrase| t.contains(phrase)) {
-            return true;
-        }
-    }
-
-    false
-}
-
 pub async fn transcribe(
     wav_data: Vec<u8>,
     settings: &Settings,
@@ -118,12 +55,118 @@ pub async fn transcribe(
     transcribe_with_prompt(wav_data, settings, duration_secs, None).await
 }
 
+/// Transcribe and return only text that survived hallucination scoring.
+/// Empty means everything was rejected.
 pub async fn transcribe_with_prompt(
     wav_data: Vec<u8>,
     settings: &Settings,
     duration_secs: f64,
     prompt: Option<&str>,
 ) -> Result<String, String> {
+    let report = transcribe_verified(wav_data, settings, duration_secs, prompt).await?;
+    Ok(report.clean_text)
+}
+
+/// Transcribe, score the result, and re-decode with different parameters while
+/// it still looks hallucinated. Returns the best-scoring candidate rather than
+/// discarding suspicious output outright.
+pub async fn transcribe_verified(
+    wav_data: Vec<u8>,
+    settings: &Settings,
+    duration_secs: f64,
+    prompt: Option<&str>,
+) -> Result<Report, String> {
+    if !settings.hallucination_guard {
+        let raw = transcribe_once(wav_data, settings, duration_secs, prompt, FIRST_PASS).await?;
+        return Ok(Report::passthrough(&raw.text));
+    }
+
+    let thresholds = Thresholds::from_settings(settings);
+    let retries = (settings.hallucination_retries as usize).min(RETRY_LADDER.len());
+    let attempts: Vec<Attempt> = std::iter::once(FIRST_PASS)
+        .chain(RETRY_LADDER.iter().take(retries).copied())
+        .collect();
+
+    let mut best: Option<Report> = None;
+
+    for (pass, attempt) in attempts.iter().enumerate() {
+        let attempt_prompt = if attempt.use_prompt { prompt } else { None };
+        let raw = match transcribe_once(
+            wav_data.clone(),
+            settings,
+            duration_secs,
+            attempt_prompt,
+            *attempt,
+        )
+        .await
+        {
+            Ok(raw) => raw,
+            Err(e) if best.is_some() => {
+                log_message(&format!("[quality] Retry pass {} failed: {}", pass + 1, e));
+                break;
+            }
+            Err(e) => return Err(e),
+        };
+
+        let silent = raw.text.trim().is_empty();
+        let report = quality::evaluate(&raw.text, &raw.segments, &thresholds);
+        log_message(&format!(
+            "[quality] Pass {} (temp={:.1}, prompt={}, metrics={}): score={:.1}, {}/{} segments dropped [{}]",
+            pass + 1,
+            attempt.temperature,
+            attempt.use_prompt && prompt.is_some(),
+            report.had_metrics,
+            report.score,
+            report.dropped,
+            report.segments.len(),
+            report.reason()
+        ));
+
+        let clean = report.is_clean();
+        if best.as_ref().map_or(true, |b| report.score > b.score) {
+            best = Some(report);
+        }
+        if clean {
+            break;
+        }
+        // Nothing was decoded, so there is nothing to salvage. Re-decoding
+        // silence at a higher temperature invites a hallucination instead of
+        // fixing one.
+        if silent {
+            log_message("[quality] No text decoded — not re-decoding");
+            break;
+        }
+        if pass + 1 < attempts.len() {
+            log_message("[quality] Result looks hallucinated — re-decoding");
+        }
+    }
+
+    let report = best.ok_or_else(|| "Transcription produced no result".to_string())?;
+    if report.dropped > 0 {
+        log_message(&format!(
+            "[quality] Kept {} of {} chars, dropped {} segment(s) [{}]: {:?}",
+            report.clean_text.len(),
+            report.raw_text.len(),
+            report.dropped,
+            report.reason(),
+            report.dropped_text()
+        ));
+    }
+    Ok(report)
+}
+
+struct RawResult {
+    text: String,
+    segments: Vec<Segment>,
+}
+
+async fn transcribe_once(
+    wav_data: Vec<u8>,
+    settings: &Settings,
+    duration_secs: f64,
+    prompt: Option<&str>,
+    attempt: Attempt,
+) -> Result<RawResult, String> {
     let api_url = &settings.api_url;
     let is_openai = is_openai_api(api_url);
 
@@ -145,28 +188,38 @@ pub async fn transcribe_with_prompt(
 
     let mut form = reqwest::multipart::Form::new().part("file", file_part);
 
+    // verbose_json carries the per-segment metrics hallucination scoring needs.
+    // Servers that ignore it still return `text`, which scoring falls back to.
     if is_openai {
         form = form
             .text("model", settings.model.clone())
-            .text("response_format", "json".to_string());
+            .text("response_format", "verbose_json".to_string())
+            .text("temperature", attempt.temperature.to_string());
         if settings.language != "auto" {
             form = form.text("language", settings.language.clone());
-        }
-        if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
-            form = form.text("prompt", prompt.to_string());
-            form = form.text("initial_prompt", prompt.to_string());
         }
     } else {
         form = form
             .text("language", settings.language.clone())
-            .text("temperature", "0.0")
+            .text("response_format", "verbose_json".to_string())
+            .text("temperature", attempt.temperature.to_string())
+            .text(
+                "temperature_inc",
+                if attempt.allow_internal_fallback {
+                    "0.2"
+                } else {
+                    "0.0"
+                }
+                .to_string(),
+            )
             .text("no_speech_thold", "0.65")
             .text("entropy_thold", "2.4")
             .text("suppress_nst", "true");
-        if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
-            form = form.text("prompt", prompt.to_string());
-            form = form.text("initial_prompt", prompt.to_string());
-        }
+    }
+
+    if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
+        form = form.text("prompt", prompt.to_string());
+        form = form.text("initial_prompt", prompt.to_string());
     }
 
     let client = reqwest::Client::builder()
@@ -192,19 +245,66 @@ pub async fn transcribe_with_prompt(
         .await
         .map_err(|e| format!("Failed to read response: {}", e))?;
 
-    let text = if let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) {
-        json.get("text")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim()
-            .to_string()
-    } else {
-        body.trim().to_string()
+    let mut parsed = parse_response(&body);
+    parsed.text = normalize_line_breaks(&parsed.text);
+    log_message(&format!(
+        "[transcribe] Result: {} chars, {} segments",
+        parsed.text.len(),
+        parsed.segments.len()
+    ));
+    Ok(parsed)
+}
+
+fn parse_response(body: &str) -> RawResult {
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(body) else {
+        return RawResult {
+            text: body.trim().to_string(),
+            segments: Vec::new(),
+        };
     };
 
-    let text = normalize_line_breaks(&text);
-    log_message(&format!("[transcribe] Result: {} chars", text.len()));
-    Ok(text)
+    let segments: Vec<Segment> = json
+        .get("segments")
+        .and_then(|v| v.as_array())
+        .map(|items| items.iter().filter_map(parse_segment).collect())
+        .unwrap_or_default();
+
+    let text = json
+        .get("text")
+        .and_then(|v| v.as_str())
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| {
+            segments
+                .iter()
+                .map(|s| s.text.trim())
+                .filter(|t| !t.is_empty())
+                .collect::<Vec<&str>>()
+                .join(" ")
+        });
+
+    RawResult { text, segments }
+}
+
+/// Whisper servers disagree on whether numbers arrive as JSON numbers or
+/// strings, so accept either.
+fn loose_f64(value: Option<&serde_json::Value>) -> Option<f64> {
+    match value {
+        Some(serde_json::Value::Number(n)) => n.as_f64(),
+        Some(serde_json::Value::String(s)) => s.parse().ok(),
+        _ => None,
+    }
+}
+
+fn parse_segment(item: &serde_json::Value) -> Option<Segment> {
+    let text = item.get("text").and_then(|v| v.as_str())?.trim().to_string();
+    Some(Segment {
+        text,
+        start: loose_f64(item.get("start")).unwrap_or(0.0),
+        end: loose_f64(item.get("end")).unwrap_or(0.0),
+        no_speech_prob: loose_f64(item.get("no_speech_prob")).map(|v| v as f32),
+        avg_logprob: loose_f64(item.get("avg_logprob")).map(|v| v as f32),
+    })
 }
 
 /// whisper.cpp inserts line breaks at segment boundaries (~30s chunks).
@@ -228,21 +328,82 @@ fn normalize_line_breaks(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::is_hallucination;
+    use super::*;
 
     #[test]
-    fn rejects_silence_hallucination_with_sound_effects() {
-        let text = "*shriek* *shriek* ... ... I'm alone. I'm alone. I'm alone. Thank you. Thank you.";
-        assert!(is_hallucination(text));
+    fn parses_verbose_json_segment_metrics() {
+        let body = r#"{
+            "text": "Ship the release notes.",
+            "segments": [
+                {"start": 0.0, "end": 2.4, "text": " Ship the release notes.",
+                 "no_speech_prob": 0.012, "avg_logprob": -0.31}
+            ]
+        }"#;
+        let parsed = parse_response(body);
+        assert_eq!(parsed.text, "Ship the release notes.");
+        assert_eq!(parsed.segments.len(), 1);
+        assert_eq!(parsed.segments[0].no_speech_prob, Some(0.012));
+        assert_eq!(parsed.segments[0].avg_logprob, Some(-0.31));
+        assert_eq!(parsed.segments[0].end, 2.4);
     }
 
     #[test]
-    fn rejects_common_youtube_outro() {
-        assert!(is_hallucination("Thanks for watching!"));
+    fn parses_metrics_sent_as_strings() {
+        let body = r#"{"text": "hi", "segments": [
+            {"text": "hi", "start": "0.0", "end": "1.0", "no_speech_prob": "0.9"}
+        ]}"#;
+        let parsed = parse_response(body);
+        assert_eq!(parsed.segments[0].no_speech_prob, Some(0.9));
+        assert_eq!(parsed.segments[0].avg_logprob, None);
     }
 
     #[test]
-    fn accepts_real_short_phrase() {
-        assert!(!is_hallucination("Send the report by Friday."));
+    fn falls_back_to_plain_text_without_segments() {
+        let parsed = parse_response(r#"{"text": "Just text."}"#);
+        assert_eq!(parsed.text, "Just text.");
+        assert!(parsed.segments.is_empty());
+
+        let parsed = parse_response("not json at all");
+        assert_eq!(parsed.text, "not json at all");
+        assert!(parsed.segments.is_empty());
+    }
+
+    /// Trimmed from an actual whisper-server verbose_json response (large-v3,
+    /// VAD on) so the parser and thresholds stay pinned to the real payload.
+    #[test]
+    fn real_server_payload_scores_clean() {
+        let body = r#"{"task":"transcribe","language":"english","duration":2.4,
+            "text":" Ship the release notes before the stand-up tomorrow.\n",
+            "segments":[{"id":0,"text":" Ship the release notes before the stand-up tomorrow.",
+            "start":0.16,"end":2.3000000000000003,"temperature":0.0,
+            "avg_logprob":-0.04834417253732681,"no_speech_prob":0.01814487762749195}]}"#;
+        let parsed = parse_response(body);
+        let report = quality::evaluate(&parsed.text, &parsed.segments, &Thresholds::default());
+        assert!(report.is_clean(), "clean speech must not be flagged");
+        assert_eq!(
+            report.clean_text,
+            "Ship the release notes before the stand-up tomorrow."
+        );
+    }
+
+    /// VAD trims silence to nothing, which must read as "no speech" rather than
+    /// as a hallucination worth re-decoding.
+    #[test]
+    fn vad_trimmed_silence_yields_empty_result() {
+        let body = r#"{"task":"transcribe","language":"english","duration":4.0,
+            "text":"","segments":[]}"#;
+        let parsed = parse_response(body);
+        assert!(parsed.text.is_empty());
+        let report = quality::evaluate(&parsed.text, &parsed.segments, &Thresholds::default());
+        assert!(report.is_empty());
+        assert!(!report.is_clean());
+    }
+
+    #[test]
+    fn rebuilds_text_from_segments_when_top_level_text_missing() {
+        let body = r#"{"segments": [
+            {"text": " Hello"}, {"text": " world."}
+        ]}"#;
+        assert_eq!(parse_response(body).text, "Hello world.");
     }
 }

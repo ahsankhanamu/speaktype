@@ -25,6 +25,22 @@ pub struct Settings {
     /// Appearance: "auto" | "light" | "dark"
     #[serde(default = "default_theme")]
     pub theme: String,
+    /// Score transcriptions for hallucination, drop bad segments, and re-decode
+    /// suspicious results. Off falls back to accepting whatever the model emits.
+    #[serde(default = "default_hallucination_guard")]
+    pub hallucination_guard: bool,
+    /// Extra decode passes allowed when a result looks hallucinated (max 2).
+    #[serde(default = "default_hallucination_retries")]
+    pub hallucination_retries: u32,
+    /// Above this probability a segment is silence being transcribed as speech.
+    #[serde(default = "default_quality_no_speech_prob")]
+    pub quality_no_speech_prob: f32,
+    /// Below this mean token log-probability the model was guessing.
+    #[serde(default = "default_quality_avg_logprob")]
+    pub quality_avg_logprob: f32,
+    /// Above this gzip ratio the text is repetitive enough to be a decode loop.
+    #[serde(default = "default_quality_compression_ratio")]
+    pub quality_compression_ratio: f32,
 }
 
 fn default_paste_mode() -> String {
@@ -43,6 +59,26 @@ fn default_theme() -> String {
     "auto".to_string()
 }
 
+fn default_hallucination_guard() -> bool {
+    true
+}
+
+fn default_hallucination_retries() -> u32 {
+    2
+}
+
+fn default_quality_no_speech_prob() -> f32 {
+    0.6
+}
+
+fn default_quality_avg_logprob() -> f32 {
+    -1.0
+}
+
+fn default_quality_compression_ratio() -> f32 {
+    2.4
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -58,6 +94,11 @@ impl Default for Settings {
             post_paste_keys: Some("enter".to_string()),
             save_recordings: false,
             theme: "auto".to_string(),
+            hallucination_guard: default_hallucination_guard(),
+            hallucination_retries: default_hallucination_retries(),
+            quality_no_speech_prob: default_quality_no_speech_prob(),
+            quality_avg_logprob: default_quality_avg_logprob(),
+            quality_compression_ratio: default_quality_compression_ratio(),
         }
     }
 }

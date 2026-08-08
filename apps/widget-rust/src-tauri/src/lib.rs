@@ -10,6 +10,7 @@ mod logging;
 mod paste;
 mod paths;
 mod permissions;
+mod quality;
 mod segmented_download;
 mod server;
 mod settings;

@@ -4070,6 +4070,7 @@ dependencies = [
  "core-graphics",
  "cpal",
  "dirs",
+ "flate2",
  "futures-util",
  "objc2",
  "objc2-app-kit",

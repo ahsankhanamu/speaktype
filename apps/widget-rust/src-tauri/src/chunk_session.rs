@@ -1,5 +1,6 @@
 use crate::audio;
 use crate::logging::log_message;
+use crate::quality::Report;
 use crate::settings::Settings;
 use crate::transcribe;
 use std::collections::BTreeMap;
@@ -184,7 +185,8 @@ impl ChunkSession {
             log_message("[chunk] Short recording — single-shot transcription");
             return transcribe_samples(&samples, sample_rate, &self.settings, None)
                 .await
-                .ok();
+                .ok()
+                .map(|report| report.clean_text);
         }
 
         if !tail.is_empty() && audio::has_speech(&tail, sample_rate) {
@@ -222,7 +224,7 @@ impl ChunkSession {
         for i in 0..total_chunks {
             if let Some(text) = results.get(&i) {
                 let trimmed = text.trim();
-                if !trimmed.is_empty() && !transcribe::is_hallucination(trimmed) {
+                if !trimmed.is_empty() {
                     parts.push(trimmed.to_string());
                 }
             }
@@ -286,7 +288,8 @@ fn spawn_chunk_task(
         };
 
         match transcribe_samples(&chunk, sample_rate, &settings, prompt_ref).await {
-            Ok(text) if !text.is_empty() && !transcribe::is_hallucination(&text) => {
+            Ok(report) if !report.is_empty() => {
+                let text = report.clean_text.clone();
                 if let Ok(mut results) = chunk_results.lock() {
                     if results.contains_key(&idx) {
                         log_message(&format!(
@@ -297,22 +300,36 @@ fn spawn_chunk_task(
                         results.insert(idx, text.clone());
                     }
                 }
-                if let Ok(mut tail) = prompt_tail.lock() {
-                    let combined = if tail.is_empty() {
-                        text.clone()
-                    } else {
-                        format!("{} {}", tail.trim(), text.trim())
-                    };
-                    *tail = if combined.len() > MAX_PROMPT_CHARS {
-                        combined[combined.len() - MAX_PROMPT_CHARS..].to_string()
-                    } else {
-                        combined
-                    };
+                // Only fully clean chunks seed the next prompt: feeding salvaged
+                // text back is how a single bad chunk turns into a repetition loop.
+                if report.is_clean() {
+                    if let Ok(mut tail) = prompt_tail.lock() {
+                        let combined = if tail.is_empty() {
+                            text.clone()
+                        } else {
+                            format!("{} {}", tail.trim(), text.trim())
+                        };
+                        *tail = if combined.len() > MAX_PROMPT_CHARS {
+                            combined[combined.len() - MAX_PROMPT_CHARS..].to_string()
+                        } else {
+                            combined
+                        };
+                    }
+                } else {
+                    log_message(&format!(
+                        "[chunk] Chunk {} salvaged — not seeding prompt [{}]",
+                        idx,
+                        report.reason()
+                    ));
                 }
                 log_message(&format!("[chunk] Chunk {} done: {} chars", idx, text.len()));
             }
-            Ok(_) => {
-                log_message(&format!("[chunk] Chunk {} empty/hallucination — skipped", idx));
+            Ok(report) => {
+                log_message(&format!(
+                    "[chunk] Chunk {} rejected [{}] — skipped",
+                    idx,
+                    report.reason()
+                ));
             }
             Err(e) => {
                 log_message(&format!("[chunk] Chunk {} failed: {}", idx, e));
@@ -331,11 +348,11 @@ async fn transcribe_samples(
     sample_rate: u32,
     settings: &Settings,
     prompt: Option<&str>,
-) -> Result<String, String> {
+) -> Result<Report, String> {
     let normalized = audio::normalize_audio(samples);
     let duration_secs = normalized.len() as f64 / sample_rate as f64;
     let wav = audio::to_wav(&normalized, sample_rate)?;
-    transcribe::transcribe_with_prompt(wav, settings, duration_secs, prompt).await
+    transcribe::transcribe_verified(wav, settings, duration_secs, prompt).await
 }
 
 /// Transcribe long audio by splitting on phrase boundaries (fallback when no live session).
@@ -367,19 +384,27 @@ pub async fn transcribe_chunked(
             Some(prompt_tail.as_str())
         };
         match transcribe_samples(chunk, sample_rate, settings, prompt_ref).await {
-            Ok(text) if !text.is_empty() && !transcribe::is_hallucination(&text) => {
+            Ok(report) if !report.is_empty() => {
+                let text = report.clean_text.clone();
                 parts.push(text.trim().to_string());
-                prompt_tail = if prompt_tail.is_empty() {
-                    text.clone()
-                } else {
-                    format!("{} {}", prompt_tail.trim(), text.trim())
-                };
-                if prompt_tail.len() > MAX_PROMPT_CHARS {
-                    prompt_tail = prompt_tail[prompt_tail.len() - MAX_PROMPT_CHARS..].to_string();
+                if report.is_clean() {
+                    prompt_tail = if prompt_tail.is_empty() {
+                        text.clone()
+                    } else {
+                        format!("{} {}", prompt_tail.trim(), text.trim())
+                    };
+                    if prompt_tail.len() > MAX_PROMPT_CHARS {
+                        prompt_tail =
+                            prompt_tail[prompt_tail.len() - MAX_PROMPT_CHARS..].to_string();
+                    }
                 }
                 log_message(&format!("[chunk] Post-hoc chunk {} done", i));
             }
-            Ok(_) => log_message(&format!("[chunk] Post-hoc chunk {} skipped", i)),
+            Ok(report) => log_message(&format!(
+                "[chunk] Post-hoc chunk {} rejected [{}]",
+                i,
+                report.reason()
+            )),
             Err(e) => log_message(&format!("[chunk] Post-hoc chunk {} failed: {}", i, e)),
         }
     }
