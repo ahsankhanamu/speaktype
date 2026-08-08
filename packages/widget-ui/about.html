@@ -4,12 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>About SpeakType</title>
+  <link rel="stylesheet" href="styles/theme.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-      background: #1a1a1a;
-      color: #e0e0e0;
+      background: var(--bg);
+      color: var(--text);
       display: flex;
       align-items: center;
       justify-content: center;
@@ -25,7 +26,7 @@
       width: 64px;
       height: 64px;
       margin: 0 auto 16px;
-      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      background: linear-gradient(135deg, var(--accent), #8b5cf6);
       border-radius: 16px;
       display: flex;
       align-items: center;
@@ -39,31 +40,31 @@
     .app-name {
       font-size: 20px;
       font-weight: 600;
-      color: white;
+      color: var(--text-strong);
       margin-bottom: 4px;
     }
     .app-version {
       font-size: 13px;
-      color: #888;
+      color: var(--text-dim);
       margin-bottom: 20px;
     }
     .app-desc {
       font-size: 13px;
-      color: #aaa;
+      color: var(--text-muted);
       line-height: 1.5;
       margin-bottom: 20px;
     }
     .divider {
       height: 1px;
-      background: #333;
+      background: var(--border);
       margin: 16px 0;
     }
     .creator {
       font-size: 13px;
-      color: #888;
+      color: var(--text-dim);
     }
     .creator a {
-      color: #3b82f6;
+      color: var(--accent);
       text-decoration: none;
     }
     .creator a:hover {
@@ -71,7 +72,7 @@
     }
     .copyright {
       font-size: 11px;
-      color: #555;
+      color: var(--text-faint);
       margin-top: 12px;
     }
   </style>
@@ -96,6 +97,7 @@
     </div>
     <div class="copyright">&copy; 2026 Ahsan Khan. All rights reserved.</div>
   </div>
+  <script src="scripts/theme.js"></script>
   <script>
     async function openExternal(url) {
       const { openUrl } = window.__TAURI__.opener;

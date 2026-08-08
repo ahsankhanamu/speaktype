@@ -22,6 +22,9 @@ pub struct Settings {
     /// When true, save WAV files for each successful transcription (for reprocessing).
     #[serde(default = "default_save_recordings")]
     pub save_recordings: bool,
+    /// Appearance: "auto" | "light" | "dark"
+    #[serde(default = "default_theme")]
+    pub theme: String,
 }
 
 fn default_paste_mode() -> String {
@@ -34,6 +37,10 @@ fn default_post_paste_keys() -> Option<String> {
 
 fn default_save_recordings() -> bool {
     false
+}
+
+fn default_theme() -> String {
+    "auto".to_string()
 }
 
 impl Default for Settings {
@@ -50,6 +57,7 @@ impl Default for Settings {
             paste_mode: "active".to_string(),
             post_paste_keys: Some("enter".to_string()),
             save_recordings: false,
+            theme: "auto".to_string(),
         }
     }
 }

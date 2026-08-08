@@ -2,11 +2,18 @@
 
 include make/config.mk
 
-.PHONY: dev build clean install notary-setup server assets help
+.PHONY: dev dev-fast build clean install notary-setup server assets help
 
 # ─── App (apps/widget-rust) ─────────────────────────────────────────────────────
 
-dev: ## Run Tauri app in dev mode
+dev: ## Run app in dev mode (macOS: real .app bundle so Accessibility works)
+	@if [ "$$(uname -s)" = "Darwin" ]; then \
+		./scripts/dev-macos.sh; \
+	else \
+		cd apps/widget-rust && cargo tauri dev; \
+	fi
+
+dev-fast: ## Run Tauri watch mode (fast rebuilds; Accessibility will NOT work on macOS)
 	cd apps/widget-rust && cargo tauri dev
 
 build: ## Clean → sidecar → app → sign → DMG → notarize, all in one (output: dist/)
@@ -55,5 +62,5 @@ notary-setup: ## Store notarization credentials in Keychain (one-time setup)
 	@echo "→ Credentials stored as Keychain profile '$(NOTARY_PROFILE)'"
 
 help: ## Show this help
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
+	@grep -hE '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'

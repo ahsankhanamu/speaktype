@@ -1,7 +1,17 @@
 const RECOMMENDED = 'small.en';
 const SETTINGS_MODELS_HINT = ' You can also download or switch models anytime in Settings (menu bar icon → Models).';
 
-let status = { microphone: false, accessibility: false, model: false, active_model: '' };
+let status = {
+  microphone: false,
+  accessibility: false,
+  model: false,
+  active_model: '',
+  exe_path: '',
+  is_dev: false,
+  is_bundled: false,
+  responsible_app: '',
+  responsible_app_path: '',
+};
 let lastStatusKey = '';
 let micPromptRequested = false;
 let micSettingsOpened = false;
@@ -37,7 +47,16 @@ const modelGrid = new ModelGrid({
 });
 
 function statusKey(s) {
-  return [s.microphone, s.accessibility, s.model, s.active_model || ''].join('|');
+  return [
+    s.microphone,
+    s.accessibility,
+    s.model,
+    s.active_model || '',
+    s.is_dev ? '1' : '0',
+    s.is_bundled ? '1' : '0',
+    s.exe_path || '',
+    s.responsible_app || '',
+  ].join('|');
 }
 
 function setStep(el, state) {
@@ -71,9 +90,30 @@ function updateRelaunchHints(micDone, accDone) {
   $('hint-mic-relaunch').hidden = !showMicRelaunch;
   $('btn-quit-mic').hidden = !showMicRelaunch;
 
-  const showAccRelaunch = !accDone && accSettingsOpened;
-  $('hint-acc-relaunch').hidden = !showAccRelaunch;
-  $('btn-quit-acc').hidden = !showAccRelaunch;
+  const isDev = !!status.is_dev;
+  const unbundled = isDev && !status.is_bundled;
+  const showAcc = !accDone;
+  $('hint-acc-relaunch').hidden = !showAcc || isDev;
+  $('hint-acc-dev').hidden = !showAcc || !isDev;
+  $('hint-acc-path').hidden = !showAcc || !status.exe_path;
+  $('btn-quit-acc').hidden = !showAcc;
+
+  if (showAcc && unbundled) {
+    const owner = status.responsible_app || 'the terminal app that launched it';
+    $('hint-acc-dev').textContent =
+      'This is a bare executable, so macOS assigns Accessibility to ' + owner + ' rather than to SpeakType. ' +
+      'Run "make dev" instead — it launches a real SpeakType Dev app that holds its own grant.';
+  } else if (showAcc && isDev) {
+    $('hint-acc-dev').textContent =
+      'Dev build: enable "' + (status.responsible_app || 'SpeakType Dev') + '" in the Accessibility list, ' +
+      'then Quit & Reopen. Remove any older entry with the same name first.';
+  }
+
+  if (showAcc && status.exe_path) {
+    $('hint-acc-path').textContent = status.responsible_app_path
+      ? 'Grant to: ' + status.responsible_app_path
+      : status.exe_path;
+  }
 }
 
 function render(opts = {}) {
@@ -97,7 +137,9 @@ function render(opts = {}) {
   if (accDone) accSettingsOpened = false;
   $('desc-acc').textContent = accDone
     ? 'Accessibility access granted.'
-    : 'Open System Settings and toggle SpeakType on under Privacy & Security → Accessibility.';
+    : (status.responsible_app
+      ? 'Open System Settings → Privacy & Security → Accessibility and enable "' + status.responsible_app + '" (then Quit & Reopen).'
+      : 'Open System Settings → Privacy & Security → Accessibility and enable the SpeakType entry for this install (then Quit & Reopen).');
 
   updateRelaunchHints(micDone, accDone);
 
