@@ -137,7 +137,7 @@ html, body {
 }
 
 .widget-shell:has(.widget.recording) {
-  width: 196px;
+  width: 272px;
 }
 
 .widget-shell:has(.widget.transcribing) {
@@ -293,7 +293,7 @@ html, body {
     0 0 calc(6px + 12px * var(--level)) rgba(239,100,60, calc(0.12 + 0.3 * var(--level))),
     0 2px 8px rgba(0,0,0,0.35),
     inset 0 1px 0 rgba(255,255,255,0.06);
-  width: 196px;
+  width: 272px;
   border-radius: 24px;
   overflow: visible;
   animation: recordIn 0.32s cubic-bezier(0.22, 1, 0.36, 1);
@@ -357,7 +357,7 @@ html, body {
   color: #ff8a65;
 }
 
-.waveform { display: flex; align-items: center; gap: 2.5px; height: 30px; position: relative; padding-left: 10px; pointer-events: none; }
+.waveform { display: flex; align-items: center; justify-content: flex-end; flex: 1 1 auto; min-width: 0; height: 30px; position: relative; padding-left: 10px; overflow: hidden; pointer-events: none; }
 .waveform::before {
   content: '';
   position: absolute;
@@ -371,15 +371,12 @@ html, body {
   animation: recDot 2s ease-in-out infinite;
 }
 @keyframes recDot { 0%, 100% { opacity: 1; transform: translateY(-50%) scale(1); } 50% { opacity: 0.35; transform: translateY(-50%) scale(0.85); } }
-.bar {
+.wave-canvas {
   display: block;
-  width: 3.5px;
-  height: 28px;
-  border-radius: 2px;
-  background: rgba(255,255,255,0.88);
-  transform: scaleY(0.143);
-  transform-origin: center center;
-  will-change: transform;
+  flex: 0 0 auto;
+  width: 136px;
+  height: 30px;
+  color: var(--widget-text);
 }
 .timer { color: var(--widget-icon); font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; min-width: 36px; margin-right: 2px; text-align: right; pointer-events: none; }
 

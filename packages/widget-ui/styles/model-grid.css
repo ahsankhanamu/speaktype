@@ -43,6 +43,7 @@
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 10px;
+  transition: background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
 }
 
 .model-card.active {
@@ -191,12 +192,15 @@
   font-weight: 600;
 }
 
+/* Reserved so Load -> Active -> spinner never nudges the trailing edge */
 .model-card-action {
   flex-shrink: 0;
   display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
   justify-content: flex-end;
+  min-width: 84px;
 }
 
 .model-badge {
@@ -255,8 +259,27 @@
 }
 
 .model-card.switching {
-  box-shadow: 0 0 0 2px rgba(234, 179, 8, 0.45);
   opacity: 1;
+}
+
+.model-switch-spinner {
+  flex-shrink: 0;
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: var(--radius-pill);
+  animation: model-switch-spin 0.7s linear infinite;
+}
+
+@keyframes model-switch-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-card { transition: none; }
+  .model-icon.icon-downloading { animation: none; }
+  .model-switch-spinner { animation: none; }
 }
 
 .model-card-action .model-badge + .model-badge {

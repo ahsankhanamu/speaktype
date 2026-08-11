@@ -1,4 +1,4 @@
-use crate::audio::{self, AudioRecorder};
+use crate::audio::{self, AudioRecorder, LevelMonitor};
 use crate::chunk_session::{ChunkSession, transcribe_chunked};
 use crate::download_queue;
 use crate::downloader;
@@ -32,6 +32,7 @@ fn emit_model_progress(app: &AppHandle, model: &str, phase: &str, message: &str)
 pub struct AppState {
     pub settings: Arc<Mutex<Settings>>,
     pub recorder: Arc<Mutex<AudioRecorder>>,
+    pub level_monitor: Arc<Mutex<LevelMonitor>>,
     pub is_recording: Arc<AtomicBool>,
     pub is_transcribing: Arc<AtomicBool>,
     pub target_window: Arc<Mutex<Option<WindowInfo>>>,
@@ -217,10 +218,97 @@ pub fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<()
     Ok(())
 }
 
+/// Upper bound on a single microphone check. The frontend releases the monitor
+/// on its own, but a webview that is torn down mid-test cannot, and a stuck-open
+/// input stream keeps the macOS microphone indicator lit.
+pub const MIC_TEST_MAX_MS: u64 = 60_000;
+
+fn stop_mic_test_internal(app: &AppHandle, state: &AppState, reason: &str) {
+    let stopped = match state.level_monitor.lock() {
+        Ok(mut monitor) => monitor.stop(),
+        Err(_) => false,
+    };
+    if stopped {
+        let _ = app.emit("mictest:stopped", json!({ "reason": reason }));
+    }
+}
+
+/// Release the microphone monitor from a context that only has an `AppHandle`
+/// (window teardown, process exit).
+pub fn stop_mic_test_for_app(app: &AppHandle, reason: &str) {
+    if let Some(state) = app.try_state::<AppState>() {
+        stop_mic_test_internal(app, &state, reason);
+    }
+}
+
+fn spawn_mic_test_watchdog(app: AppHandle, generation: u64) {
+    std::thread::spawn(move || {
+        std::thread::sleep(std::time::Duration::from_millis(MIC_TEST_MAX_MS));
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
+        };
+        // A newer generation means this test was already stopped and another
+        // started; only the session this watchdog was armed for may be killed.
+        let expired = match state.level_monitor.lock() {
+            Ok(monitor) => monitor.is_active() && monitor.generation() == generation,
+            Err(_) => false,
+        };
+        if expired {
+            log_message("[mictest] Time limit reached — releasing microphone");
+            stop_mic_test_internal(&app, &state, "timeout");
+        }
+    });
+}
+
+#[tauri::command]
+pub fn start_mic_test(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    if !crate::permissions::check_microphone() {
+        return Err("Microphone permission is not granted".to_string());
+    }
+    if state.is_recording.load(Ordering::SeqCst) {
+        return Err("Dictation is recording — stop it before testing".to_string());
+    }
+
+    let info = {
+        let mut monitor = state.level_monitor.lock().map_err(|e| e.to_string())?;
+        monitor.start(app.clone())?
+    };
+    spawn_mic_test_watchdog(app.clone(), info.generation);
+
+    Ok(json!({
+        "device": info.device,
+        "sample_rate": info.sample_rate,
+        "channels": info.channels,
+        "inputs": audio::count_input_devices(),
+        "max_ms": MIC_TEST_MAX_MS,
+    }))
+}
+
+#[tauri::command]
+pub fn stop_mic_test(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    stop_mic_test_internal(&app, &state, "user");
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_audio_input_info() -> Result<serde_json::Value, String> {
+    Ok(json!({
+        "device": audio::get_default_input_device_name(),
+        "inputs": audio::count_input_devices(),
+    }))
+}
+
 fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
     if state.is_recording.load(Ordering::SeqCst) {
         return Ok(());
     }
+
+    // Dictation owns the input device. A settings-window meter must never be
+    // able to block or race the hotkey, so it is dropped rather than consulted.
+    stop_mic_test_internal(app, state, "recording");
 
     {
         let mut tw = state.target_window.lock().map_err(|e| e.to_string())?;
@@ -1142,19 +1230,123 @@ pub async fn open_about(app: AppHandle) -> Result<(), String> {
     show_and_focus_window(&window)
 }
 
+const SETTINGS_WINDOW_W: f64 = 880.0;
+const SETTINGS_WINDOW_H: f64 = 640.0;
+const SETTINGS_WINDOW_MIN_W: f64 = 720.0;
+const SETTINGS_WINDOW_MIN_H: f64 = 540.0;
+
+fn settings_window_geometry(app: &AppHandle) -> (Option<f64>, Option<f64>, f64, f64) {
+    let settings = match app.try_state::<AppState>() {
+        Some(state) => match state.settings.lock() {
+            Ok(s) => s.clone(),
+            Err(_) => Settings::load(),
+        },
+        None => Settings::load(),
+    };
+    let w = settings
+        .settings_w
+        .unwrap_or(SETTINGS_WINDOW_W)
+        .max(SETTINGS_WINDOW_MIN_W);
+    let h = settings
+        .settings_h
+        .unwrap_or(SETTINGS_WINDOW_H)
+        .max(SETTINGS_WINDOW_MIN_H);
+    (settings.settings_x, settings.settings_y, w, h)
+}
+
+/// Copy the live settings-window geometry into the in-memory settings. Disk
+/// writes are deferred to close/quit so dragging does not hammer settings.json.
+fn update_settings_window_geometry(window: &WebviewWindow) {
+    let app = window.app_handle();
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let Ok(scale) = window.scale_factor() else {
+        return;
+    };
+    let Ok(pos) = window.outer_position() else {
+        return;
+    };
+    let Ok(size) = window.inner_size() else {
+        return;
+    };
+    if size.width == 0 || size.height == 0 {
+        return;
+    }
+    let logical = size.to_logical::<f64>(scale);
+
+    let Ok(mut settings) = state.settings.lock() else {
+        return;
+    };
+    // Recorded unclamped: macOS lets a window hang off an edge or straddle two
+    // monitors while it is being dragged, and clamping here would overwrite the
+    // real position with a corner fallback. `open_settings` validates instead.
+    settings.settings_x = Some(pos.x as f64);
+    settings.settings_y = Some(pos.y as f64);
+    settings.settings_w = Some(logical.width);
+    settings.settings_h = Some(logical.height);
+}
+
+pub fn persist_settings_window_geometry(app: &AppHandle) {
+    if let Some(window) = app.get_webview_window("settings") {
+        update_settings_window_geometry(&window);
+    }
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let save_result = {
+        let Ok(settings) = state.settings.lock() else {
+            return;
+        };
+        settings.save()
+    };
+    let _ = save_result;
+}
+
 #[tauri::command]
 pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
         return show_and_focus_window(&window);
     }
 
+    let (saved_x, saved_y, width, height) = settings_window_geometry(&app);
+
     let window = WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
         .title("SpeakType Settings")
-        .inner_size(520.0, 640.0)
-        .resizable(false)
-        .center()
+        .inner_size(width, height)
+        .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
+        .resizable(true)
         .build()
         .map_err(|e| e.to_string())?;
+
+    // A position the clamp rejects falls back to the widget's top-right corner,
+    // which is meaningless for a window this size — centre it instead.
+    let restored = match (saved_x, saved_y) {
+        (Some(x), Some(y)) => {
+            let (cx, cy) = crate::window::apply_saved_position(&window, x, y);
+            (cx - x).abs() < 1.0 && (cy - y).abs() < 1.0
+        }
+        _ => false,
+    };
+    if !restored {
+        let _ = window.center();
+    }
+
+    {
+        let geometry_app = app.clone();
+        window.on_window_event(move |event| match event {
+            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
+                if let Some(w) = geometry_app.get_webview_window("settings") {
+                    update_settings_window_geometry(&w);
+                }
+            }
+            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
+                persist_settings_window_geometry(&geometry_app);
+                stop_mic_test_for_app(&geometry_app, "window_closed");
+            }
+            _ => {}
+        });
+    }
 
     show_and_focus_window(&window)
 }
@@ -1179,6 +1371,9 @@ pub fn minimize_widget(app: AppHandle) -> Result<(), String> {
 pub fn quit_app(app: AppHandle) {
     if let Some(window) = app.get_webview_window("onboarding") {
         persist_onboarding_window_position(&window);
+    }
+    if app.get_webview_window("settings").is_some() {
+        persist_settings_window_geometry(&app);
     }
     app.exit(0);
 }

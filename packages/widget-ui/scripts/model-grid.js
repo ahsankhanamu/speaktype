@@ -15,13 +15,24 @@ class ModelGrid {
     this.hooks = options.hooks || {};
     this.cardProgress = {};
     this.switchingModel = null;
+    this.switchMessage = '';
+    this.inlineSwitch = false;
+    this.lastModels = [];
+    this.lastDownloading = [];
+    this.lastWaiting = [];
     this.listenersAttached = false;
     this.unlistenProgress = null;
     this.unlistenQueue = null;
     this.lastListKey = '';
     this.pausePending = new Set();
     this.forceResumeModels = new Set();
+    this.downloadingModels = new Set();
+    this.containerBound = false;
+    this.lastDownloadCount = null;
+    this.ensureContainerListener();
   }
+
+  static CLICKABLE_STATES = new Set(['downloaded', 'partial', 'remote']);
 
   static ICONS = {
     active: `<svg class="model-icon icon-active" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>`,
@@ -50,6 +61,33 @@ class ModelGrid {
     return `${modelPart}::${downloading.join(',')}::${waiting.join(',')}::${this.getActiveModel()}::${forced}`;
   }
 
+  inFlightModels(downloading, waiting) {
+    const inFlight = new Set(waiting);
+    downloading.forEach(model => {
+      if (!this.forceResumeModels.has(model)) inFlight.add(model);
+    });
+    return inFlight;
+  }
+
+  publishDownloadCount(count) {
+    if (count === this.lastDownloadCount) return;
+    this.lastDownloadCount = count;
+    this.hooks.onDownloadCount?.(count);
+  }
+
+  // Count-only read for callers that need the in-flight total before the grid
+  // has ever been rendered; get_model_progress skips the model catalog.
+  async refreshDownloadCount() {
+    try {
+      const result = await this.ipc.getModelProgress();
+      const downloading = (result && result.downloading) || [];
+      const waiting = (result && result.waiting) || [];
+      this.publishDownloadCount(this.inFlightModels(downloading, waiting).size);
+    } catch (e) {
+      console.error('Failed to read model download count:', e);
+    }
+  }
+
   formatEta(eta) {
     if (!eta || eta <= 0) return '';
     if (eta < 60) return eta + 's remaining';
@@ -72,7 +110,7 @@ class ModelGrid {
         <div class="card-progress-meta">
           <span class="card-progress-speed">${speed}</span>
           <span class="card-progress-eta">${eta}</span>
-          <button type="button" class="btn secondary btn-small card-pause-btn" data-model="${model}">Pause</button>
+          <button type="button" class="btn secondary btn-small card-pause-btn" data-action="pause" data-model="${model}">Pause</button>
         </div>
       </div>`;
   }
@@ -81,6 +119,7 @@ class ModelGrid {
     if (!card.classList.contains('downloading')) {
       card.classList.add('downloading');
       card.classList.remove('partial', 'waiting', 'dimmed');
+      card.dataset.state = 'downloading';
 
       const iconWrap = card.querySelector('.model-card-icon');
       if (iconWrap) iconWrap.innerHTML = ModelGrid.ICONS.downloading;
@@ -100,19 +139,12 @@ class ModelGrid {
     }
   }
 
-  bindPauseButton(scope, model) {
-    const btn = scope?.querySelector('.card-pause-btn');
-    if (!btn || btn.dataset.bound === '1') return;
-    btn.dataset.bound = '1';
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      this.pauseDownload(model);
-    });
-  }
-
   setBusy(model, busy) {
     this.switchingModel = busy ? model : null;
+    if (!busy) {
+      this.switchMessage = '';
+      this.inlineSwitch = false;
+    }
     if (!this.container) return;
     this.container.classList.toggle('busy', busy);
     this.container.querySelectorAll('.model-card').forEach(card => {
@@ -139,12 +171,14 @@ class ModelGrid {
     let progressEl = card.querySelector('.model-card-progress');
     if (!progressEl) {
       card.insertAdjacentHTML('beforeend', this.cardProgressHtml(model, live));
-      progressEl = card.querySelector('.model-card-progress');
-      this.bindPauseButton(progressEl, model);
       return;
     }
 
-    const pct = Math.round(live.percent || 0);
+    this.writeCardProgress(progressEl, live);
+  }
+
+  writeCardProgress(progressEl, p) {
+    const pct = Math.round(p.percent || 0);
     const pctEl = progressEl.querySelector('.card-progress-pct');
     const fillEl = progressEl.querySelector('.card-progress-fill');
     const speedEl = progressEl.querySelector('.card-progress-speed');
@@ -152,12 +186,11 @@ class ModelGrid {
     if (pctEl) pctEl.textContent = `${pct}%`;
     if (fillEl) fillEl.style.width = `${pct}%`;
     if (speedEl) {
-      speedEl.textContent = live.message
-        ? live.message
-        : formatSpeedMbps(live.speed_mbps);
+      speedEl.textContent = p.message
+        ? p.message
+        : formatSpeedMbps(p.speed_mbps);
     }
-    if (etaEl) etaEl.textContent = live.message ? '' : this.formatEta(live.eta_secs);
-    this.bindPauseButton(progressEl, model);
+    if (etaEl) etaEl.textContent = p.message ? '' : this.formatEta(p.eta_secs);
   }
 
   clearCardProgress(model) {
@@ -233,23 +266,45 @@ class ModelGrid {
     }
   }
 
+  // Paints the new selection from the cached list before any IPC, so the click
+  // lands on the same frame instead of after the sidecar restart round-trip.
+  beginInlineSwitch(model, message) {
+    this.inlineSwitch = true;
+    this.switchMessage = message;
+    this.setBusy(model, true);
+    this.renderCards();
+  }
+
+  endInlineSwitch(previousModel) {
+    this.setBusy(null, false);
+    if (previousModel) this.setModelSelect(previousModel);
+    this.renderCards();
+  }
+
   async activate(model) {
     if (this.mode === 'onboarding') {
       return this.queueDownload(model, { activate: true });
     }
 
+    // Read the rendered active card rather than the select, which callers may
+    // already have pointed at the incoming model.
+    const previousModel = this.container?.querySelector('.model-card[data-state="active"]')?.dataset.model || '';
+    this.setModelSelect(model);
+    this.beginInlineSwitch(model, `Loading ${model}...`);
+
     const settings = await this.ipc.getSettings();
-    if (!settings) return;
+    if (!settings) {
+      this.endInlineSwitch(previousModel);
+      return;
+    }
     settings.model = model;
     await this.ipc.saveSettings(settings);
     this.hooks.onModelSaved?.(model);
     await this.ensureListeners();
-    this.setBusy(model, true);
-    this.hooks.onLoading?.(`Loading ${model}...`);
     try {
       const result = await this.ipc.loadModel(model);
       if (result && result.status === 'busy') {
-        this.setBusy(null, false);
+        this.endInlineSwitch(previousModel);
         this.hooks.onStatus?.('error', result.message || 'Server busy');
         this.hooks.onScheduleHideStatus?.(4000);
       } else if (result && result.status === 'queued') {
@@ -258,7 +313,7 @@ class ModelGrid {
       }
       return result;
     } catch (e) {
-      this.setBusy(null, false);
+      this.endInlineSwitch(previousModel);
       this.hooks.onStatus?.('error', 'Failed to load model: ' + e);
       this.hooks.onScheduleHideStatus?.(5000);
       return null;
@@ -276,8 +331,14 @@ class ModelGrid {
     }
 
     if (p.phase === 'preparing' || p.phase === 'stopping' || p.phase === 'starting' || p.phase === 'loading') {
+      const text = message || `Switching to ${model}...`;
+      if (this.inlineSwitch && this.switchingModel === model) {
+        this.switchMessage = text;
+        this.applySwitchLabel(this.findCard(model), text);
+        return;
+      }
       this.setBusy(model, true);
-      this.hooks.onLoading?.(message || `Switching to ${model}...`);
+      this.hooks.onLoading?.(text);
       return;
     }
 
@@ -329,12 +390,17 @@ class ModelGrid {
     }
 
     if (p.phase === 'done') {
+      // An inline switch already shows the result on the card; the banner sits
+      // above the grid and would shove every card down on show and hide.
+      const wasInlineSwitch = this.inlineSwitch && this.switchingModel === model;
       this.setBusy(null, false);
       this.pausePending.delete(model);
       this.forceResumeModels.delete(model);
       this.clearCardProgress(model);
       this.lastListKey = '';
-      if (this.mode === 'settings') {
+      if (this.mode === 'settings' && wasInlineSwitch) {
+        this.hooks.onHideStatus?.();
+      } else if (this.mode === 'settings') {
         this.hooks.onStatus?.('success', message || `${model} model ready`);
         this.hooks.onScheduleHideStatus?.(5000);
       }
@@ -380,85 +446,234 @@ class ModelGrid {
     });
   }
 
-  bindCard(card, m, ctx) {
-    const {
-      isActive, isDownloading, isWaiting, isPartial, isDownloaded, isSelected,
-    } = ctx;
+  // One listener on the grid drives every card, so reconciliation can reuse
+  // nodes without worrying about stale per-card handlers.
+  ensureContainerListener() {
+    if (!this.container || this.containerBound) return;
+    this.containerBound = true;
+    this.container.addEventListener('click', (e) => this.handleCardClick(e));
+  }
 
-    if (isDownloading) {
-      this.bindPauseButton(card, m.id);
-    }
+  handleCardClick(e) {
+    const card = e.target.closest('.model-card');
+    if (!card || !this.container.contains(card)) return;
 
-    card.querySelectorAll('.card-cancel-btn').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.cancelQueuedDownload(m.id);
-      });
-    });
+    const model = card.dataset.model;
+    if (!model) return;
 
-    const cardBusy = this.switchingModel && this.switchingModel !== m.id;
-    if ((isDownloading || isWaiting || cardBusy) && !isActive) {
-      if (!isDownloading) card.classList.add('dimmed');
-    }
+    const actionEl = e.target.closest('[data-action]');
+    const action = actionEl && card.contains(actionEl) ? actionEl.dataset.action : null;
 
-    if (isActive) return;
-
-    if (this.mode === 'onboarding') {
-      if (isDownloading || isWaiting) return;
-      if (isPartial) {
-        card.classList.add('clickable');
-        card.querySelector('[data-action="resume"]')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (this.switchingModel) return;
-          this.setModelSelect(m.id);
-          this.queueDownload(m.id, { activate: true });
-        });
-        card.querySelector('[data-action="restart"]')?.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (this.switchingModel) return;
-          this.setModelSelect(m.id);
-          this.queueDownload(m.id, { restart: true, activate: true });
-        });
-        return;
-      }
-      card.classList.add('clickable');
-      card.addEventListener('click', () => {
-        if (this.switchingModel) return;
-        this.setModelSelect(m.id);
-        this.queueDownload(m.id, { activate: true });
-      });
+    if (action === 'pause') {
+      e.stopPropagation();
+      e.preventDefault();
+      this.pauseDownload(model);
       return;
     }
 
-    if (isDownloaded && !isActive) {
-      card.classList.add('clickable');
-      card.addEventListener('click', () => {
-        if (this.switchingModel) return;
-        this.setModelSelect(m.id);
-        this.activate(m.id);
-      });
-    } else if (isPartial) {
-      card.classList.add('clickable');
-      card.querySelector('[data-action="resume"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (this.switchingModel) return;
-        this.setModelSelect(m.id);
-        this.queueDownload(m.id, { activate: true });
-      });
-      card.querySelector('[data-action="restart"]')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (this.switchingModel) return;
-        this.setModelSelect(m.id);
-        this.queueDownload(m.id, { restart: true, activate: true });
-      });
-    } else if (!isDownloaded && !isWaiting && !isDownloading) {
-      card.classList.add('clickable');
-      card.querySelector('.clickable-badge')?.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (this.switchingModel) return;
-        this.setModelSelect(m.id);
-        this.queueDownload(m.id);
-      });
+    if (action === 'cancel') {
+      e.stopPropagation();
+      this.cancelQueuedDownload(model);
+      return;
+    }
+
+    if (this.switchingModel) return;
+
+    const state = card.dataset.state;
+    if (state === 'active') return;
+
+    if (action === 'resume') {
+      e.stopPropagation();
+      this.setModelSelect(model);
+      this.queueDownload(model, { activate: true });
+      return;
+    }
+
+    if (action === 'restart') {
+      e.stopPropagation();
+      this.setModelSelect(model);
+      this.queueDownload(model, { restart: true, activate: true });
+      return;
+    }
+
+    if (state === 'downloaded') {
+      if (this.mode === 'onboarding') {
+        this.setModelSelect(model);
+        this.queueDownload(model, { activate: true });
+      } else {
+        this.activate(model);
+      }
+      return;
+    }
+
+    if (state === 'remote' && (action === 'download' || this.mode === 'onboarding')) {
+      this.setModelSelect(model);
+      this.queueDownload(model, this.mode === 'onboarding' ? { activate: true } : {});
+    }
+  }
+
+  cardParts(m, waiting) {
+    const activeModel = this.getActiveModel();
+    const selectedModel = this.modelSelect?.value || activeModel;
+    const isDownloaded = m.downloaded;
+    const isPartial = !!(m.partial || this.forceResumeModels.has(m.id));
+    const isActive = m.id === activeModel && isDownloaded;
+    const liveDl = this.cardProgress[m.id];
+    // forceResume wins over a stale active-queue race after Pause.
+    const isDownloading = (this.downloadingModels.has(m.id)
+      || (liveDl && liveDl.phase === 'downloading'))
+      && !this.forceResumeModels.has(m.id);
+    const isWaiting = waiting.includes(m.id);
+    const isSelected = m.id === selectedModel && !isActive;
+    const isRecommended = this.recommendedModel && m.id === this.recommendedModel;
+    const isSwitching = !!this.switchingModel && this.switchingModel === m.id;
+    const cardBusy = this.switchingModel && this.switchingModel !== m.id;
+    const isDimmed = !isActive && !isDownloading && (isWaiting || !!cardBusy);
+
+    let state;
+    if (isActive) state = 'active';
+    else if (isDownloading) state = 'downloading';
+    else if (isWaiting) state = 'waiting';
+    else if (isPartial) state = 'partial';
+    else if (isDownloaded) state = 'downloaded';
+    else state = 'remote';
+
+    const waitPos = isWaiting ? waiting.indexOf(m.id) + 1 : 0;
+
+    let iconSvg;
+    let actionHtml;
+    if (state === 'active') {
+      iconSvg = ModelGrid.ICONS.active;
+      actionHtml = `<span class="model-badge badge-active">Active</span>`;
+    } else if (state === 'downloading') {
+      iconSvg = ModelGrid.ICONS.downloading;
+      actionHtml = `<span class="model-badge badge-downloading">Downloading</span>`;
+    } else if (state === 'waiting') {
+      iconSvg = ModelGrid.ICONS.waiting;
+      actionHtml = `
+        <span class="model-badge badge-waiting">Waiting${waitPos > 0 ? ' #' + waitPos : ''}</span>
+        <button type="button" class="model-badge badge-cancel-queue card-cancel-btn" data-action="cancel" data-model="${m.id}">Cancel</button>`;
+    } else if (state === 'partial') {
+      iconSvg = ModelGrid.ICONS.partial;
+      actionHtml = `
+        <span class="model-badge badge-partial clickable-badge" data-action="resume">Resume</span>
+        <span class="model-badge badge-restart clickable-badge" data-action="restart">Restart</span>`;
+    } else if (state === 'downloaded') {
+      iconSvg = ModelGrid.ICONS.downloaded;
+      actionHtml = `<span class="model-badge badge-load clickable-badge" data-action="load">${this.mode === 'onboarding' ? 'Use' : 'Load'}</span>`;
+    } else {
+      iconSvg = ModelGrid.ICONS.cloud;
+      actionHtml = `<span class="model-badge badge-download clickable-badge" data-action="download">Download</span>`;
+    }
+
+    const baseDesc = this.baseModelDesc(m);
+    const livePct = liveDl && liveDl.phase === 'downloading' ? Math.round(liveDl.percent || 0) : null;
+    const descText = isDownloading && livePct != null
+      ? `${baseDesc} — ${livePct}%`
+      : `${baseDesc}${isPartial && m.partial_label && !isDownloading ? ' — ' + m.partial_label : ''}`;
+
+    const recTag = isRecommended ? ' <span class="model-tag-rec">recommended</span>' : '';
+
+    const showSpinner = isSwitching && this.inlineSwitch;
+    if (showSpinner) {
+      actionHtml = `<span class="model-switch-spinner" role="status"></span>` + actionHtml;
+    }
+
+    return {
+      model: m.id,
+      state,
+      isDownloading,
+      switchLabel: showSpinner ? (this.switchMessage || `Loading ${m.id}...`) : '',
+      progress: liveDl || { percent: 0, speed_mbps: 0, eta_secs: 0 },
+      className: 'model-card'
+        + (isActive ? ' active' : '')
+        + (isRecommended ? ' recommended' : '')
+        + (isDownloading ? ' downloading' : '')
+        + (isWaiting ? ' waiting' : '')
+        + (isPartial && !isDownloading && !isWaiting ? ' partial' : '')
+        + (isSelected ? ' selected' : '')
+        + (isDimmed ? ' dimmed' : '')
+        + (isSwitching ? ' switching' : '')
+        + (ModelGrid.CLICKABLE_STATES.has(state) ? ' clickable' : ''),
+      iconSvg,
+      actionHtml,
+      actionSig: `${state}:${waitPos}:${showSpinner ? 1 : 0}`,
+      nameHtml: `${m.id}${recTag}`,
+      baseDesc,
+      descText,
+    };
+  }
+
+  createCard(parts) {
+    const card = document.createElement('div');
+    card.className = parts.className;
+    card.dataset.model = parts.model;
+    card.dataset.state = parts.state;
+    card.innerHTML = `
+      <div class="model-card-row">
+        <div class="model-card-icon">${parts.iconSvg}</div>
+        <div class="model-card-body">
+          <div class="model-card-name">${parts.nameHtml}</div>
+          <div class="model-card-desc"></div>
+        </div>
+        <div class="model-card-action"></div>
+      </div>
+    `;
+
+    const descEl = card.querySelector('.model-card-desc');
+    descEl.dataset.baseDesc = parts.baseDesc;
+    descEl.textContent = parts.descText;
+
+    const actionWrap = card.querySelector('.model-card-action');
+    actionWrap.innerHTML = parts.actionHtml;
+    actionWrap.dataset.sig = parts.actionSig;
+    this.applySwitchLabel(card, parts.switchLabel);
+
+    if (parts.isDownloading) {
+      card.insertAdjacentHTML('beforeend', this.cardProgressHtml(parts.model, parts.progress));
+    }
+    return card;
+  }
+
+  // The spinner node is kept across phases so its rotation never restarts.
+  applySwitchLabel(card, label) {
+    const spinner = card?.querySelector('.model-switch-spinner');
+    if (!spinner || !label) return;
+    if (spinner.getAttribute('aria-label') === label) return;
+    spinner.setAttribute('aria-label', label);
+    spinner.title = label;
+  }
+
+  syncCard(card, parts) {
+    if (card.className !== parts.className) card.className = parts.className;
+    if (card.dataset.state !== parts.state) card.dataset.state = parts.state;
+
+    const iconWrap = card.querySelector('.model-card-icon');
+    if (iconWrap && iconWrap.innerHTML !== parts.iconSvg) iconWrap.innerHTML = parts.iconSvg;
+
+    const nameEl = card.querySelector('.model-card-name');
+    if (nameEl && nameEl.innerHTML !== parts.nameHtml) nameEl.innerHTML = parts.nameHtml;
+
+    const descEl = card.querySelector('.model-card-desc');
+    if (descEl) {
+      if (descEl.dataset.baseDesc !== parts.baseDesc) descEl.dataset.baseDesc = parts.baseDesc;
+      if (descEl.textContent !== parts.descText) descEl.textContent = parts.descText;
+    }
+
+    const actionWrap = card.querySelector('.model-card-action');
+    if (actionWrap && actionWrap.dataset.sig !== parts.actionSig) {
+      actionWrap.innerHTML = parts.actionHtml;
+      actionWrap.dataset.sig = parts.actionSig;
+    }
+    this.applySwitchLabel(card, parts.switchLabel);
+
+    const progressEl = card.querySelector('.model-card-progress');
+    if (parts.isDownloading && !progressEl) {
+      card.insertAdjacentHTML('beforeend', this.cardProgressHtml(parts.model, parts.progress));
+    } else if (parts.isDownloading) {
+      this.writeCardProgress(progressEl, parts.progress);
+    } else if (progressEl) {
+      progressEl.remove();
     }
   }
 
@@ -471,7 +686,11 @@ class ModelGrid {
       const downloading = (result && result.downloading) || [];
       const waiting = (result && result.waiting) || [];
       const serverProgress = (result && result.progress) || [];
-      const activeModel = this.getActiveModel();
+
+      // Published before the unchanged-list fast path so the count stays live
+      // for sections that never render the grid.
+      this.downloadingModels = new Set(downloading);
+      this.publishDownloadCount(this.inFlightModels(downloading, waiting).size);
 
       for (const p of serverProgress) {
         if (p.model && (!this.cardProgress[p.model] || this.cardProgress[p.model].phase === 'downloading')) {
@@ -485,6 +704,10 @@ class ModelGrid {
         }
       }
 
+      this.lastModels = models;
+      this.lastDownloading = downloading;
+      this.lastWaiting = waiting;
+
       const listKey = this.listKey(models, downloading, waiting);
       if (!force && listKey === this.lastListKey && this.container.childElementCount > 0) {
         models.forEach(m => {
@@ -497,102 +720,51 @@ class ModelGrid {
         });
         return;
       }
-      this.lastListKey = listKey;
 
-      const selectedModel = this.modelSelect?.value || activeModel;
-      this.container.innerHTML = '';
-
-      models.forEach(m => {
-        const isDownloaded = m.downloaded;
-        const isPartial = !!(m.partial || this.forceResumeModels.has(m.id));
-        const isActive = m.id === activeModel && isDownloaded;
-        const liveDl = this.cardProgress[m.id];
-        const backendDownloading = downloading.includes(m.id)
-          || (liveDl && liveDl.phase === 'downloading');
-        // forceResume wins over a stale active-queue race after Pause.
-        const isDownloading = backendDownloading && !this.forceResumeModels.has(m.id);
-        const isWaiting = waiting.includes(m.id);
-        const isSelected = m.id === selectedModel && !isActive;
-        const isRecommended = this.recommendedModel && m.id === this.recommendedModel;
-
-        if (this.forceResumeModels.has(m.id) && m.partial && !downloading.includes(m.id)) {
-          this.forceResumeModels.delete(m.id);
-        }
-
-        const card = document.createElement('div');
-        card.className = 'model-card'
-          + (isActive ? ' active' : '')
-          + (isRecommended ? ' recommended' : '')
-          + (isDownloading ? ' downloading' : '')
-          + (isWaiting ? ' waiting' : '')
-          + (isPartial && !isDownloading && !isWaiting ? ' partial' : '')
-          + (isSelected ? ' selected' : '');
-        card.dataset.model = m.id;
-
-        const baseDesc = this.baseModelDesc(m);
-        const livePct = liveDl && liveDl.phase === 'downloading' ? Math.round(liveDl.percent || 0) : null;
-        const descText = isDownloading && livePct != null
-          ? `${baseDesc} — ${livePct}%`
-          : `${baseDesc}${isPartial && m.partial_label && !isDownloading ? ' — ' + m.partial_label : ''}`;
-
-        let iconSvg;
-        let actionHtml;
-
-        if (isActive) {
-          iconSvg = ModelGrid.ICONS.active;
-          actionHtml = `<span class="model-badge badge-active">Active</span>`;
-        } else if (isDownloading) {
-          iconSvg = ModelGrid.ICONS.downloading;
-          actionHtml = `<span class="model-badge badge-downloading">Downloading</span>`;
-        } else if (isWaiting) {
-          iconSvg = ModelGrid.ICONS.waiting;
-          const pos = waiting.indexOf(m.id) + 1;
-          actionHtml = `
-            <span class="model-badge badge-waiting">Waiting${pos > 0 ? ' #' + pos : ''}</span>
-            <button type="button" class="model-badge badge-cancel-queue card-cancel-btn" data-model="${m.id}">Cancel</button>`;
-        } else if (isPartial) {
-          iconSvg = ModelGrid.ICONS.partial;
-          actionHtml = `
-            <span class="model-badge badge-partial clickable-badge" data-action="resume">Resume</span>
-            <span class="model-badge badge-restart clickable-badge" data-action="restart">Restart</span>`;
-        } else if (isDownloaded) {
-          iconSvg = ModelGrid.ICONS.downloaded;
-          actionHtml = `<span class="model-badge badge-load clickable-badge">${this.mode === 'onboarding' ? 'Use' : 'Load'}</span>`;
-        } else {
-          iconSvg = ModelGrid.ICONS.cloud;
-          actionHtml = `<span class="model-badge badge-download clickable-badge">Download</span>`;
-        }
-
-        const recTag = isRecommended ? ' <span class="model-tag-rec">recommended</span>' : '';
-
-        card.innerHTML = `
-          <div class="model-card-row">
-            <div class="model-card-icon">${iconSvg}</div>
-            <div class="model-card-body">
-              <div class="model-card-name">${m.id}${recTag}</div>
-              <div class="model-card-desc" data-base-desc="${baseDesc.replace(/"/g, '&quot;')}">${descText}</div>
-            </div>
-            <div class="model-card-action">${actionHtml}</div>
-          </div>
-        `;
-
-        if (isDownloading) {
-          const progressWrap = document.createElement('div');
-          progressWrap.innerHTML = this.cardProgressHtml(m.id, liveDl || { percent: 0, speed_mbps: 0, eta_secs: 0 });
-          card.appendChild(progressWrap.firstElementChild);
-        }
-
-        this.bindCard(card, m, {
-          isActive, isDownloading, isWaiting, isPartial, isDownloaded, isSelected,
-        });
-
-        this.container.appendChild(card);
-      });
-
-      this.hooks.onRefresh?.();
+      this.renderCards();
     } catch (e) {
       console.error('Failed to load model list:', e);
     }
+  }
+
+  renderCards() {
+    if (!this.container) return;
+
+    const models = this.lastModels;
+    const downloading = this.lastDownloading;
+    const waiting = this.lastWaiting;
+    if (!models.length) return;
+
+    this.lastListKey = this.listKey(models, downloading, waiting);
+    this.ensureContainerListener();
+
+    const stale = new Map();
+    this.container.querySelectorAll('.model-card').forEach(card => {
+      stale.set(card.dataset.model, card);
+    });
+
+    models.forEach((m, i) => {
+      const parts = this.cardParts(m, waiting);
+
+      if (this.forceResumeModels.has(m.id) && m.partial && !downloading.includes(m.id)) {
+        this.forceResumeModels.delete(m.id);
+      }
+
+      let card = stale.get(m.id);
+      if (card) {
+        stale.delete(m.id);
+        this.syncCard(card, parts);
+      } else {
+        card = this.createCard(parts);
+      }
+
+      const at = this.container.children[i];
+      if (at !== card) this.container.insertBefore(card, at || null);
+    });
+
+    stale.forEach(card => card.remove());
+
+    this.hooks.onRefresh?.();
   }
 }
 

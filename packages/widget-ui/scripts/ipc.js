@@ -135,6 +135,18 @@ const ttipc = {
     return this.invoke('request_accessibility');
   },
 
+  startMicTest() {
+    return this.invoke('start_mic_test');
+  },
+
+  stopMicTest() {
+    return this.invoke('stop_mic_test');
+  },
+
+  getAudioInputInfo() {
+    return this.invoke('get_audio_input_info');
+  },
+
   openSystemPane(pane) {
     return this.invoke('open_system_pane', { pane });
   },

@@ -25,7 +25,7 @@ server: ## Run whisper server locally (Python)
 	.venv/bin/python packages/server/whisper_server.py --model base
 
 assets: ## Regenerate README showcase images and demo animation
-	python3 scripts/assets/compose_showcase.py
+	.venv/bin/python scripts/assets/compose_showcase.py
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 

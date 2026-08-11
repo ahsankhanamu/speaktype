@@ -19,7 +19,7 @@ mod transcribe;
 mod tray;
 mod window;
 
-use audio::AudioRecorder;
+use audio::{AudioRecorder, LevelMonitor};
 use commands::AppState;
 use settings::Settings;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -61,6 +61,9 @@ pub fn run() {
             commands::toggle_recording,
             commands::cancel_recording,
             commands::check_permissions,
+            commands::start_mic_test,
+            commands::stop_mic_test,
+            commands::get_audio_input_info,
             commands::request_accessibility,
             commands::request_microphone_access,
             commands::get_onboarding_status,
@@ -272,6 +275,7 @@ pub fn run() {
             let app_state = AppState {
                 settings: Arc::new(Mutex::new(settings.clone())),
                 recorder: Arc::new(Mutex::new(recorder)),
+                level_monitor: Arc::new(Mutex::new(LevelMonitor::new())),
                 is_recording: is_recording.clone(),
                 is_transcribing: is_transcribing.clone(),
                 target_window: Arc::new(Mutex::new(None)),
@@ -462,8 +466,9 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building SpeakType")
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                commands::stop_mic_test_for_app(app, "app_exit");
                 server::stop_server();
             }
         });
