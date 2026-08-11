@@ -24,35 +24,91 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background: var(--bg);
   color: var(--text);
-  padding: 24px;
   font-size: 14px;
 }
 
+/* Shell: fixed-width sidebar, only the right pane scrolls */
 .settings {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
+  display: grid;
+  grid-template-columns: 224px 1fr;
+  min-height: 100dvh;
+  height: 100dvh;
   overflow: hidden;
 }
 
-.tab-content.active {
-  display: block;
-  flex: 1;
-  overflow-y: auto;
-  min-height: 0;
+/* Sidebar */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-3);
+  background: var(--bg-elevated);
+  border-right: 1px solid var(--border-subtle);
+  overflow: hidden;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  min-width: 0;
+}
+
+.brand-mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--logo-grad);
+  color: var(--accent-muted);
+  box-shadow: var(--elevation-1);
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  color: var(--text-strong);
+}
+
+.brand-version {
+  font-size: 11px;
+  line-height: 1.25;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.sidebar-footer {
+  margin-top: auto;
 }
 
 .info-btn {
-  background: none;
-  border: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  padding: 6px;
-  border-radius: 6px;
   display: flex;
   align-items: center;
-  flex-shrink: 0;
-  transition: all 0.15s;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: none;
+  color: var(--text-faint);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
 }
 
 .info-btn:hover {
@@ -60,36 +116,123 @@ body {
   background: var(--accent-soft);
 }
 
-/* Tabs */
+/* Nav */
 .tabs {
   display: flex;
+  flex-direction: column;
   gap: 2px;
-  margin-bottom: 20px;
-  background: var(--surface-2);
-  border-radius: 8px;
-  padding: 3px;
 }
 
 .tab {
-  flex: 1;
-  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 8px 10px;
   border: none;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text-dim);
+  font-family: inherit;
   font-size: 13px;
   font-weight: 500;
+  text-align: left;
   cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.15s;
+  transition: background 0.15s, color 0.15s;
+}
+
+.tab-icon {
+  flex-shrink: 0;
+}
+
+.tab-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.tab-badge {
+  flex-shrink: 0;
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-pill);
+  background: var(--accent-soft);
+  color: var(--accent-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 18px;
+  text-align: center;
 }
 
 .tab.active {
-  background: var(--surface-4);
-  color: var(--text-strong);
+  background: var(--accent-soft);
+  color: var(--accent-muted);
+}
+
+/* The active row already uses --accent-soft, so the chip has to invert there */
+.tab.active .tab-badge {
+  background: var(--accent);
+  color: var(--on-accent);
 }
 
 .tab:hover:not(.active) {
+  color: var(--text);
+  background: var(--widget-btn-bg);
+}
+
+/* Right pane */
+.pane {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.pane-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: var(--space-5) var(--space-6) var(--space-4);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg);
+}
+
+.pane-title {
+  font-size: 18px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-strong);
+}
+
+.pane-desc {
+  margin-top: 2px;
+  font-size: 12px;
   color: var(--text-muted);
+}
+
+.pane-body {
+  min-height: 0;
+  padding: var(--space-5) var(--space-6);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.pane-body::-webkit-scrollbar { width: 8px; }
+.pane-body::-webkit-scrollbar-track { background: transparent; }
+.pane-body::-webkit-scrollbar-thumb {
+  background: var(--scrollbar);
+  border-radius: var(--radius-xs);
+}
+.pane-body::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
+
+.pane-footer {
+  padding: var(--space-3) var(--space-6);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-elevated);
 }
 
 /* Tab content */
@@ -97,9 +240,41 @@ body {
   display: none;
 }
 
+.tab-content.active {
+  display: block;
+}
+
+/* Cards */
+.card {
+  padding: var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--elevation-1);
+}
+
+.card + .card {
+  margin-top: var(--space-4);
+}
+
+.card-title {
+  margin-bottom: var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.card > :last-child {
+  margin-bottom: 0;
+}
+
 /* Fields */
 .field {
   margin-bottom: 16px;
+}
+
+.field:last-child {
+  margin-bottom: 0;
 }
 
 .field label {
@@ -141,6 +316,16 @@ select {
   background-repeat: no-repeat;
   background-position: right 12px center;
   padding-right: 32px;
+}
+
+.input-filter {
+  margin-bottom: var(--space-1);
+}
+
+input[type="checkbox"]:focus-visible,
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
 }
 
 .hint {
@@ -666,6 +851,11 @@ select {
   word-break: break-word;
 }
 
+.history-sentinel {
+  flex: 0 0 1px;
+  height: 1px;
+}
+
 .history-empty {
   text-align: center;
   color: var(--text-faint);
@@ -681,10 +871,10 @@ select {
 
 /* Actions bar */
 .actions {
-  margin-top: 24px;
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 38px;
 }
 
 .actions-left,
@@ -696,4 +886,133 @@ select {
 
 .actions-right {
   margin-left: auto;
+}
+
+/* Narrow windows: sidebar collapses to icons only */
+@media (max-width: 760px) {
+  .settings {
+    grid-template-columns: 60px 1fr;
+  }
+
+  .sidebar {
+    padding: var(--space-4) var(--space-2);
+    align-items: center;
+  }
+
+  .sidebar-brand {
+    padding: 0;
+  }
+
+  .brand-text {
+    display: none;
+  }
+
+  .tabs {
+    align-self: stretch;
+  }
+
+  .tab,
+  .info-btn {
+    justify-content: center;
+    gap: 0;
+    padding: 10px 0;
+  }
+
+  .tab-label {
+    display: none;
+  }
+
+  .tab-badge {
+    margin-left: var(--space-1);
+  }
+
+  .pane-header,
+  .pane-body,
+  .pane-footer {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
+  }
+}
+
+/* Microphone check */
+.mic-test {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.mic-test-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.mic-test-device {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.mic-test-meter {
+  display: block;
+  width: 100%;
+  height: 34px;
+}
+
+.mic-test-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: calc(var(--space-1) * -1);
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.mic-test-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.mic-test-status::before {
+  content: '';
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--text-faint);
+  transition: background 0.15s;
+}
+
+.mic-test-status[data-state="ok"]::before {
+  background: var(--success);
+}
+
+.mic-test-status[data-state="warn"]::before {
+  background: var(--warning-alt);
+}
+
+.mic-test-status[data-state="bad"]::before {
+  background: var(--danger);
+}
+
+.mic-test-detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.mic-test-sound {
+  align-self: flex-start;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mic-test-status::before {
+    transition: none;
+  }
 }

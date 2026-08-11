@@ -1,5 +1,9 @@
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
+const paneTitle = document.getElementById('pane-title');
+const paneDesc = document.getElementById('pane-desc');
+const paneBody = document.querySelector('.pane-body');
+const modelsDownloadBadge = document.getElementById('models-download-badge');
 
 const actionsSettings = document.getElementById('actions-settings');
 const actionsHistory = document.getElementById('actions-history');
@@ -110,27 +114,42 @@ const WHISPER_LANGUAGES = [
   { code: 'zh', name: 'Chinese' },
 ];
 
+const LANGUAGE_FILTER_DEBOUNCE_MS = 120;
+
+let languageOptions = null;
+let languageFilterTimer = null;
+
+function buildLanguageOptions() {
+  return WHISPER_LANGUAGES.map(lang => {
+    const el = document.createElement('option');
+    el.value = lang.code;
+    el.textContent = lang.code === 'auto' ? lang.name : `${lang.name} (${lang.code})`;
+    return { code: lang.code, name: lang.name.toLowerCase(), el };
+  });
+}
+
 function populateLanguageSelect(filter) {
   const select = document.getElementById('language-select');
+  if (!languageOptions) languageOptions = buildLanguageOptions();
   const current = select.value || 'auto';
-  select.innerHTML = '';
   const q = (filter || '').toLowerCase();
-  WHISPER_LANGUAGES.forEach(lang => {
-    if (q && !lang.name.toLowerCase().includes(q) && !lang.code.includes(q)) return;
-    const opt = document.createElement('option');
-    opt.value = lang.code;
-    opt.textContent = lang.code === 'auto' ? lang.name : `${lang.name} (${lang.code})`;
-    select.appendChild(opt);
-  });
-  if ([...select.options].some(o => o.value === current)) {
-    select.value = current;
-  } else {
-    select.value = 'auto';
-  }
+  const matches = q
+    ? languageOptions.filter(o => o.name.includes(q) || o.code.includes(q))
+    : languageOptions;
+
+  select.replaceChildren(...matches.map(o => o.el));
+  select.value = matches.some(o => o.code === current) ? current : 'auto';
 }
+
+document.getElementById('language-search').addEventListener('input', (e) => {
+  const value = e.target.value;
+  clearTimeout(languageFilterTimer);
+  languageFilterTimer = setTimeout(() => populateLanguageSelect(value), LANGUAGE_FILTER_DEBOUNCE_MS);
+});
 
 let loadedSnapshot = {};
 let modelStatusTimer = null;
+let activeTab = 'hotkey';
 
 const modelGrid = new ModelGrid({
   container: 'model-grid',
@@ -149,14 +168,34 @@ const modelGrid = new ModelGrid({
       loadedSnapshot.model = model;
       checkDirty();
     },
+    onDownloadCount(count) { setModelsDownloadBadge(count); },
   },
 });
 
+function setModelsDownloadBadge(count) {
+  if (!modelsDownloadBadge) return;
+  const n = Number(count) || 0;
+  modelsDownloadBadge.hidden = n === 0;
+  modelsDownloadBadge.textContent = n === 0 ? '' : String(n);
+  modelsDownloadBadge.setAttribute(
+    'aria-label',
+    n === 1 ? '1 model downloading' : `${n} models downloading`
+  );
+}
+
 function switchTab(tabName) {
+  const navItem = document.querySelector(`.tab[data-tab="${tabName}"]`);
   tabs.forEach(t => t.classList.remove('active'));
   tabContents.forEach(tc => tc.classList.remove('active'));
-  document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+  navItem.classList.add('active');
   document.getElementById(`tab-${tabName}`).classList.add('active');
+
+  activeTab = tabName;
+  paneTitle.textContent = navItem.dataset.title || tabName;
+  paneDesc.textContent = navItem.dataset.desc || '';
+  paneBody.scrollTop = 0;
+  syncPermissionPoll();
+  if (window.MicTest) MicTest.setSectionVisible(tabName === 'general');
 
   actionsSettings.style.display = 'none';
   actionsHistory.style.display = 'none';
@@ -271,10 +310,6 @@ async function loadSettings() {
     if (settings.language) {
       langSelect.value = settings.language === 'auto' ? 'auto' : settings.language;
     }
-
-    document.getElementById('language-search').addEventListener('input', (e) => {
-      populateLanguageSelect(e.target.value);
-    });
 
     populateModelSelect();
     const modelSelect = document.getElementById('model-select');
@@ -730,7 +765,20 @@ function scheduleHideModelStatus(ms) {
   modelStatusTimer = setTimeout(hideModelStatus, ms);
 }
 
+const HISTORY_PAGE_SIZE = 30;
+const HISTORY_COPY_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
+const HISTORY_COPIED_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5"><path d="M4.5 12.75l6 6 9-13.5"/></svg>';
+const HISTORY_DELETE_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+
 let activeHistoryPlayer = null;
+let historyEntries = [];
+let historyRenderedCount = 0;
+let historyObserver = null;
+let historySentinel = null;
+let historyListBound = false;
+let armedHistoryBtn = null;
+let armedHistoryTimer = null;
+const historyPlayers = new Map();
 
 function bindConfirmButton(button, { confirmLabel, onConfirm, armedClass = 'confirm-armed' }) {
   button.type = 'button';
@@ -774,11 +822,14 @@ function bindConfirmButton(button, { confirmLabel, onConfirm, armedClass = 'conf
 function stopActiveHistoryPlayer() {
   if (!activeHistoryPlayer) return;
   activeHistoryPlayer.audio.pause();
-  if (activeHistoryPlayer.onStop) activeHistoryPlayer.onStop();
-  if (activeHistoryPlayer.objectUrl) {
-    URL.revokeObjectURL(activeHistoryPlayer.objectUrl);
-  }
+  activeHistoryPlayer.reset();
   activeHistoryPlayer = null;
+}
+
+function releaseHistoryPlayers() {
+  stopActiveHistoryPlayer();
+  historyPlayers.forEach(player => player.release());
+  historyPlayers.clear();
 }
 
 function toAudioBytes(raw) {
@@ -788,14 +839,16 @@ function toAudioBytes(raw) {
   return new Uint8Array(raw || []);
 }
 
-function createHistoryAudioPlayer(index, durationHint) {
+function createHistoryAudioPlayer(durationHint) {
   const wrap = document.createElement('div');
   wrap.className = 'history-audio-player';
+  if (durationHint) wrap.dataset.durationHint = String(durationHint);
 
   const playBtn = document.createElement('button');
   playBtn.type = 'button';
   playBtn.className = 'history-play-btn';
   playBtn.title = 'Play recording';
+  playBtn.dataset.action = 'play';
   playBtn.textContent = '▶';
 
   const seek = document.createElement('input');
@@ -819,10 +872,24 @@ function createHistoryAudioPlayer(index, durationHint) {
   wrap.appendChild(timeLabel);
   wrap.appendChild(audio);
 
+  return wrap;
+}
+
+// Player state is built on first interaction so a long history only pays for
+// the rows the user actually plays.
+function getHistoryPlayer(wrap, index) {
+  const cached = historyPlayers.get(index);
+  if (cached) return cached;
+
+  const playBtn = wrap.querySelector('.history-play-btn');
+  const seek = wrap.querySelector('.history-seek');
+  const timeLabel = wrap.querySelector('.history-audio-time');
+  const audio = wrap.querySelector('audio');
+
   let objectUrl = null;
   let loaded = false;
   let loading = false;
-  let duration = durationHint || 0;
+  let duration = Number(wrap.dataset.durationHint) || 0;
   let seeking = false;
 
   function setPlayingUI(playing) {
@@ -878,28 +945,6 @@ function createHistoryAudioPlayer(index, durationHint) {
     }
   }
 
-  playBtn.addEventListener('click', async () => {
-    try {
-      if (!loaded) await ensureLoaded();
-      if (activeHistoryPlayer && activeHistoryPlayer !== playerState) {
-        stopActiveHistoryPlayer();
-      }
-      if (audio.paused) {
-        activeHistoryPlayer = playerState;
-        await audio.play();
-        setPlayingUI(true);
-      } else {
-        audio.pause();
-        setPlayingUI(false);
-        if (activeHistoryPlayer === playerState) activeHistoryPlayer = null;
-      }
-    } catch (e) {
-      console.error('Failed to play history audio:', e);
-      alert('Could not play audio: ' + e);
-      resetPlayerUI();
-    }
-  });
-
   seek.addEventListener('input', () => {
     if (!loaded || !duration) return;
     seeking = true;
@@ -931,135 +976,265 @@ function createHistoryAudioPlayer(index, durationHint) {
 
   const playerState = {
     audio,
-    get objectUrl() { return objectUrl; },
-    onStop: resetPlayerUI,
+    ensureLoaded,
+    setPlaying: setPlayingUI,
+    reset: resetPlayerUI,
+    release() {
+      audio.pause();
+      audio.removeAttribute('src');
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+      }
+      loaded = false;
+    },
   };
 
-  return wrap;
+  historyPlayers.set(index, playerState);
+  return playerState;
+}
+
+function createHistoryActionBtn(action, title, html, extraClass) {
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'history-action-btn' + (extraClass ? ' ' + extraClass : '');
+  btn.title = title;
+  btn.dataset.action = action;
+  btn.innerHTML = html;
+  return btn;
+}
+
+function createHistoryEntry(entry, index) {
+  const div = document.createElement('div');
+  div.className = 'history-entry';
+  div.dataset.index = String(index);
+
+  const header = document.createElement('div');
+  header.className = 'history-header';
+
+  const time = document.createElement('span');
+  time.className = 'history-time';
+  time.textContent = formatTimestamp(entry.timestamp);
+  header.appendChild(time);
+
+  if (entry.audio_file) {
+    const audioTag = document.createElement('span');
+    audioTag.className = 'history-audio-tag';
+    audioTag.title = 'Audio saved';
+    audioTag.textContent = entry.duration_secs
+      ? formatDuration(entry.duration_secs)
+      : 'audio';
+    header.appendChild(audioTag);
+  }
+
+  const actions = document.createElement('span');
+  actions.className = 'history-entry-actions';
+  actions.appendChild(createHistoryActionBtn('copy', 'Copy', HISTORY_COPY_ICON));
+  if (entry.audio_file) {
+    actions.appendChild(createHistoryActionBtn('reprocess', 'Reprocess audio', '↻'));
+    actions.appendChild(
+      createHistoryActionBtn('delete-audio', 'Delete audio only (keep text)', '♪⌫', 'delete-audio')
+    );
+  }
+  actions.appendChild(createHistoryActionBtn('delete', 'Delete entry and audio', HISTORY_DELETE_ICON, 'delete'));
+  header.appendChild(actions);
+
+  const text = document.createElement('div');
+  text.className = 'history-text';
+  text.textContent = entry.text;
+
+  div.appendChild(header);
+  div.appendChild(text);
+  if (entry.audio_file) {
+    div.appendChild(createHistoryAudioPlayer(entry.duration_secs));
+  }
+  return div;
+}
+
+function disarmHistoryButton() {
+  if (armedHistoryTimer) {
+    clearTimeout(armedHistoryTimer);
+    armedHistoryTimer = null;
+  }
+  if (!armedHistoryBtn) return;
+  armedHistoryBtn.innerHTML = armedHistoryBtn.dataset.defaultHtml || '';
+  armedHistoryBtn.classList.remove('confirm-armed');
+  armedHistoryBtn = null;
+}
+
+async function confirmHistoryAction(btn, confirmLabel, onConfirm) {
+  if (armedHistoryBtn !== btn) {
+    disarmHistoryButton();
+    btn.dataset.defaultHtml = btn.innerHTML;
+    btn.textContent = confirmLabel;
+    btn.classList.add('confirm-armed');
+    armedHistoryBtn = btn;
+    armedHistoryTimer = setTimeout(disarmHistoryButton, 3000);
+    return;
+  }
+
+  disarmHistoryButton();
+  try {
+    await onConfirm();
+  } catch (err) {
+    console.error(err);
+    alert(String(err));
+  }
+}
+
+function copyHistoryText(btn, text) {
+  navigator.clipboard.writeText(text).then(() => {
+    btn.innerHTML = HISTORY_COPIED_ICON;
+    setTimeout(() => { btn.innerHTML = HISTORY_COPY_ICON; }, 1200);
+  }).catch(() => {});
+}
+
+async function toggleHistoryPlayback(entryEl, index) {
+  const wrap = entryEl.querySelector('.history-audio-player');
+  if (!wrap) return;
+  const player = getHistoryPlayer(wrap, index);
+  try {
+    await player.ensureLoaded();
+    if (activeHistoryPlayer && activeHistoryPlayer !== player) {
+      stopActiveHistoryPlayer();
+    }
+    if (player.audio.paused) {
+      activeHistoryPlayer = player;
+      await player.audio.play();
+      player.setPlaying(true);
+    } else {
+      player.audio.pause();
+      player.setPlaying(false);
+      if (activeHistoryPlayer === player) activeHistoryPlayer = null;
+    }
+  } catch (e) {
+    console.error('Failed to play history audio:', e);
+    alert('Could not play audio: ' + e);
+    player.reset();
+  }
+}
+
+async function reprocessHistoryEntry(btn, index) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    await ttipc.reprocessHistoryEntry(index);
+    await loadHistory();
+  } catch (e) {
+    console.error('Failed to reprocess:', e);
+    alert('Reprocess failed: ' + e);
+  }
+}
+
+function onHistoryListClick(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const entryEl = btn.closest('.history-entry');
+  if (!entryEl) return;
+  const index = Number(entryEl.dataset.index);
+  const entry = historyEntries[index];
+  if (!entry) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  if (armedHistoryBtn && armedHistoryBtn !== btn) disarmHistoryButton();
+
+  switch (btn.dataset.action) {
+    case 'copy':
+      copyHistoryText(btn, entry.text);
+      break;
+    case 'play':
+      toggleHistoryPlayback(entryEl, index);
+      break;
+    case 'reprocess':
+      reprocessHistoryEntry(btn, index);
+      break;
+    case 'delete-audio':
+      confirmHistoryAction(btn, 'Sure?', async () => {
+        stopActiveHistoryPlayer();
+        await ttipc.deleteHistoryAudio(index);
+        await loadHistory();
+      });
+      break;
+    case 'delete':
+      confirmHistoryAction(btn, 'Delete?', async () => {
+        stopActiveHistoryPlayer();
+        await ttipc.deleteHistoryEntry(index);
+        await loadHistory();
+      });
+      break;
+  }
+}
+
+function ensureHistoryObserver() {
+  if (historyObserver) return historyObserver;
+  historyObserver = new IntersectionObserver((records) => {
+    if (records.some(r => r.isIntersecting)) renderHistoryPage();
+  }, { root: paneBody, rootMargin: '200px' });
+  return historyObserver;
+}
+
+function renderHistoryPage() {
+  const list = document.getElementById('history-list');
+  const end = Math.min(historyRenderedCount + HISTORY_PAGE_SIZE, historyEntries.length);
+  const fragment = document.createDocumentFragment();
+  for (let i = historyRenderedCount; i < end; i++) {
+    fragment.appendChild(createHistoryEntry(historyEntries[i], i));
+  }
+  list.insertBefore(fragment, historySentinel);
+  historyRenderedCount = end;
+
+  const observer = ensureHistoryObserver();
+  observer.unobserve(historySentinel);
+  if (historyRenderedCount >= historyEntries.length) {
+    historySentinel.hidden = true;
+    return;
+  }
+  // Re-observing re-fires the callback when the sentinel is still on screen,
+  // so a tall window keeps paging until it is filled.
+  observer.observe(historySentinel);
 }
 
 async function loadHistory() {
-  stopActiveHistoryPlayer();
+  releaseHistoryPlayers();
+  disarmHistoryButton();
+
   const list = document.getElementById('history-list');
   const empty = document.getElementById('history-empty');
+
+  if (!historyListBound) {
+    list.addEventListener('click', onHistoryListClick);
+    historyListBound = true;
+  }
+  if (!historySentinel) {
+    historySentinel = document.createElement('div');
+    historySentinel.className = 'history-sentinel';
+    historySentinel.setAttribute('aria-hidden', 'true');
+  }
+
   try {
     const history = await ttipc.getHistory();
-    const entries = (history && history.entries) || [];
-
-    list.querySelectorAll('.history-entry').forEach(el => el.remove());
-
-    if (entries.length === 0) {
-      empty.style.display = '';
-      return;
-    }
-    empty.style.display = 'none';
-
-    entries.forEach((entry, index) => {
-      const div = document.createElement('div');
-      div.className = 'history-entry';
-
-      const header = document.createElement('div');
-      header.className = 'history-header';
-      const time = document.createElement('span');
-      time.className = 'history-time';
-      time.textContent = formatTimestamp(entry.timestamp);
-      const actions = document.createElement('span');
-      actions.className = 'history-entry-actions';
-
-      const copyBtn = document.createElement('button');
-      copyBtn.type = 'button';
-      copyBtn.className = 'history-action-btn';
-      copyBtn.title = 'Copy';
-      copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
-      copyBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(entry.text).then(() => {
-          copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#4ade80" stroke-width="2.5"><path d="M4.5 12.75l6 6 9-13.5"/></svg>';
-          setTimeout(() => {
-            copyBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>';
-          }, 1200);
-        }).catch(() => {});
-      });
-
-      if (entry.audio_file) {
-        const reprocessBtn = document.createElement('button');
-        reprocessBtn.type = 'button';
-        reprocessBtn.className = 'history-action-btn';
-        reprocessBtn.title = 'Reprocess audio';
-        reprocessBtn.textContent = '↻';
-        reprocessBtn.addEventListener('click', async (e) => {
-          e.stopPropagation();
-          reprocessBtn.disabled = true;
-          reprocessBtn.textContent = '…';
-          try {
-            await ttipc.reprocessHistoryEntry(index);
-            await loadHistory();
-          } catch (e) {
-            console.error('Failed to reprocess:', e);
-            alert('Reprocess failed: ' + e);
-          }
-        });
-
-        const deleteAudioBtn = document.createElement('button');
-        deleteAudioBtn.className = 'history-action-btn delete-audio';
-        deleteAudioBtn.title = 'Delete audio only (keep text)';
-        deleteAudioBtn.textContent = '♪⌫';
-        bindConfirmButton(deleteAudioBtn, {
-          confirmLabel: 'Sure?',
-          onConfirm: async () => {
-            stopActiveHistoryPlayer();
-            await ttipc.deleteHistoryAudio(index);
-            await loadHistory();
-          },
-        });
-
-        actions.appendChild(copyBtn);
-        actions.appendChild(reprocessBtn);
-        actions.appendChild(deleteAudioBtn);
-      } else {
-        actions.appendChild(copyBtn);
-      }
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.className = 'history-action-btn delete';
-      deleteBtn.title = 'Delete entry and audio';
-      deleteBtn.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>';
-      bindConfirmButton(deleteBtn, {
-        confirmLabel: 'Delete?',
-        onConfirm: async () => {
-          stopActiveHistoryPlayer();
-          await ttipc.deleteHistoryEntry(index);
-          await loadHistory();
-        },
-      });
-
-      actions.appendChild(deleteBtn);
-      header.appendChild(time);
-      if (entry.audio_file) {
-        const audioTag = document.createElement('span');
-        audioTag.className = 'history-audio-tag';
-        audioTag.title = 'Audio saved';
-        audioTag.textContent = entry.duration_secs
-          ? formatDuration(entry.duration_secs)
-          : 'audio';
-        header.appendChild(audioTag);
-      }
-      header.appendChild(actions);
-
-      const text = document.createElement('div');
-      text.className = 'history-text';
-      text.textContent = entry.text;
-
-      div.appendChild(header);
-      div.appendChild(text);
-      if (entry.audio_file) {
-        div.appendChild(createHistoryAudioPlayer(index, entry.duration_secs));
-      }
-      list.appendChild(div);
-    });
+    historyEntries = (history && history.entries) || [];
   } catch (e) {
     console.error('Failed to load history:', e);
+    return;
   }
+
+  ensureHistoryObserver().unobserve(historySentinel);
+  list.querySelectorAll('.history-entry').forEach(el => el.remove());
+  list.appendChild(historySentinel);
+  historyRenderedCount = 0;
+
+  if (historyEntries.length === 0) {
+    empty.style.display = '';
+    historySentinel.hidden = true;
+    return;
+  }
+
+  empty.style.display = 'none';
+  historySentinel.hidden = false;
+  renderHistoryPage();
 }
 
 function formatTimestamp(ts) {
@@ -1080,6 +1255,10 @@ bindConfirmButton(document.getElementById('clear-history-btn'), {
   },
 });
 
+const PERMISSION_POLL_MS = 3000;
+
+let permissionPollTimer = null;
+
 async function checkPermissions() {
   const micEl = document.getElementById('perm-mic');
   const accEl = document.getElementById('perm-acc');
@@ -1090,6 +1269,8 @@ async function checkPermissions() {
   try {
     const result = await ttipc.checkPermissions();
     if (!result) return;
+
+    if (window.MicTest) MicTest.setPermission(!!result.microphone);
 
     if (result.microphone) {
       micEl.textContent = 'Granted';
@@ -1134,7 +1315,26 @@ document.getElementById('request-acc-btn').addEventListener('click', async () =>
   }
 });
 
-setInterval(checkPermissions, 3000);
+// Polling only makes sense while the user can see the permission rows, so it is
+// tied to the General section being visible and the window having focus.
+function syncPermissionPoll() {
+  const wanted = activeTab === 'general' && document.hasFocus() && !document.hidden;
+  if (wanted && !permissionPollTimer) {
+    permissionPollTimer = setInterval(checkPermissions, PERMISSION_POLL_MS);
+  } else if (!wanted && permissionPollTimer) {
+    clearInterval(permissionPollTimer);
+    permissionPollTimer = null;
+  }
+}
+
+window.addEventListener('focus', () => {
+  if (activeTab === 'general') checkPermissions();
+  syncPermissionPoll();
+});
+window.addEventListener('blur', syncPermissionPoll);
+document.addEventListener('visibilitychange', syncPermissionPoll);
+
+syncPermissionPoll();
 
 document.getElementById('about-btn').addEventListener('click', () => {
   ttipc.openAbout().catch(e => console.error('Failed to open about:', e));
@@ -1142,3 +1342,4 @@ document.getElementById('about-btn').addEventListener('click', () => {
 
 loadSettings();
 modelGrid.ensureListeners();
+modelGrid.refreshDownloadCount();

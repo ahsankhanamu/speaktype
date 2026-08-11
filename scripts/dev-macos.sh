@@ -149,9 +149,36 @@ quit_running_instances() {
   sleep 0.5
 }
 
+app_is_running() {
+  pgrep -f "$CONTENTS/MacOS/speaktype" >/dev/null 2>&1
+}
+
+binary_digest() {
+  [[ -f "$1" ]] || return 1
+  shasum -a 256 "$1" | awk '{print $1}'
+}
+
 rebuild_and_launch() {
+  local bundled_digest built_digest
+  bundled_digest="$(binary_digest "$CONTENTS/MacOS/speaktype" 2>/dev/null || true)"
+
   echo "[dev] Building…"
   (cd "$TAURI_DIR" && cargo build) || return 1
+
+  if ! built_digest="$(binary_digest "$TARGET_DIR/speaktype")"; then
+    echo "[dev] build produced no binary at $TARGET_DIR/speaktype"
+    return 1
+  fi
+
+  # Re-signing is what jeopardises the Accessibility grant, so skip the whole
+  # sign/relaunch cycle when the build reproduced the binary that is already
+  # bundled and running — a UI-only edit that compiles to the same bytes has
+  # nothing to ship.
+  if [[ -n "$bundled_digest" && "$built_digest" == "$bundled_digest" \
+        && -d "$CONTENTS/_CodeSignature" ]] && app_is_running; then
+    echo "[dev] binary unchanged — kept the running instance (no re-sign, no relaunch)"
+    return 0
+  fi
 
   assemble_bundle
   sign_bundle || return 1
@@ -171,10 +198,62 @@ WATCH_PATHS=(
   "$ROOT/packages/widget-ui"
 )
 
-# Names, sizes and full timestamps of everything under the watch paths.
-fingerprint() {
-  ls -lTR "${WATCH_PATHS[@]}" 2>/dev/null | shasum -a 256 | awk '{print $1}'
+POLL_INTERVAL=1
+# Consecutive equal samples required before a change is considered settled.
+DEBOUNCE_SAMPLES=3
+
+# One `path|mtime|size` line per watched source file. Directory entries, `total`
+# block counts and editor droppings are deliberately absent: they move without a
+# source edit, and the previous `ls -lTR` fingerprint hashed all of them.
+file_manifest() {
+  {
+    find "${WATCH_PATHS[@]}" \
+      \( -name '.git' -o -name 'target' -o -name 'gen' -o -name 'node_modules' -o -name 'dist' \) -prune -o \
+      -type f \
+      \( -name '*.rs' -o -name '*.toml' -o -name '*.json' \
+         -o -name '*.html' -o -name '*.css' -o -name '*.js' \) \
+      ! -name '.DS_Store' ! -name '*.swp' ! -name '*.swo' ! -name '*~' \
+      -exec stat -f '%N|%m|%z' {} \; 2>/dev/null || true
+  } | LC_ALL=C sort
 }
+
+fingerprint() {
+  file_manifest | shasum -a 256 | awk '{print $1}'
+}
+
+# Paths present in one manifest but not the other, relative to the repo root.
+changed_paths() {
+  { diff <(printf '%s\n' "$1") <(printf '%s\n' "$2") || true; } \
+    | sed -n 's/^[<>] //p' \
+    | cut -d'|' -f1 \
+    | LC_ALL=C sort -u \
+    | sed "s|^$ROOT/||"
+}
+
+# Block until the fingerprint stops moving, so a burst of saves collapses into a
+# single rebuild instead of one rebuild per save.
+settle() {
+  local fp="$1" stable=0 next
+  while (( stable < DEBOUNCE_SAMPLES )); do
+    sleep "$POLL_INTERVAL"
+    next="$(fingerprint)"
+    if [[ "$next" == "$fp" ]]; then
+      stable=$(( stable + 1 ))
+    else
+      fp="$next"
+      stable=0
+    fi
+  done
+  printf '%s\n' "$fp"
+}
+
+# An empty manifest would silently pin the fingerprint and the watcher would
+# never fire again, so refuse to start rather than pretend to watch.
+if [[ -z "$(file_manifest)" ]]; then
+  echo "[dev] error: no watched source files matched under:"
+  printf '[dev]   %s\n' "${WATCH_PATHS[@]}"
+  exit 1
+fi
 
 rm -rf "$TARGET_DIR/SpeakTypeDev.app"
 rebuild_and_launch || exit 1
@@ -204,19 +283,26 @@ echo "[dev] Watching for changes (Ctrl+C to quit)"
 echo
 
 last_fp="$(fingerprint)"
+last_manifest="$(file_manifest)"
 while true; do
-  sleep 1
+  sleep "$POLL_INTERVAL"
   fp="$(fingerprint)"
   [[ "$fp" == "$last_fp" ]] && continue
 
-  # Let a burst of saves settle before rebuilding.
-  sleep 0.5
-  fp="$(fingerprint)"
+  settle "$fp" >/dev/null
+  pre_manifest="$(file_manifest)"
 
   echo
   echo "[dev] Change detected — rebuilding…"
+  changed_paths "$last_manifest" "$pre_manifest" | sed 's/^/[dev]   /'
   rebuild_and_launch || echo "[dev] rebuild failed — fix the error and save again"
 
   # Recompute after the build in case it touched watched files.
+  last_manifest="$(file_manifest)"
   last_fp="$(fingerprint)"
+
+  if [[ "$last_manifest" != "$pre_manifest" ]]; then
+    echo "[dev] watched files changed during the build (external edit, or the build self-triggering):"
+    changed_paths "$pre_manifest" "$last_manifest" | sed 's/^/[dev]   /'
+  fi
 done

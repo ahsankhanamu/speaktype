@@ -10,211 +10,315 @@
 </head>
 <body>
   <div class="settings">
-    <div class="tabs">
-      <button class="tab active" data-tab="hotkey">Hotkey</button>
-      <button class="tab" data-tab="server">Server</button>
-      <button class="tab" data-tab="general">General</button>
-      <button class="tab" data-tab="models">Models</button>
-      <button class="tab" data-tab="history">History</button>
-      <button class="info-btn" id="about-btn" title="About SpeakType">
-        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <circle cx="12" cy="12" r="10"/>
-          <line x1="12" y1="16" x2="12" y2="12"/>
-          <line x1="12" y1="8" x2="12.01" y2="8"/>
-        </svg>
-      </button>
-    </div>
-
-    <div class="tab-content active" id="tab-hotkey">
-      <div class="field">
-        <label>Current Hotkey</label>
-        <div class="hotkey-display" id="current-hotkey">Loading...</div>
-      </div>
-      <div class="field">
-        <label>Press new hotkey combination</label>
-        <button class="hotkey-capture" id="capture-btn">Click to capture...</button>
-        <p class="hint">Any modifier + key combo works (e.g. Command+Option+L). Hold Command+Control and release for a modifier-only chord, or pick a function key preset.</p>
-      </div>
-      <div class="field">
-        <label>Or choose a preset</label>
-        <div class="presets">
-          <button class="preset" data-hotkey="Super+Control"></button>
-          <button class="preset" data-hotkey="F9">F9</button>
-          <button class="preset" data-hotkey="F8">F8</button>
-        </div>
-      </div>
-    </div>
-
-    <div class="tab-content" id="tab-server">
-      <div class="field">
-        <label>API URL</label>
-        <div class="url-row">
-          <input type="text" id="api-url" placeholder="http://127.0.0.1:8002/inference">
-          <span class="status-dot" id="server-status" title="Checking..."></span>
-        </div>
-        <p class="hint">Whisper-compatible transcription endpoint</p>
-      </div>
-      <div class="field">
-        <label>Language</label>
-        <input type="text" id="language-search" placeholder="Search language..." class="input-filter" style="margin-bottom:4px;width:100%">
-        <select id="language-select"></select>
-        <p class="hint">Type to filter. Set to "Auto-detect" for multilingual. Language detection requires a multilingual model (not .en variants).</p>
-      </div>
-      <div class="server-actions" id="server-actions">
-        <button class="btn secondary" id="restart-server-btn" type="button">Restart Server</button>
-        <button class="btn secondary" id="stop-server-btn" type="button">Stop Server</button>
-      </div>
-      <p class="hint" id="server-actions-hint">Stop or restart the local whisper sidecar. Restart reloads the active model.</p>
-      <button class="btn" id="check-server-btn">Check Connection</button>
-    </div>
-
-    <div class="tab-content" id="tab-general">
-      <div class="field">
-        <label id="theme-label">Appearance</label>
-        <div class="segmented" role="radiogroup" aria-labelledby="theme-label">
-          <input type="radio" name="theme-pref" id="theme-auto" value="auto">
-          <label class="segment" for="theme-auto">Auto</label>
-          <input type="radio" name="theme-pref" id="theme-light" value="light">
-          <label class="segment" for="theme-light">Light</label>
-          <input type="radio" name="theme-pref" id="theme-dark" value="dark">
-          <label class="segment" for="theme-dark">Dark</label>
-        </div>
-        <p class="hint">Auto follows macOS appearance.</p>
-      </div>
-      <div class="field">
-        <label>Permissions</label>
-        <div class="permissions-list">
-          <div class="permission-row">
-            <span class="permission-label">Microphone</span>
-            <span class="permission-status" id="perm-mic">Checking...</span>
-            <button class="btn secondary btn-small open-settings-btn" id="open-mic-btn" style="display:none">Open Settings</button>
-          </div>
-          <div class="permission-row">
-            <span class="permission-label">Accessibility</span>
-            <span class="permission-status" id="perm-acc">Checking...</span>
-            <button class="btn secondary btn-small open-settings-btn" id="open-acc-btn" style="display:none">Open Settings</button>
-            <button class="btn secondary btn-small" id="request-acc-btn" style="display:none">Prompt</button>
-          </div>
-        </div>
-        <p class="hint">Microphone for recording. Accessibility to paste text into other apps.</p>
-      </div>
-      <div class="field">
-        <label>Paste Behavior</label>
-        <select id="paste-mode-select">
-          <option value="original">Paste to original window</option>
-          <option value="active">Paste to active window</option>
-        </select>
-        <p class="hint">Original: pastes to app you were in when recording started. Active: pastes to whichever app is focused when recording stops.</p>
-      </div>
-      <div class="field">
-        <label>Keys After Paste</label>
-        <select id="post-paste-keys-select">
-          <option value="">None</option>
-          <option value="enter">Enter</option>
-          <option value="tab">Tab</option>
-          <option value="enter+enter">Enter + Enter</option>
-          <option value="space">Space</option>
-        </select>
-        <input type="text" id="post-paste-keys-custom" placeholder="Or type custom: e.g. enter+tab" style="margin-top: 6px">
-        <p class="hint">Keys to press automatically after text is pasted. Use + to chain keys (e.g., enter+tab).</p>
-      </div>
-      <div class="field">
-        <label class="checkbox-label">
-          <input type="checkbox" id="save-recordings">
-          Save recording audio
-        </label>
-        <p class="hint">Keep WAV files for each transcription so you can reprocess them from History. Stored locally in ~/Library/Application Support/speaktype/recordings/</p>
-      </div>
-      <div class="field">
-        <label class="checkbox-label">
-          <input type="checkbox" id="hallucination-guard">
-          Filter hallucinated text
-        </label>
-        <p class="hint">Scores each transcription for invented text (silence transcribed as speech, repetition loops, low confidence), removes the bad parts, and re-runs the audio when a result looks wrong.</p>
-      </div>
-    </div>
-
-    <div class="tab-content" id="tab-models">
-      <select id="model-select" style="display:none"></select>
-      <div id="model-status" class="model-status" style="display:none" hidden></div>
-      <div class="model-grid" id="model-grid"></div>
-    </div>
-
-    <div class="tab-content" id="tab-history">
-      <p class="hint recordings-folder-hint">Play and seek saved recordings below each entry. Use ♪⌫ to remove audio; × removes the whole entry. Click twice to confirm deletes.</p>
-      <div class="history-list" id="history-list">
-        <div class="history-empty" id="history-empty">No transcriptions yet</div>
-      </div>
-    </div>
-
-    <div class="actions" id="actions-settings">
-      <div class="actions-left">
-        <button class="btn secondary" id="reset-position-btn" hidden>Reset Widget Position</button>
-      </div>
-      <div class="actions-right">
-        <button class="btn secondary" id="restore-defaults-btn">Restore Defaults</button>
-        <button class="btn primary disabled" id="save-btn" disabled>Save</button>
-      </div>
-    </div>
-    <div class="actions" id="actions-history" style="display:none">
-      <div class="actions-left">
-        <button type="button" class="folder-link-btn" id="open-recordings-folder-btn" title="Open recordings folder in Finder">
-          <svg class="folder-link-icon" viewBox="0 0 24 20" width="22" height="18" aria-hidden="true">
-            <defs>
-              <linearGradient id="folder-tab-grad" x1="7" y1="3" x2="7" y2="8" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#89C4F4"/>
-                <stop offset="1" stop-color="#4A9FE8"/>
-              </linearGradient>
-              <linearGradient id="folder-body-grad" x1="12" y1="8" x2="12" y2="18" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#73B8F0"/>
-                <stop offset="1" stop-color="#3B8FD4"/>
-              </linearGradient>
-            </defs>
-            <path d="M2 6.5V5.5C2 4.67 2.67 4 3.5 4H8.2L9.7 5.5H20.5C21.33 5.5 22 6.17 22 7V8H2V6.5Z" fill="url(#folder-tab-grad)"/>
-            <path d="M2 8H22V16.5C22 17.33 21.33 18 20.5 18H3.5C2.67 18 2 17.33 2 16.5V8Z" fill="url(#folder-body-grad)"/>
-            <circle cx="17.5" cy="13" r="3.5" fill="#1a1a1a" opacity="0.75"/>
-            <path d="M16.2 13.5c0-.72.58-1.3 1.3-1.3s1.3.58 1.3 1.3v1.1a1.3 1.3 0 01-2.6 0v-1.1z" fill="none" stroke="#89C4F4" stroke-width="0.85" stroke-linecap="round"/>
-            <path d="M17.5 15.8v1.1" stroke="#89C4F4" stroke-width="0.85" stroke-linecap="round"/>
-            <path d="M16.4 16.9h2.2" stroke="#89C4F4" stroke-width="0.85" stroke-linecap="round"/>
+    <nav class="sidebar">
+      <div class="sidebar-brand">
+        <span class="brand-mark">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true">
+            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+            <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
           </svg>
-          <span class="folder-link-label">Recordings</span>
+        </span>
+        <span class="brand-text">
+          <span class="brand-name">SpeakType</span>
+          <span class="brand-version">v0.1.0</span>
+        </span>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" data-tab="hotkey" data-title="Hotkey" data-desc="Choose the key combination that starts and stops dictation." title="Hotkey">
+          <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2" y="6" width="20" height="12" rx="2"/>
+            <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>
+          </svg>
+          <span class="tab-label">Hotkey</span>
+        </button>
+        <button class="tab" data-tab="server" data-title="Server" data-desc="Point SpeakType at a transcription endpoint and pick a language." title="Server">
+          <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="18" height="7" rx="2"/>
+            <rect x="3" y="13" width="18" height="7" rx="2"/>
+            <path d="M7 7.5h.01M7 16.5h.01"/>
+          </svg>
+          <span class="tab-label">Server</span>
+        </button>
+        <button class="tab" data-tab="general" data-title="General" data-desc="Appearance, permissions, and what happens after a transcription." title="General">
+          <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 7.6 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.09 14H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8.6a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.09V4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19 9.6V10a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span class="tab-label">General</span>
+        </button>
+        <button class="tab" data-tab="models" data-title="Models" data-desc="Download, resume, and switch between Whisper models." title="Models">
+          <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 2l9 5-9 5-9-5 9-5z"/>
+            <path d="M3 12l9 5 9-5M3 17l9 5 9-5"/>
+          </svg>
+          <span class="tab-label">Models</span>
+          <span class="tab-badge" id="models-download-badge" aria-live="polite" aria-atomic="true" hidden></span>
+        </button>
+        <button class="tab" data-tab="history" data-title="History" data-desc="Replay, copy, reprocess, or delete past transcriptions." title="History">
+          <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+            <path d="M3 3v5h5M12 7v5l3 2"/>
+          </svg>
+          <span class="tab-label">History</span>
         </button>
       </div>
-      <div class="actions-right">
-        <button class="btn secondary" id="clear-history-btn">Clear All History</button>
-      </div>
-    </div>
-    <div class="actions" id="actions-models" style="display:none">
-      <div class="actions-left">
-        <button type="button" class="folder-link-btn" id="open-models-folder-btn" title="Open models folder in Finder">
-          <svg class="folder-link-icon" viewBox="0 0 24 20" width="22" height="18" aria-hidden="true">
-            <defs>
-              <linearGradient id="models-folder-tab-grad" x1="7" y1="3" x2="7" y2="8" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#89C4F4"/>
-                <stop offset="1" stop-color="#4A9FE8"/>
-              </linearGradient>
-              <linearGradient id="models-folder-body-grad" x1="12" y1="8" x2="12" y2="18" gradientUnits="userSpaceOnUse">
-                <stop offset="0" stop-color="#73B8F0"/>
-                <stop offset="1" stop-color="#3B8FD4"/>
-              </linearGradient>
-            </defs>
-            <path d="M2 6.5V5.5C2 4.67 2.67 4 3.5 4H8.2L9.7 5.5H20.5C21.33 5.5 22 6.17 22 7V8H2V6.5Z" fill="url(#models-folder-tab-grad)"/>
-            <path d="M2 8H22V16.5C22 17.33 21.33 18 20.5 18H3.5C2.67 18 2 17.33 2 16.5V8Z" fill="url(#models-folder-body-grad)"/>
-            <circle cx="17.5" cy="13" r="3.5" fill="#1a1a1a" opacity="0.75"/>
-            <path d="M16 12.2h3" stroke="#89C4F4" stroke-width="0.75" stroke-linecap="round"/>
-            <path d="M15.7 13.2h3.6" stroke="#89C4F4" stroke-width="0.75" stroke-linecap="round"/>
-            <path d="M16 14.2h3" stroke="#89C4F4" stroke-width="0.75" stroke-linecap="round"/>
+
+      <div class="sidebar-footer">
+        <button class="info-btn" id="about-btn" title="About SpeakType">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
           </svg>
-          <span class="folder-link-label">Models</span>
+          <span class="tab-label">About</span>
         </button>
       </div>
-    </div>
+    </nav>
+
+    <section class="pane">
+      <header class="pane-header">
+        <h1 class="pane-title" id="pane-title">Hotkey</h1>
+        <p class="pane-desc" id="pane-desc">Choose the key combination that starts and stops dictation.</p>
+      </header>
+
+      <div class="pane-body">
+        <div class="tab-content active" id="tab-hotkey">
+          <section class="card">
+            <h2 class="card-title">Shortcut</h2>
+            <div class="field">
+              <label>Current Hotkey</label>
+              <div class="hotkey-display" id="current-hotkey">Loading...</div>
+            </div>
+            <div class="field">
+              <label>Press new hotkey combination</label>
+              <button class="hotkey-capture" id="capture-btn">Click to capture...</button>
+              <p class="hint">Any modifier + key combo works (e.g. Command+Option+L). Hold Command+Control and release for a modifier-only chord, or pick a function key preset.</p>
+            </div>
+            <div class="field">
+              <label>Or choose a preset</label>
+              <div class="presets">
+                <button class="preset" data-hotkey="Super+Control"></button>
+                <button class="preset" data-hotkey="F9">F9</button>
+                <button class="preset" data-hotkey="F8">F8</button>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="tab-content" id="tab-server">
+          <section class="card">
+            <h2 class="card-title">Endpoint</h2>
+            <div class="field">
+              <label>API URL</label>
+              <div class="url-row">
+                <input type="text" id="api-url" placeholder="http://127.0.0.1:8002/inference">
+                <span class="status-dot" id="server-status" title="Checking..."></span>
+              </div>
+              <p class="hint">Whisper-compatible transcription endpoint</p>
+            </div>
+            <button class="btn" id="check-server-btn">Check Connection</button>
+          </section>
+          <section class="card">
+            <h2 class="card-title">Language</h2>
+            <div class="field">
+              <input type="text" id="language-search" placeholder="Search language..." class="input-filter">
+              <select id="language-select"></select>
+              <p class="hint">Type to filter. Set to "Auto-detect" for multilingual. Language detection requires a multilingual model (not .en variants).</p>
+            </div>
+          </section>
+          <section class="card">
+            <h2 class="card-title">Local Server</h2>
+            <div class="server-actions" id="server-actions">
+              <button class="btn secondary" id="restart-server-btn" type="button">Restart Server</button>
+              <button class="btn secondary" id="stop-server-btn" type="button">Stop Server</button>
+            </div>
+            <p class="hint" id="server-actions-hint">Stop or restart the local whisper sidecar. Restart reloads the active model.</p>
+          </section>
+        </div>
+
+        <div class="tab-content" id="tab-general">
+          <section class="card">
+            <h2 class="card-title" id="theme-label">Appearance</h2>
+            <div class="field">
+              <div class="segmented" role="radiogroup" aria-labelledby="theme-label">
+                <input type="radio" name="theme-pref" id="theme-auto" value="auto">
+                <label class="segment" for="theme-auto">Auto</label>
+                <input type="radio" name="theme-pref" id="theme-light" value="light">
+                <label class="segment" for="theme-light">Light</label>
+                <input type="radio" name="theme-pref" id="theme-dark" value="dark">
+                <label class="segment" for="theme-dark">Dark</label>
+              </div>
+              <p class="hint">Auto follows macOS appearance.</p>
+            </div>
+          </section>
+          <section class="card">
+            <h2 class="card-title">Permissions</h2>
+            <div class="field">
+              <div class="permissions-list">
+                <div class="permission-row">
+                  <span class="permission-label">Microphone</span>
+                  <span class="permission-status" id="perm-mic">Checking...</span>
+                  <button class="btn secondary btn-small open-settings-btn" id="open-mic-btn" style="display:none">Open Settings</button>
+                </div>
+                <div class="permission-row">
+                  <span class="permission-label">Accessibility</span>
+                  <span class="permission-status" id="perm-acc">Checking...</span>
+                  <button class="btn secondary btn-small open-settings-btn" id="open-acc-btn" style="display:none">Open Settings</button>
+                  <button class="btn secondary btn-small" id="request-acc-btn" style="display:none">Prompt</button>
+                </div>
+              </div>
+              <p class="hint">Microphone for recording. Accessibility to paste text into other apps.</p>
+            </div>
+          </section>
+          <section class="card" id="mic-test-card" hidden>
+            <h2 class="card-title">Microphone Check</h2>
+            <div class="field">
+              <div class="mic-test" id="mic-test">
+                <div class="mic-test-head">
+                  <span class="mic-test-device" id="mic-test-device">Checking input…</span>
+                  <button class="btn secondary btn-small" id="mic-test-btn" type="button" aria-pressed="false" aria-label="Start the microphone test">Test Microphone</button>
+                </div>
+                <canvas class="mic-test-meter" id="mic-test-meter" height="34" aria-hidden="true"></canvas>
+                <div class="mic-test-scale" aria-hidden="true">
+                  <span>Quiet</span>
+                  <span>Too loud</span>
+                </div>
+                <p class="mic-test-status" id="mic-test-status" data-state="idle" role="status" aria-live="polite">Not tested yet.</p>
+                <p class="mic-test-detail" id="mic-test-detail" hidden></p>
+                <button class="btn secondary btn-small mic-test-sound" id="mic-test-sound-btn" type="button" hidden>Open Sound Settings</button>
+              </div>
+              <p class="hint">Speak normally and watch the bars move. The test uses the macOS default input and stops on its own when you leave this section.</p>
+            </div>
+          </section>
+          <section class="card">
+            <h2 class="card-title">Paste Behavior</h2>
+            <div class="field">
+              <label>Destination Window</label>
+              <select id="paste-mode-select">
+                <option value="original">Paste to original window</option>
+                <option value="active">Paste to active window</option>
+              </select>
+              <p class="hint">Original: pastes to app you were in when recording started. Active: pastes to whichever app is focused when recording stops.</p>
+            </div>
+            <div class="field">
+              <label>Keys After Paste</label>
+              <select id="post-paste-keys-select">
+                <option value="">None</option>
+                <option value="enter">Enter</option>
+                <option value="tab">Tab</option>
+                <option value="enter+enter">Enter + Enter</option>
+                <option value="space">Space</option>
+              </select>
+              <input type="text" id="post-paste-keys-custom" placeholder="Or type custom: e.g. enter+tab" style="margin-top: 6px">
+              <p class="hint">Keys to press automatically after text is pasted. Use + to chain keys (e.g., enter+tab).</p>
+            </div>
+          </section>
+          <section class="card">
+            <h2 class="card-title">Transcription</h2>
+            <div class="field">
+              <label class="checkbox-label">
+                <input type="checkbox" id="save-recordings">
+                Save recording audio
+              </label>
+              <p class="hint">Keep WAV files for each transcription so you can reprocess them from History. Stored locally in ~/Library/Application Support/speaktype/recordings/</p>
+            </div>
+            <div class="field">
+              <label class="checkbox-label">
+                <input type="checkbox" id="hallucination-guard">
+                Filter hallucinated text
+              </label>
+              <p class="hint">Scores each transcription for invented text (silence transcribed as speech, repetition loops, low confidence), removes the bad parts, and re-runs the audio when a result looks wrong.</p>
+            </div>
+          </section>
+        </div>
+
+        <div class="tab-content" id="tab-models">
+          <select id="model-select" style="display:none"></select>
+          <div id="model-status" class="model-status" style="display:none" hidden></div>
+          <div class="model-grid" id="model-grid"></div>
+        </div>
+
+        <div class="tab-content" id="tab-history">
+          <p class="hint recordings-folder-hint">Play and seek saved recordings below each entry. Use ♪⌫ to remove audio; × removes the whole entry. Click twice to confirm deletes.</p>
+          <div class="history-list" id="history-list">
+            <div class="history-empty" id="history-empty">No transcriptions yet</div>
+          </div>
+        </div>
+      </div>
+
+      <footer class="pane-footer">
+        <div class="actions" id="actions-settings">
+          <div class="actions-left">
+            <button class="btn secondary" id="reset-position-btn" hidden>Reset Widget Position</button>
+          </div>
+          <div class="actions-right">
+            <button class="btn secondary" id="restore-defaults-btn">Restore Defaults</button>
+            <button class="btn primary disabled" id="save-btn" disabled>Save</button>
+          </div>
+        </div>
+        <div class="actions" id="actions-history" style="display:none">
+          <div class="actions-left">
+            <button type="button" class="folder-link-btn" id="open-recordings-folder-btn" title="Open recordings folder in Finder">
+              <svg class="folder-link-icon" viewBox="0 0 24 20" width="22" height="18" aria-hidden="true">
+                <defs>
+                  <linearGradient id="folder-tab-grad" x1="7" y1="3" x2="7" y2="8" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#89C4F4"/>
+                    <stop offset="1" stop-color="#4A9FE8"/>
+                  </linearGradient>
+                  <linearGradient id="folder-body-grad" x1="12" y1="8" x2="12" y2="18" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#73B8F0"/>
+                    <stop offset="1" stop-color="#3B8FD4"/>
+                  </linearGradient>
+                </defs>
+                <path d="M2 6.5V5.5C2 4.67 2.67 4 3.5 4H8.2L9.7 5.5H20.5C21.33 5.5 22 6.17 22 7V8H2V6.5Z" fill="url(#folder-tab-grad)"/>
+                <path d="M2 8H22V16.5C22 17.33 21.33 18 20.5 18H3.5C2.67 18 2 17.33 2 16.5V8Z" fill="url(#folder-body-grad)"/>
+                <circle cx="17.5" cy="13" r="3.5" fill="#1a1a1a" opacity="0.75"/>
+                <path d="M16.2 13.5c0-.72.58-1.3 1.3-1.3s1.3.58 1.3 1.3v1.1a1.3 1.3 0 01-2.6 0v-1.1z" fill="none" stroke="#89C4F4" stroke-width="0.85" stroke-linecap="round"/>
+                <path d="M17.5 15.8v1.1" stroke="#89C4F4" stroke-width="0.85" stroke-linecap="round"/>
+                <path d="M16.4 16.9h2.2" stroke="#89C4F4" stroke-width="0.85" stroke-linecap="round"/>
+              </svg>
+              <span class="folder-link-label">Recordings</span>
+            </button>
+          </div>
+          <div class="actions-right">
+            <button class="btn secondary" id="clear-history-btn">Clear All History</button>
+          </div>
+        </div>
+        <div class="actions" id="actions-models" style="display:none">
+          <div class="actions-left">
+            <button type="button" class="folder-link-btn" id="open-models-folder-btn" title="Open models folder in Finder">
+              <svg class="folder-link-icon" viewBox="0 0 24 20" width="22" height="18" aria-hidden="true">
+                <defs>
+                  <linearGradient id="models-folder-tab-grad" x1="7" y1="3" x2="7" y2="8" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#89C4F4"/>
+                    <stop offset="1" stop-color="#4A9FE8"/>
+                  </linearGradient>
+                  <linearGradient id="models-folder-body-grad" x1="12" y1="8" x2="12" y2="18" gradientUnits="userSpaceOnUse">
+                    <stop offset="0" stop-color="#73B8F0"/>
+                    <stop offset="1" stop-color="#3B8FD4"/>
+                  </linearGradient>
+                </defs>
+                <path d="M2 6.5V5.5C2 4.67 2.67 4 3.5 4H8.2L9.7 5.5H20.5C21.33 5.5 22 6.17 22 7V8H2V6.5Z" fill="url(#models-folder-tab-grad)"/>
+                <path d="M2 8H22V16.5C22 17.33 21.33 18 20.5 18H3.5C2.67 18 2 17.33 2 16.5V8Z" fill="url(#models-folder-body-grad)"/>
+                <circle cx="17.5" cy="13" r="3.5" fill="#1a1a1a" opacity="0.75"/>
+                <path d="M16 12.2h3" stroke="#89C4F4" stroke-width="0.75" stroke-linecap="round"/>
+                <path d="M15.7 13.2h3.6" stroke="#89C4F4" stroke-width="0.75" stroke-linecap="round"/>
+                <path d="M16 14.2h3" stroke="#89C4F4" stroke-width="0.75" stroke-linecap="round"/>
+              </svg>
+              <span class="folder-link-label">Models</span>
+            </button>
+          </div>
+        </div>
+      </footer>
+    </section>
   </div>
 
   <script src="scripts/theme.js"></script>
   <script src="scripts/ipc.js"></script>
   <script src="scripts/format.js"></script>
   <script src="scripts/model-grid.js"></script>
+  <script src="scripts/mic-test.js"></script>
   <script src="scripts/settings.js"></script>
 </body>
 </html>

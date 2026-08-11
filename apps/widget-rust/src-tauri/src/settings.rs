@@ -12,6 +12,15 @@ pub struct Settings {
     pub window_y: Option<f64>,
     pub onboarding_window_x: Option<f64>,
     pub onboarding_window_y: Option<f64>,
+    /// Settings window geometry in logical pixels; None until the user moves or resizes it.
+    #[serde(default)]
+    pub settings_x: Option<f64>,
+    #[serde(default)]
+    pub settings_y: Option<f64>,
+    #[serde(default)]
+    pub settings_w: Option<f64>,
+    #[serde(default)]
+    pub settings_h: Option<f64>,
     /// "original" = paste to the app active when recording started
     /// "active"   = paste to the app active when recording stops
     #[serde(default = "default_paste_mode")]
@@ -90,6 +99,10 @@ impl Default for Settings {
             window_y: None,
             onboarding_window_x: None,
             onboarding_window_y: None,
+            settings_x: None,
+            settings_y: None,
+            settings_w: None,
+            settings_h: None,
             paste_mode: "active".to_string(),
             post_paste_keys: Some("enter".to_string()),
             save_recordings: false,
@@ -169,5 +182,64 @@ impl Settings {
         let content = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
         fs::write(Self::config_path(), content).map_err(|e| e.to_string())?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A settings.json written before the settings-window geometry fields existed.
+    /// Failing to deserialize this would make `load()` rename it to `.corrupt` and
+    /// silently reset every preference the user had.
+    const LEGACY_JSON: &str = r#"{
+        "hotkey": "Super+Control",
+        "api_url": "http://127.0.0.1:8002/inference",
+        "model": "large-v3",
+        "language": "auto",
+        "window_x": 1800.0,
+        "window_y": 36.0,
+        "onboarding_window_x": 861.0,
+        "onboarding_window_y": 228.0,
+        "paste_mode": "active",
+        "post_paste_keys": "enter",
+        "save_recordings": false,
+        "theme": "auto",
+        "hallucination_guard": true,
+        "hallucination_retries": 2,
+        "quality_no_speech_prob": 0.6,
+        "quality_avg_logprob": -1.0,
+        "quality_compression_ratio": 2.4
+    }"#;
+
+    #[test]
+    fn deserializes_settings_file_without_window_geometry() {
+        let settings: Settings =
+            serde_json::from_str(LEGACY_JSON).expect("legacy settings.json must still parse");
+
+        assert_eq!(settings.settings_x, None);
+        assert_eq!(settings.settings_y, None);
+        assert_eq!(settings.settings_w, None);
+        assert_eq!(settings.settings_h, None);
+
+        assert_eq!(settings.model, "large-v3");
+        assert_eq!(settings.window_x, Some(1800.0));
+    }
+
+    #[test]
+    fn round_trips_settings_window_geometry() {
+        let mut settings = Settings::default();
+        settings.settings_x = Some(120.0);
+        settings.settings_y = Some(64.0);
+        settings.settings_w = Some(960.0);
+        settings.settings_h = Some(700.0);
+
+        let json = serde_json::to_string(&settings).expect("serialize");
+        let parsed: Settings = serde_json::from_str(&json).expect("deserialize");
+
+        assert_eq!(parsed.settings_x, Some(120.0));
+        assert_eq!(parsed.settings_y, Some(64.0));
+        assert_eq!(parsed.settings_w, Some(960.0));
+        assert_eq!(parsed.settings_h, Some(700.0));
     }
 }

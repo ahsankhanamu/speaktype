@@ -45,7 +45,7 @@
         </svg>
       </button>
       <div class="waveform" aria-hidden="true">
-        <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+        <canvas id="wave-canvas" class="wave-canvas" width="136" height="30"></canvas>
       </div>
       <span class="timer">0.0s</span>
       <button type="button" class="rec-btn rec-stop" id="rec-stop" title="Stop and transcribe" aria-label="Stop recording">
@@ -106,6 +106,7 @@
 
   <script src="scripts/theme.js"></script>
   <script src="scripts/format.js"></script>
+  <script src="scripts/waveform.js"></script>
   <script>
     function getInvoke() {
       if (window.__TAURI__ && window.__TAURI__.core) return window.__TAURI__.core.invoke;
@@ -133,7 +134,7 @@
       cancelRecording() { return this.invoke('cancel_recording'); },
       openSettings() { return this.invoke('open_settings'); },
       openOnboarding() { return this.invoke('open_onboarding'); },
-      checkPermissions() { return this.invoke('check_permissions'); },
+      onboardingStatus() { return this.invoke('get_onboarding_status'); },
       requestAccessibility() { return this.invoke('request_accessibility'); },
       openSystemPane(pane) { return this.invoke('open_system_pane', { pane }); },
     };
@@ -145,22 +146,19 @@
     const READY_MIN_W = 260;
     const READY_MIN_H = 72;
     const IDLE_SHELL_W = 48;
-    const ACTIVE_SHELL_W = 196;
+    const ACTIVE_SHELL_W = 272;
     const LEVEL_AMP = 15;
+    const PEAK_AMP = 6;
     const LEVEL_SMOOTH = 0.11;
-    const BAR_SMOOTH = 0.16;
-    const BAR_MAX_H = 28;
-    const BAR_MIN_SCALE = 4 / BAR_MAX_H;
-    const BAR_WOBBLE_SPEED = 3.8;
+    const LEVEL_WRITE_EPS = 0.02;
     const DEFAULT_FLASH_MS = 1500;
     const DRAG_THRESHOLD = 5;
     const OVERLAY_DISMISS_MS = 3000;
-    const PERM_POLL_MS = 2000;
     const CRASH_FLASH_MS = 3000;
     const SERVER_READY_DISMISS_MS = 3000;
     const LOCATE_HIGHLIGHT_MS = 2500;
     const GUIDE_READY_MS = 10000;
-    const ONBOARDING_POLL_MS = 2000;
+    const STATUS_POLL_MS = 2000;
 
     const widgetRoot = document.getElementById('widget-root');
     const beaconRings = document.getElementById('beacon-rings');
@@ -181,14 +179,15 @@
     let readyDismissed = false;
     let onboardingSessionActive = false;
     let readyGuideTimer = null;
-    let onboardingPollInterval = null;
+    let statusPollInterval = null;
+    let setupComplete = false;
     let locateHighlightActive = false;
-    let timerInterval = null;
     let recordingStart = 0;
     let waveAnimFrame = null;
     let targetLevel = 0;
     let lastWindowWidth = IDLE_SHELL_W + 24;
-    const bars = document.querySelectorAll('.bar');
+    let lastWindowHeight = 0;
+    const waveform = new WaveformRenderer(document.getElementById('wave-canvas'));
     let resizeSeq = Promise.resolve();
 
     async function setWindowSizeKeepRightEdge(w, h) {
@@ -197,18 +196,21 @@
     }
 
     async function setWindowSizeKeepRightEdgeImpl(w, h) {
+      if (w === lastWindowWidth && h === lastWindowHeight) return;
+
       const tauriWin = window.__TAURI__ && window.__TAURI__.window;
       if (!tauriWin) {
         setWindowSize(w, h);
         lastWindowWidth = w;
+        lastWindowHeight = h;
         return;
       }
       try {
         const win = tauriWin.getCurrentWindow();
-        const scale = await win.scaleFactor();
-        const pos = await win.outerPosition();
         const delta = w - lastWindowWidth;
         if (delta !== 0) {
+          const scale = await win.scaleFactor();
+          const pos = await win.outerPosition();
           await win.setPosition(new window.__TAURI__.dpi.PhysicalPosition(
             Math.round(pos.x - delta * scale),
             pos.y
@@ -216,9 +218,11 @@
         }
         await win.setSize(new window.__TAURI__.dpi.LogicalSize(w, h));
         lastWindowWidth = w;
+        lastWindowHeight = h;
       } catch (e) {
         setWindowSize(w, h);
         lastWindowWidth = w;
+        lastWindowHeight = h;
       }
     }
 
@@ -234,12 +238,17 @@
       }
     }
 
+    let rootPaddingCache = null;
+
     function rootPadding() {
-      const s = getComputedStyle(widgetRoot);
-      return {
-        x: parseFloat(s.paddingLeft) + parseFloat(s.paddingRight),
-        y: parseFloat(s.paddingTop) + parseFloat(s.paddingBottom),
-      };
+      if (!rootPaddingCache) {
+        const s = getComputedStyle(widgetRoot);
+        rootPaddingCache = {
+          x: parseFloat(s.paddingLeft) + parseFloat(s.paddingRight),
+          y: parseFloat(s.paddingTop) + parseFloat(s.paddingBottom),
+        };
+      }
+      return rootPaddingCache;
     }
 
     async function fitWindowToContent() {
@@ -284,8 +293,10 @@
           const size = await win.innerSize();
           const scale = await win.scaleFactor();
           lastWindowWidth = Math.round(size.width / scale);
+          lastWindowHeight = Math.round(size.height / scale);
         } catch (e) {
           lastWindowWidth = IDLE_SHELL_W + 24;
+          lastWindowHeight = 0;
         }
       }
       syncWindowSize();
@@ -375,50 +386,60 @@
       dismissReady();
     };
 
-    async function pollOnboardingBeacon() {
-      if (readyVisible || readyDismissed) return;
-      try {
-        const s = await ttipc.invoke('get_onboarding_status');
-        if (!s) return;
-        syncPermissionState(!!s.microphone, !!s.accessibility);
-        const allDone = s.microphone && s.accessibility && s.model;
-        if (allDone && !onboardingSessionActive) {
-          setBeacon(false);
-          if (onboardingPollInterval) {
-            clearInterval(onboardingPollInterval);
-            onboardingPollInterval = null;
-          }
-          return;
-        }
-        if (!allDone || onboardingSessionActive) {
-          onboardingSessionActive = onboardingSessionActive || !allDone;
-          setBeacon(true);
-        }
-      } catch (e) {
-        console.error('[beacon] poll error:', e);
-      }
-    }
-
-    function startOnboardingPolling() {
-      if (onboardingPollInterval) return;
-      pollOnboardingBeacon();
-      onboardingPollInterval = setInterval(pollOnboardingBeacon, ONBOARDING_POLL_MS);
-    }
-
     function syncPermissionState(mic, acc) {
       const warn = document.getElementById('permWarning');
       permissionsMissing = !mic || !acc;
       warn.style.display = permissionsMissing ? 'block' : 'none';
     }
 
-    async function pollWidgetPermissions() {
+    async function runStatusPoll() {
+      if (currentState === 'recording' || currentState === 'transcribing') return;
+
+      let s;
       try {
-        const result = await ttipc.checkPermissions();
-        if (!result) return;
-        syncPermissionState(!!result.microphone, !!result.accessibility);
+        s = await ttipc.onboardingStatus();
       } catch (e) {
-        console.error('[widget] permission poll error:', e);
+        console.error('[status] poll error:', e);
+        return;
       }
+      if (!s) return;
+
+      const mic = !!s.microphone;
+      const acc = !!s.accessibility;
+      const overlayVisible = overlay.style.display !== 'none';
+      syncPermissionState(mic, acc);
+      if (overlayVisible) updatePermissionOverlay(mic, acc);
+
+      const allDone = mic && acc && !!s.model;
+      if (!readyVisible && !readyDismissed) {
+        if (allDone && !onboardingSessionActive) {
+          setBeacon(false);
+        } else {
+          onboardingSessionActive = onboardingSessionActive || !allDone;
+          setBeacon(true);
+        }
+      }
+
+      setupComplete = allDone && !onboardingSessionActive;
+      if (setupComplete && !overlayVisible) stopStatusPolling();
+    }
+
+    function startStatusPolling() {
+      if (statusPollInterval) return;
+      runStatusPoll();
+      statusPollInterval = setInterval(runStatusPoll, STATUS_POLL_MS);
+    }
+
+    function stopStatusPolling() {
+      if (statusPollInterval) {
+        clearInterval(statusPollInterval);
+        statusPollInterval = null;
+      }
+    }
+
+    function resumeStatusPolling() {
+      setupComplete = false;
+      startStatusPolling();
     }
 
     function setState(s) {
@@ -429,43 +450,35 @@
         widget.classList.remove('beacon', 'locate');
         widgetRoot.classList.remove('beacon-active');
         beaconRings.classList.add('hidden');
+        stopStatusPolling();
       } else {
         syncBeaconVisuals();
+        if (!setupComplete) startStatusPolling();
       }
       syncWindowSize();
     }
 
     function startTimer() {
       recordingStart = Date.now();
-      timer.textContent = '0.0s';
+      lastTimerText = '0.0s';
+      timer.textContent = lastTimerText;
     }
 
-    function stopTimer() {
-      if (timerInterval) {
-        clearInterval(timerInterval);
-        timerInterval = null;
-      }
-    }
-
-    const barWeights = [0.4, 0.55, 0.75, 0.9, 1.0, 0.9, 0.75, 0.55, 0.4];
-    const barPhases = [...bars].map((_, i) => i * 0.65);
-    const barScales = [...bars].map(() => BAR_MIN_SCALE);
     let smoothedLevel = 0;
-    let waveAnimStart = 0;
+    let writtenLevel = -1;
+    let lastTimerText = '';
 
     function resetWaveform() {
       targetLevel = 0;
       smoothedLevel = 0;
-      waveAnimStart = 0;
+      writtenLevel = 0;
       widget.style.setProperty('--level', '0');
-      bars.forEach((b, i) => {
-        barScales[i] = BAR_MIN_SCALE;
-        b.style.transform = `scaleY(${BAR_MIN_SCALE})`;
-      });
+      waveform.reset();
     }
 
-    function setTargetLevel(level) {
-      targetLevel = Math.min(level * LEVEL_AMP, 1);
+    function setTargetLevel(rms, peak) {
+      targetLevel = Math.min(rms * LEVEL_AMP, 1);
+      waveform.setLevel(Math.min(peak * PEAK_AMP, 1));
     }
 
     function tickWaveform(ts) {
@@ -474,29 +487,27 @@
         return;
       }
 
-      if (!waveAnimStart) waveAnimStart = ts;
-      const t = (ts - waveAnimStart) / 1000;
-
       smoothedLevel += (targetLevel - smoothedLevel) * LEVEL_SMOOTH;
-      widget.style.setProperty('--level', smoothedLevel.toFixed(4));
+      if (Math.abs(smoothedLevel - writtenLevel) > LEVEL_WRITE_EPS) {
+        writtenLevel = smoothedLevel;
+        widget.style.setProperty('--level', smoothedLevel.toFixed(3));
+      }
 
-      bars.forEach((b, i) => {
-        const wobble = 0.82 + 0.18 * Math.sin(t * BAR_WOBBLE_SPEED + barPhases[i]);
-        const targetScale = BAR_MIN_SCALE + (1 - BAR_MIN_SCALE) * smoothedLevel * barWeights[i] * wobble;
-        barScales[i] += (targetScale - barScales[i]) * BAR_SMOOTH;
-        b.style.transform = `scaleY(${barScales[i].toFixed(4)})`;
-      });
+      waveform.frame(ts);
 
       const elapsed = (Date.now() - recordingStart) / 1000;
-      timer.textContent = elapsed >= 60
+      const text = elapsed >= 60
         ? formatDuration(elapsed)
         : elapsed.toFixed(1) + 's';
+      if (text !== lastTimerText) {
+        lastTimerText = text;
+        timer.textContent = text;
+      }
 
       waveAnimFrame = requestAnimationFrame(tickWaveform);
     }
 
     function startWaveformLoop() {
-      waveAnimStart = 0;
       if (!waveAnimFrame) waveAnimFrame = requestAnimationFrame(tickWaveform);
     }
 
@@ -611,87 +622,56 @@
       ttipc.cancelRecording().catch(e2 => console.error('[cancel] error:', e2));
     };
 
-    async function updatePermissionOverlay() {
-      try {
-        const result = await ttipc.checkPermissions();
-        if (!result) return;
+    function updatePermissionOverlay(micOk, accOk) {
+      const micStep = document.getElementById('perm-step-mic');
+      const accStep = document.getElementById('perm-step-acc');
+      const micStatus = document.getElementById('step-mic-status');
+      const accStatus = document.getElementById('step-acc-status');
+      const micDesc = document.getElementById('step-mic-desc');
+      const accDesc = document.getElementById('step-acc-desc');
+      const gotIt = document.getElementById('welcome-got-it');
 
-        const micOk = !!result.microphone;
-        const accOk = !!result.accessibility;
-
-        const micStep = document.getElementById('perm-step-mic');
-        const accStep = document.getElementById('perm-step-acc');
-        const micStatus = document.getElementById('step-mic-status');
-        const accStatus = document.getElementById('step-acc-status');
-        const micDesc = document.getElementById('step-mic-desc');
-        const accDesc = document.getElementById('step-acc-desc');
-        const gotIt = document.getElementById('welcome-got-it');
-
-        if (!micOk) {
-          micStatus.textContent = '!';
-          micStatus.className = 'step-status step-pending';
-          micDesc.textContent = 'Click to open System Settings';
-          micStep.style.display = '';
-          micStep.classList.add('clickable');
-          micStep.onclick = () => ttipc.openSystemPane('com.apple.preference.security?Privacy_Microphone');
-        } else {
-          micStatus.textContent = '\u2713';
-          micStatus.className = 'step-status step-done';
-          micDesc.textContent = 'Microphone access granted';
-          micStep.classList.remove('clickable');
-          micStep.onclick = null;
-        }
-
-        if (!accOk) {
-          accStatus.textContent = '!';
-          accStatus.className = 'step-status step-pending';
-          accDesc.textContent = 'Click to open System Settings';
-          accStep.style.display = '';
-          accStep.classList.add('clickable');
-          accStep.onclick = () => ttipc.openSystemPane('com.apple.preference.security?Privacy_Accessibility');
-        } else {
-          accStatus.textContent = '\u2713';
-          accStatus.className = 'step-status step-done';
-          accDesc.textContent = 'Accessibility access granted';
-          accStep.classList.remove('clickable');
-          accStep.onclick = null;
-        }
-
-        if (micOk && accOk) {
-          gotIt.style.display = '';
-          gotIt.textContent = 'Done';
-          gotIt.onclick = () => { overlay.style.display = 'none'; };
-          setTimeout(() => { overlay.style.display = 'none'; }, OVERLAY_DISMISS_MS);
-        } else {
-          gotIt.style.display = '';
-          gotIt.textContent = 'Open Settings';
-          gotIt.onclick = () => { ttipc.openSettings(); overlay.style.display = 'none'; };
-        }
-      } catch (e) {
-        console.error('[overlay] permission check error:', e);
-      }
-    }
-
-    let permCheckInterval = null;
-    function startPermissionPolling() {
-      if (permCheckInterval) return;
-      function poll() {
-        if (overlay.style.display !== 'none') {
-          updatePermissionOverlay();
-        }
-      }
-      poll();
-      permCheckInterval = setInterval(poll, PERM_POLL_MS);
-    }
-    startPermissionPolling();
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) {
-        if (permCheckInterval) { clearInterval(permCheckInterval); permCheckInterval = null; }
+      if (!micOk) {
+        micStatus.textContent = '!';
+        micStatus.className = 'step-status step-pending';
+        micDesc.textContent = 'Click to open System Settings';
+        micStep.style.display = '';
+        micStep.classList.add('clickable');
+        micStep.onclick = () => ttipc.openSystemPane('com.apple.preference.security?Privacy_Microphone');
       } else {
-        updatePermissionOverlay();
-        startPermissionPolling();
+        micStatus.textContent = '\u2713';
+        micStatus.className = 'step-status step-done';
+        micDesc.textContent = 'Microphone access granted';
+        micStep.classList.remove('clickable');
+        micStep.onclick = null;
       }
-    });
+
+      if (!accOk) {
+        accStatus.textContent = '!';
+        accStatus.className = 'step-status step-pending';
+        accDesc.textContent = 'Click to open System Settings';
+        accStep.style.display = '';
+        accStep.classList.add('clickable');
+        accStep.onclick = () => ttipc.openSystemPane('com.apple.preference.security?Privacy_Accessibility');
+      } else {
+        accStatus.textContent = '\u2713';
+        accStatus.className = 'step-status step-done';
+        accDesc.textContent = 'Accessibility access granted';
+        accStep.classList.remove('clickable');
+        accStep.onclick = null;
+      }
+
+      if (micOk && accOk) {
+        gotIt.style.display = '';
+        gotIt.textContent = 'Done';
+        gotIt.onclick = () => { overlay.style.display = 'none'; };
+        setTimeout(() => { overlay.style.display = 'none'; }, OVERLAY_DISMISS_MS);
+      } else {
+        gotIt.style.display = '';
+        gotIt.textContent = 'Open Settings';
+        gotIt.onclick = () => { ttipc.openSettings(); overlay.style.display = 'none'; };
+      }
+    }
 
     const listenFn = getListen();
     if (listenFn) {
@@ -705,19 +685,17 @@
       L('sidecar:audio_level', (e) => {
         if (currentState !== 'recording') return;
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
-        setTargetLevel(d.level || 0);
+        const level = d.level || 0;
+        setTargetLevel(level, typeof d.peak === 'number' ? d.peak : level);
       });
       L('sidecar:recording_stopped', () => {
-        stopTimer();
         stopWaveformLoop();
       });
       L('sidecar:recording_cancelled', () => {
-        stopTimer();
         stopWaveformLoop();
         setState('idle');
       });
       L('sidecar:transcribing', () => {
-        stopTimer();
         stopWaveformLoop();
         setState('transcribing');
       });
@@ -726,13 +704,14 @@
         console.log('[widget] Long audio detected:', d.duration_secs, 's');
       });
       L('sidecar:pasted', (e) => { flashState('success'); });
-      L('sidecar:no_speech', () => { stopTimer(); stopWaveformLoop(); flashState('error'); });
-      L('sidecar:busy', () => { stopTimer(); stopWaveformLoop(); flashState('error'); });
-      L('sidecar:error', (e) => { stopTimer(); stopWaveformLoop(); flashState('error'); });
-      L('sidecar:crashed', () => { stopTimer(); stopWaveformLoop(); flashState('error', CRASH_FLASH_MS); });
+      L('sidecar:no_speech', () => { stopWaveformLoop(); flashState('error'); });
+      L('sidecar:busy', () => { stopWaveformLoop(); flashState('error'); });
+      L('sidecar:error', (e) => { stopWaveformLoop(); flashState('error'); });
+      L('sidecar:crashed', () => { stopWaveformLoop(); flashState('error', CRASH_FLASH_MS); });
       L('sidecar:permissions', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
         syncPermissionState(!!d.microphone, !!d.accessibility);
+        if (permissionsMissing) resumeStatusPolling();
       });
       L('sidecar:device_changed', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : e.payload;
@@ -764,39 +743,44 @@
       L('onboarding:opened', () => {
         onboardingSessionActive = true;
         setBeacon(true);
-        startOnboardingPolling();
+        resumeStatusPolling();
       });
       L('onboarding:finished', (e) => {
         const d = typeof e.payload === 'string' ? JSON.parse(e.payload) : (e.payload || {});
         onboardingSessionActive = false;
-        if (onboardingPollInterval) {
-          clearInterval(onboardingPollInterval);
-          onboardingPollInterval = null;
-        }
+        stopStatusPolling();
         showReadyTooltip(d.hotkey || 'Super+Control');
       });
       L('sidecar:onboarding_required', () => {
         onboardingSessionActive = true;
         setBeacon(true);
-        startOnboardingPolling();
+        resumeStatusPolling();
       });
 
     } else {
       console.warn('[widget] No Tauri event API');
     }
 
-    pollWidgetPermissions();
-    setInterval(pollWidgetPermissions, PERM_POLL_MS);
-    startOnboardingPolling();
+    startStatusPolling();
     document.addEventListener('visibilitychange', () => {
-      if (!document.hidden) {
-        pollWidgetPermissions();
-        if (!readyDismissed && !readyVisible) pollOnboardingBeacon();
+      if (document.hidden) {
+        stopStatusPolling();
+      } else if (setupComplete) {
+        runStatusPoll();
+      } else {
+        startStatusPolling();
       }
     });
 
     if (typeof ResizeObserver !== 'undefined') {
-      const resizeObserver = new ResizeObserver(() => syncWindowSize());
+      let resizeFrame = null;
+      const resizeObserver = new ResizeObserver(() => {
+        if (resizeFrame) return;
+        resizeFrame = requestAnimationFrame(() => {
+          resizeFrame = null;
+          syncWindowSize();
+        });
+      });
       resizeObserver.observe(widgetShell);
       resizeObserver.observe(readyCard);
     }

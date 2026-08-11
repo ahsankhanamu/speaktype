@@ -1,4 +1,5 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter};
 
@@ -100,14 +101,23 @@ impl AudioRecorder {
 
                     let now = std::time::Instant::now();
                     if let Ok(mut last) = last_level_time.try_lock() {
-                        if now.duration_since(*last).as_millis() >= 66 {
+                        if now.duration_since(*last).as_millis() >= 33 {
                             *last = now;
-                            let sum: f32 = local_downmix.iter().map(|s| s * s).sum();
+                            let mut sum = 0.0f32;
+                            let mut peak = 0.0f32;
+                            for s in local_downmix.iter() {
+                                sum += s * s;
+                                let mag = s.abs();
+                                if mag > peak {
+                                    peak = mag;
+                                }
+                            }
                             let rms = (sum / local_downmix.len() as f32).sqrt();
                             let level = (rms * 10000.0).round() / 10000.0;
+                            let peak = (peak * 10000.0).round() / 10000.0;
                             let _ = app.emit(
                                 "sidecar:audio_level",
-                                serde_json::json!({"level": level}),
+                                serde_json::json!({"level": level, "peak": peak}),
                             );
                         }
                     }
@@ -156,6 +166,167 @@ impl AudioRecorder {
         ));
 
         (samples, self.sample_rate)
+    }
+}
+
+/// Metering interval for the level monitor. Matches the recorder's cadence so
+/// the settings meter and the recording waveform behave identically.
+const MONITOR_EMIT_MS: u128 = 33;
+/// A sample this close to full scale is clipped for practical purposes: the
+/// converter has already lost the peak even if it never reaches exactly 1.0.
+const MONITOR_CLIP_LEVEL: f32 = 0.98;
+
+static MONITOR_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub struct MonitorInfo {
+    pub device: String,
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub generation: u64,
+}
+
+/// Metering-only capture for the settings microphone check. Opens its own
+/// input stream and emits `mictest:level`; it never writes to the recorder
+/// buffer, so verifying the microphone cannot produce a transcription or
+/// disturb an in-flight dictation.
+pub struct LevelMonitor {
+    stream: Option<SendStream>,
+    generation: u64,
+}
+
+impl LevelMonitor {
+    pub fn new() -> Self {
+        Self {
+            stream: None,
+            generation: 0,
+        }
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.stream.is_some()
+    }
+
+    pub fn generation(&self) -> u64 {
+        self.generation
+    }
+
+    pub fn start(&mut self, app_handle: AppHandle) -> Result<MonitorInfo, String> {
+        self.stop();
+
+        let host = cpal::default_host();
+        let device = host
+            .default_input_device()
+            .ok_or_else(|| "No input device available".to_string())?;
+
+        let config = device
+            .default_input_config()
+            .map_err(|e| format!("Failed to get default input config: {}", e))?;
+
+        let sample_rate = config.sample_rate().0;
+        let channels = config.channels();
+        let frame_channels = channels.max(1) as usize;
+        let device_name = device.name().unwrap_or_else(|_| "Unknown input".to_string());
+
+        let app = app_handle.clone();
+        let stream_config: cpal::StreamConfig = config.into();
+
+        // Energy is accumulated across callbacks rather than measured on the
+        // most recent one: a callback can be shorter than the emit interval, so
+        // sampling only the newest block would miss transients between emits.
+        let mut sum_sq = 0f64;
+        let mut frames = 0usize;
+        let mut peak = 0f32;
+        let mut clipped = false;
+        let mut last_emit = std::time::Instant::now();
+
+        let stream = device
+            .build_input_stream(
+                &stream_config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    for frame in data.chunks(frame_channels) {
+                        let mut mono = 0f32;
+                        for &s in frame {
+                            mono += s;
+                            if s.abs() >= MONITOR_CLIP_LEVEL {
+                                clipped = true;
+                            }
+                        }
+                        mono /= frame.len() as f32;
+                        sum_sq += (mono * mono) as f64;
+                        frames += 1;
+                        let mag = mono.abs();
+                        if mag > peak {
+                            peak = mag;
+                        }
+                    }
+
+                    let now = std::time::Instant::now();
+                    if frames == 0 || now.duration_since(last_emit).as_millis() < MONITOR_EMIT_MS {
+                        return;
+                    }
+                    last_emit = now;
+
+                    let rms = (sum_sq / frames as f64).sqrt() as f32;
+                    let _ = app.emit(
+                        "mictest:level",
+                        serde_json::json!({
+                            "rms": (rms * 10000.0).round() / 10000.0,
+                            "peak": (peak * 10000.0).round() / 10000.0,
+                            "clipped": clipped,
+                        }),
+                    );
+
+                    sum_sq = 0.0;
+                    frames = 0;
+                    peak = 0.0;
+                    clipped = false;
+                },
+                move |err| {
+                    log_message(&format!("[mictest] Stream error: {}", err));
+                },
+                None,
+            )
+            .map_err(|e| format!("Failed to build input stream: {}", e))?;
+
+        stream
+            .play()
+            .map_err(|e| format!("Failed to start stream: {}", e))?;
+
+        self.stream = Some(SendStream(stream));
+        self.generation = MONITOR_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+
+        log_message(&format!(
+            "[mictest] Monitoring {:?} at {}Hz, {} channels (gen {})",
+            device_name, sample_rate, channels, self.generation
+        ));
+
+        Ok(MonitorInfo {
+            device: device_name,
+            sample_rate,
+            channels,
+            generation: self.generation,
+        })
+    }
+
+    /// Release the input stream. Returns whether a stream was actually open, so
+    /// callers can avoid emitting a stop event for a monitor that never ran.
+    pub fn stop(&mut self) -> bool {
+        let Some(stream) = self.stream.take() else {
+            return false;
+        };
+        let _ = stream.0.pause();
+        drop(stream);
+        log_message(&format!(
+            "[mictest] Monitoring stopped (gen {})",
+            self.generation
+        ));
+        true
+    }
+}
+
+impl Drop for LevelMonitor {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -321,6 +492,18 @@ pub fn get_default_input_device_name() -> Option<String> {
 pub fn count_input_devices() -> usize {
     let host = cpal::default_host();
     host.input_devices().map(|d| d.count()).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod monitor_tests {
+    use super::LevelMonitor;
+
+    #[test]
+    fn idle_monitor_reports_nothing_to_stop() {
+        let mut monitor = LevelMonitor::new();
+        assert!(!monitor.is_active());
+        assert!(!monitor.stop(), "a monitor that never ran must not report a stop");
+    }
 }
 
 pub fn to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
