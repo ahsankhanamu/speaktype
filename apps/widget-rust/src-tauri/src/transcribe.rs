@@ -1,3 +1,4 @@
+use crate::debug;
 use crate::logging::log_message;
 use crate::quality::{self, Report, Segment, Thresholds};
 use crate::settings::Settings;
@@ -63,7 +64,7 @@ pub async fn transcribe_with_prompt(
     duration_secs: f64,
     prompt: Option<&str>,
 ) -> Result<String, String> {
-    let report = transcribe_verified(wav_data, settings, duration_secs, prompt).await?;
+    let report = transcribe_verified(wav_data, settings, duration_secs, prompt, None).await?;
     Ok(report.clean_text)
 }
 
@@ -75,9 +76,22 @@ pub async fn transcribe_verified(
     settings: &Settings,
     duration_secs: f64,
     prompt: Option<&str>,
+    debug_chunk: Option<u32>,
 ) -> Result<Report, String> {
     if !settings.hallucination_guard {
         let raw = transcribe_once(wav_data, settings, duration_secs, prompt, FIRST_PASS).await?;
+        debug::record_pass(crate::debug::PassEvent {
+            chunk_idx: debug_chunk,
+            pass: 1,
+            temperature: FIRST_PASS.temperature,
+            prompt_used: prompt.is_some(),
+            raw_chars: raw.text.len(),
+            score: 0.0,
+            dropped: 0,
+            had_metrics: false,
+            reason: "guard disabled".into(),
+            segments: Vec::new(),
+        });
         return Ok(Report::passthrough(&raw.text));
     }
 
@@ -121,6 +135,34 @@ pub async fn transcribe_verified(
             report.segments.len(),
             report.reason()
         ));
+        debug::record_pass(crate::debug::PassEvent {
+            chunk_idx: debug_chunk,
+            pass: pass as u32 + 1,
+            temperature: attempt.temperature,
+            prompt_used: attempt.use_prompt && prompt.is_some(),
+            raw_chars: raw.text.len(),
+            score: report.score,
+            dropped: report.dropped,
+            had_metrics: report.had_metrics,
+            reason: report.reason(),
+            segments: report
+                .segments
+                .iter()
+                .enumerate()
+                .map(|(i, seg)| {
+                    let src = raw.segments.get(i);
+                    crate::debug::SegmentDebug {
+                        text: seg.text.clone(),
+                        start: src.map(|s| s.start).unwrap_or(0.0),
+                        end: src.map(|s| s.end).unwrap_or(0.0),
+                        no_speech_prob: src.and_then(|s| s.no_speech_prob),
+                        avg_logprob: seg.avg_logprob.or_else(|| src.and_then(|s| s.avg_logprob)),
+                        flags: seg.flags.iter().map(|f| f.label().to_string()).collect(),
+                        bad: seg.bad,
+                    }
+                })
+                .collect(),
+        });
 
         let clean = report.is_clean();
         if best.as_ref().map_or(true, |b| report.score > b.score) {

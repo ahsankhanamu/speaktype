@@ -19,6 +19,8 @@ APP_DIR="$PROJECT_ROOT/apps/widget-rust"
 # shellcheck source=load-secrets.sh
 source "$SCRIPT_DIR/load-secrets.sh"
 speaktype_load_local_config "$PROJECT_ROOT/make/local.mk"
+speaktype_load_rust_env
+speaktype_prefer_system_xattr
 
 : "${APPLE_DEVELOPER_ID:?Set APPLE_DEVELOPER_ID (export it or add to make/local.mk — see make/config.example)}"
 : "${APPLE_TEAM_ID:?Set APPLE_TEAM_ID (export it or add to make/local.mk — see make/config.example)}"
@@ -41,16 +43,25 @@ rm -rf "$APP_DIR/src-tauri/target/release/bundle"
 
 # ── 2. whisper.cpp sidecar ──────────────────────────────────────────────────────
 echo "→ Building whisper.cpp sidecar..."
-SIDECAR_DIR="$APP_DIR/src-tauri/scripts/build/whisper.cpp/build"
+# shellcheck source=whisper-sidecar.sh
+source "$SCRIPT_DIR/whisper-sidecar.sh"
+WHISPER_SRC="$APP_DIR/src-tauri/scripts/build/whisper.cpp"
+SIDECAR_DIR="$WHISPER_SRC/build"
+ensure_whisper_src "$WHISPER_SRC"
 mkdir -p "$SIDECAR_DIR"
 cd "$SIDECAR_DIR"
-cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON ..
+whisper_cmake_args CMAKE_ARGS
+cmake "${CMAKE_ARGS[@]}" ..
 cmake --build . --target whisper-server -j"$(sysctl -n hw.ncpu)"
 mkdir -p "$APP_DIR/src-tauri/binaries"
 cp bin/whisper-server "$APP_DIR/src-tauri/binaries/whisper-server-aarch64-apple-darwin"
 
 # ── 3. Tauri app ────────────────────────────────────────────────────────────────
 echo "→ Building Tauri app..."
+if ! command -v cargo >/dev/null 2>&1; then
+    echo "ERROR: cargo not found. Run 'make install' or: source \"\$HOME/.cargo/env\""
+    exit 1
+fi
 cd "$APP_DIR"
 cargo tauri build
 

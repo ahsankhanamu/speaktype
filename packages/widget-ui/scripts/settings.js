@@ -8,6 +8,7 @@ const modelsDownloadBadge = document.getElementById('models-download-badge');
 const actionsSettings = document.getElementById('actions-settings');
 const actionsHistory = document.getElementById('actions-history');
 const actionsModels = document.getElementById('actions-models');
+const actionsDebug = document.getElementById('actions-debug');
 const resetPositionBtn = document.getElementById('reset-position-btn');
 const saveBtn = document.getElementById('save-btn');
 
@@ -200,6 +201,7 @@ function switchTab(tabName) {
   actionsSettings.style.display = 'none';
   actionsHistory.style.display = 'none';
   actionsModels.style.display = 'none';
+  actionsDebug.style.display = 'none';
 
   if (tabName === 'history') {
     actionsHistory.style.display = '';
@@ -208,6 +210,9 @@ function switchTab(tabName) {
     actionsModels.style.display = '';
     modelGrid.ensureListeners();
     modelGrid.refresh(true);
+  } else if (tabName === 'debug') {
+    actionsDebug.style.display = '';
+    loadDebugSessions();
   } else {
     actionsSettings.style.display = '';
     resetPositionBtn.hidden = tabName !== 'general';
@@ -851,6 +856,8 @@ function createHistoryAudioPlayer(durationHint) {
   playBtn.dataset.action = 'play';
   playBtn.textContent = '▶';
 
+  const seekbar = document.createElement('div');
+  seekbar.className = 'history-seekbar';
   const seek = document.createElement('input');
   seek.type = 'range';
   seek.className = 'history-seek';
@@ -858,17 +865,26 @@ function createHistoryAudioPlayer(durationHint) {
   seek.max = '1000';
   seek.value = '0';
   seek.disabled = true;
+  seek.setAttribute('aria-label', 'Playback position');
+  seekbar.appendChild(seek);
 
   const timeLabel = document.createElement('span');
   timeLabel.className = 'history-audio-time';
   const totalHint = durationHint ? formatDuration(durationHint) : '0:00';
-  timeLabel.textContent = `0:00 / ${totalHint}`;
+  const curTime = document.createElement('span');
+  curTime.className = 'history-time-cur';
+  curTime.textContent = '0:00';
+  const totalTime = document.createElement('span');
+  totalTime.className = 'history-time-total';
+  totalTime.textContent = ` / ${totalHint}`;
+  timeLabel.appendChild(curTime);
+  timeLabel.appendChild(totalTime);
 
   const audio = document.createElement('audio');
   audio.preload = 'metadata';
 
   wrap.appendChild(playBtn);
-  wrap.appendChild(seek);
+  wrap.appendChild(seekbar);
   wrap.appendChild(timeLabel);
   wrap.appendChild(audio);
 
@@ -884,6 +900,8 @@ function getHistoryPlayer(wrap, index) {
   const playBtn = wrap.querySelector('.history-play-btn');
   const seek = wrap.querySelector('.history-seek');
   const timeLabel = wrap.querySelector('.history-audio-time');
+  const curTime = wrap.querySelector('.history-time-cur');
+  const totalTime = wrap.querySelector('.history-time-total');
   const audio = wrap.querySelector('audio');
 
   let objectUrl = null;
@@ -892,9 +910,14 @@ function getHistoryPlayer(wrap, index) {
   let duration = Number(wrap.dataset.durationHint) || 0;
   let seeking = false;
 
+  function setProgressUI(frac) {
+    seek.style.setProperty('--progress', `${Math.round(frac * 100)}%`);
+  }
+
   function setPlayingUI(playing) {
     playBtn.textContent = playing ? '⏸' : '▶';
     playBtn.title = playing ? 'Pause recording' : 'Play recording';
+    playBtn.classList.toggle('playing', playing);
   }
 
   function updateTimeUI() {
@@ -902,14 +925,15 @@ function getHistoryPlayer(wrap, index) {
     const total = audio.duration && Number.isFinite(audio.duration) ? audio.duration : duration;
     if (total > 0) duration = total;
     if (!seeking && duration > 0) {
-      seek.value = String(Math.round((current / duration) * 1000));
+      setProgressUI(current / duration);
     }
-    timeLabel.textContent = `${formatDuration(current)} / ${formatDuration(duration)}`;
+    curTime.textContent = formatDuration(current);
+    totalTime.textContent = ` / ${formatDuration(duration)}`;
   }
 
   function resetPlayerUI() {
     setPlayingUI(false);
-    seek.value = '0';
+    setProgressUI(0);
     updateTimeUI();
   }
 
@@ -949,7 +973,8 @@ function getHistoryPlayer(wrap, index) {
     if (!loaded || !duration) return;
     seeking = true;
     const t = (Number(seek.value) / 1000) * duration;
-    timeLabel.textContent = `${formatDuration(t)} / ${formatDuration(duration)}`;
+    setProgressUI(Number(seek.value) / 1000);
+    curTime.textContent = formatDuration(t);
   });
 
   seek.addEventListener('change', () => {
@@ -1252,6 +1277,515 @@ bindConfirmButton(document.getElementById('clear-history-btn'), {
     stopActiveHistoryPlayer();
     await ttipc.clearHistory();
     await loadHistory();
+  },
+});
+
+/* ---- Debug panel ---- */
+
+const debugList = document.getElementById('debug-list');
+const debugEmpty = document.getElementById('debug-empty');
+
+const DEBUG_MODE_LABEL = {
+  live: 'Live (pipelined)',
+  single_shot: 'Single-shot',
+  live_pipelined: 'Live (chunked)',
+  post_hoc: 'Fallback (post-hoc chunks)',
+  post_hoc_fallback: 'Fallback (post-hoc chunks)',
+  chunked: 'Chunked (no live session)',
+  reprocess: 'Reprocess from history',
+};
+
+const DEBUG_STATUS_LABEL = {
+  pipelined: 'queued',
+  accepted: 'accepted',
+  accepted_cleaned: 'accepted (cleaned)',
+  rejected: 'rejected',
+  failed: 'failed',
+  silence: 'silence',
+  info: 'info',
+};
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function debugChunkBadge(chunk) {
+  const label = DEBUG_STATUS_LABEL[chunk.status] || chunk.status;
+  return `<span class="debug-chip debug-chip-${chunk.status}">${escapeHtml(label)}</span>`;
+}
+
+function truncateText(text, limit) {
+  if (!text) return '';
+  return text.length > limit ? text.slice(0, limit) + '…' : text;
+}
+
+function debugTimeRange(startSecs, endSecs, baseStartSecs) {
+  const base = baseStartSecs || 0;
+  const a = (startSecs != null ? startSecs : 0) + base;
+  const b = (endSecs != null ? endSecs : startSecs || 0) + base;
+  return `${a.toFixed(1)}s–${b.toFixed(1)}s`;
+}
+
+/* ---- Debug audio playback ---- */
+
+let debugAudio = null;
+let activeWaveEl = null;
+
+function resetActiveWave() {
+  if (!activeWaveEl) return;
+  const canvas = activeWaveEl.querySelector('.debug-chunk-wave canvas');
+  if (canvas && canvas.__wave) drawWaveform(canvas, canvas.__wave.samples, 0);
+  activeWaveEl = null;
+}
+
+function stopDebugPlayback() {
+  if (debugAudio) {
+    debugAudio.audio.pause();
+    if (debugAudio.objectUrl) {
+      URL.revokeObjectURL(debugAudio.objectUrl);
+      debugAudio.objectUrl = null;
+    }
+    debugAudio = null;
+  }
+  document.querySelectorAll('.debug-play.active').forEach(el => el.classList.remove('active'));
+  resetActiveWave();
+}
+
+/**
+ * Play one slice of a debug session's recording. Passing the same `key` again
+ * pauses the current clip. `seekSecs` (relative to the slice start) seeks
+ * before playback starts. The returned promise resolves when playback starts
+ * (or immediately if there is no audio for that range).
+ */
+function playDebugSlice(sessionId, startSecs, endSecs, key, btnEl, seekSecs) {
+  if (debugAudio && debugAudio.key === key) {
+    stopDebugPlayback();
+    return Promise.resolve();
+  }
+  stopDebugPlayback();
+
+  return ttipc
+    .getDebugAudioSlice(sessionId, startSecs, endSecs)
+    .then(raw => {
+      const bytes = toAudioBytes(raw);
+      if (!bytes.length) return;
+      debugAudio = {
+        key,
+        audio: new Audio(),
+        objectUrl: URL.createObjectURL(new Blob([bytes], { type: 'audio/wav' })),
+      };
+      debugAudio.audio.src = debugAudio.objectUrl;
+      if (seekSecs > 0) {
+        const applySeek = () => {
+          try {
+            debugAudio.audio.currentTime = Math.min(seekSecs, debugAudio.audio.duration || seekSecs);
+          } catch (e) {}
+        };
+        if (debugAudio.audio.readyState >= 1) applySeek();
+        else debugAudio.audio.addEventListener('loadedmetadata', applySeek, { once: true });
+      }
+      debugAudio.audio.play();
+      debugAudio.audio.addEventListener('timeupdate', onDebugTimeUpdate);
+      if (btnEl) btnEl.classList.add('active');
+      if (btnEl && btnEl.classList.contains('debug-play-wave')) {
+        debugAudio.audio.addEventListener('ended', () => {
+          btnEl.classList.remove('active');
+          resetActiveWave();
+        });
+      }
+    })
+    .catch(err => console.error('Failed to load debug audio slice:', err));
+}
+
+/* ---- Chunk waveform ---- */
+
+/** Decode a mono 16-bit PCM WAV produced by the backend into raw samples + rate. */
+function decodeWavSamples(bytes) {
+  if (!bytes || bytes.byteLength <= 44) return { samples: [], rate: 16000 };
+  const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const rate = dv.getUint32(24, true);
+  const n = Math.floor((bytes.byteLength - 44) / 2);
+  const samples = new Float32Array(n);
+  for (let i = 0; i < n; i++) samples[i] = dv.getInt16(44 + i * 2, true) / 32768;
+  return { samples, rate };
+}
+
+function drawWaveform(canvas, samples, progress) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || canvas.offsetWidth || 320;
+  const h = canvas.clientHeight || 44;
+  const pxW = Math.round(w * dpr);
+  const pxH = Math.round(h * dpr);
+  if (canvas.width !== pxW || canvas.height !== pxH) {
+    canvas.width = pxW;
+    canvas.height = pxH;
+  }
+  const ctx = canvas.getContext('2d');
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  if (!samples || !samples.length) return;
+
+  if (progress > 0 && progress < 1) {
+    ctx.fillStyle = 'rgba(128, 128, 128, 0.25)';
+    ctx.fillRect(0, 0, w * progress, h);
+  }
+
+  const color = getComputedStyle(canvas).color || 'rgba(128,128,128,0.7)';
+  ctx.fillStyle = color;
+  const mid = h / 2;
+  const barCount = Math.max(20, Math.floor(w / 3));
+  const per = Math.max(1, Math.floor(samples.length / barCount));
+  const barW = Math.max(1, w / barCount - 1);
+  for (let i = 0; i < barCount; i++) {
+    const from = i * per;
+    const to = Math.min(samples.length, from + per);
+    let peak = 0;
+    for (let j = from; j < to; j++) {
+      const a = Math.abs(samples[j]);
+      if (a > peak) peak = a;
+    }
+    const bh = Math.max(1, peak * h * 0.9);
+    ctx.fillRect((w / barCount) * i, mid - bh / 2, barW, bh);
+  }
+}
+
+function onDebugTimeUpdate() {
+  if (!debugAudio || !activeWaveEl) return;
+  const canvas = activeWaveEl.querySelector('.debug-chunk-wave canvas');
+  if (!canvas || !canvas.__wave) return;
+  const dur = debugAudio.audio.duration || canvas.__wave.duration || 1;
+  const progress = dur > 0 ? debugAudio.audio.currentTime / dur : 0;
+  drawWaveform(canvas, canvas.__wave.samples, Math.min(1, Math.max(0, progress)));
+}
+
+/** Fetch a chunk's audio slice, render its waveform, and wire click-to-seek. */
+function wireChunkWaveform(chunkEl, sessionId) {
+  const waveEl = chunkEl.querySelector('.debug-chunk-wave');
+  const canvas = waveEl && waveEl.querySelector('canvas');
+  if (!waveEl || !canvas || canvas.__waveLoaded) return;
+  canvas.__waveLoaded = true;
+
+  const startSecs = Number(chunkEl.dataset.start);
+  const endSecs = Number(chunkEl.dataset.end);
+  const key = `chunk:${sessionId}:${chunkEl.dataset.index}`;
+
+  waveEl.classList.add('loading');
+  ttipc.getDebugAudioSlice(sessionId, startSecs, endSecs)
+    .then(raw => {
+      const bytes = toAudioBytes(raw);
+      const { samples, rate } = decodeWavSamples(bytes);
+      canvas.__wave = {
+        samples,
+        duration: samples.length ? samples.length / rate : (endSecs - startSecs || 1),
+      };
+      drawWaveform(canvas, samples, 0);
+    })
+    .catch(err => console.error('Failed to load chunk waveform:', err))
+    .finally(() => waveEl.classList.remove('loading'));
+
+  canvas.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    const rect = canvas.getBoundingClientRect();
+    const frac = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+    const seek = (canvas.__wave ? canvas.__wave.duration : (endSecs - startSecs)) * frac;
+    activeWaveEl = chunkEl;
+    playDebugSlice(sessionId, startSecs, endSecs, key, null, seek);
+  });
+}
+
+/* ---- Debug chunk / pass rendering ---- */
+
+function debugSegmentBadges(sessionId, chunkBaseSecs, segments) {
+  return (segments || [])
+    .filter(s => s.text && String(s.text).trim())
+    .map(seg => {
+      const start = (seg.start != null ? seg.start : 0) + chunkBaseSecs;
+      const end = (seg.end != null ? seg.end : start) + chunkBaseSecs;
+      const flags = (seg.flags || []).join(', ') || '';
+      const label = truncateText(seg.text, 80);
+      return `
+        <div class="debug-seg ${seg.bad ? 'debug-seg-bad' : 'debug-seg-ok'}">
+          <button type="button" class="debug-play debug-play-seg" draggable="false"
+            title="Play this segment" data-session="${sessionId}" data-start="${start.toFixed(3)}"
+            data-end="${end.toFixed(3)}" data-key="seg:${sessionId}:${start.toFixed(3)}:${end.toFixed(3)}">▶</button>
+          <span class="debug-seg-time">${debugTimeRange(seg.start != null ? seg.start : 0, seg.end, chunkBaseSecs)}</span>
+          <span class="debug-seg-text">${escapeHtml(label)}</span>
+          ${flags ? `<em class="debug-seg-flags">(${escapeHtml(flags)})</em>` : ''}
+        </div>`;
+    })
+    .join('');
+}
+
+function debugPlayableSegments(chunkBaseSecs, segments) {
+  return (segments || [])
+    .filter(s => s.text && String(s.text).trim())
+    .map(seg => {
+      const start = (seg.start != null ? seg.start : 0) + chunkBaseSecs;
+      return {
+        start,
+        end: (seg.end != null ? seg.end : seg.start || 0) + chunkBaseSecs,
+      };
+    });
+}
+
+function debugPassEl(sessionId, chunkBaseSecs, pass) {
+  return `
+    <div class="debug-pass">
+      <div class="debug-pass-head">
+        <span class="debug-tag">pass ${escapeHtml(pass.pass)}</span>
+        <span class="debug-tag">temp ${escapeHtml(pass.temperature)}</span>
+        <span class="debug-tag">${pass.promptUsed ? 'with' : 'without'} prompt</span>
+        ${pass.hadMetrics ? '<span class="debug-tag debug-tag-metrics">metrics</span>' : ''}
+        <span class="debug-tag">score ${escapeHtml((pass.score != null ? pass.score : 0).toFixed(1))}</span>
+        <span class="debug-tag${pass.dropped > 0 ? ' debug-tag-warn' : ''}">${escapeHtml(pass.dropped)} dropped</span>
+        <span class="debug-tag">raw ${escapeHtml(pass.rawChars)} chars</span>
+        <button type="button" class="debug-play debug-play-all" draggable="false"
+          title="Play all kept segments in order" data-session="${sessionId}"
+          data-play-segments="${escapeHtml(JSON.stringify(debugPlayableSegments(chunkBaseSecs, pass.segments)))}"
+          >▶ all</button>
+      </div>
+      <div class="debug-pass-reason">${escapeHtml(pass.reason || 'ok')}</div>
+      <div class="debug-segments">${debugSegmentBadges(sessionId, chunkBaseSecs, pass.segments)}</div>
+    </div>`;
+}
+
+function debugChunkEl(session, chunk, passes) {
+  const sessionId = session.id;
+  const isSilence = chunk.status === 'silence';
+  const chunkStart = chunk.startSecs || 0;
+  const chunkEnd = chunk.endSecs || chunkStart;
+
+  const titleText = isSilence
+    ? 'silence'
+    : `${escapeHtml(chunk.source)} · chunk ${escapeHtml(chunk.idx)}`;
+
+  const head = `
+    <div class="debug-chunk-head" role="button" tabindex="0" aria-expanded="false"
+      aria-label="Toggle decode passes">
+      <span class="debug-chunk-chevron" aria-hidden="true"></span>
+      ${debugChunkBadge(chunk)}
+      <span class="debug-chunk-title">${titleText}</span>
+      ${chunk.chars ? `<span class="debug-chunk-chars">${escapeHtml(chunk.chars)} chars</span>` : ''}
+      <span class="debug-chunk-range">${escapeHtml(chunk.durationSecs != null ? chunk.durationSecs.toFixed(1) : '?')}s · ${debugTimeRange(chunk.startSecs, chunk.endSecs, 0)}</span>
+      ${chunk.seededPrompt ? '<span class="debug-chunk-seeded">seeded next prompt</span>' : ''}
+      ${chunk.reason ? `<span class="debug-chunk-reason">${escapeHtml(chunk.reason)}</span>` : ''}
+    </div>`;
+
+  const passesHtml = isSilence
+    ? '<div class="debug-chunk-passnote">Complete silence — skipped by the speech gate, no decode.</div>'
+    : (passes || []).map(p => debugPassEl(sessionId, chunkStart, p)).join('')
+        || '<div class="debug-chunk-passnote">No decode passes for this chunk.</div>';
+
+  const waveHtml = `
+    <div class="debug-chunk-wave">
+      <canvas></canvas>
+      <button type="button" class="debug-play debug-play-wave" draggable="false"
+        title="${isSilence ? 'Play this silence range' : 'Play this chunk'}"
+        data-session="${sessionId}" data-start="${chunkStart.toFixed(3)}"
+        data-end="${chunkEnd.toFixed(3)}"
+        data-key="chunk:${sessionId}:${escapeHtml(chunk.idx)}">▶</button>
+    </div>`;
+
+  return `
+    <div class="debug-chunk" data-index="${escapeHtml(chunk.idx)}"
+      data-start="${chunkStart.toFixed(3)}" data-end="${chunkEnd.toFixed(3)}">
+      ${head}
+      <div class="debug-chunk-body" hidden>${waveHtml}${passesHtml}</div>
+    </div>`;
+}
+
+/**
+ * Render one debug session as an accordion. Chunks are the top-level items;
+ * each chunk expands to show its decode passes (with per-segment audio), and
+ * any recording-wide passes appear under their own block.
+ */
+function createDebugSessionEl(session) {
+  const el = document.createElement('div');
+  el.className = 'debug-session';
+
+  const header = document.createElement('button');
+  header.className = 'debug-session-head';
+  header.type = 'button';
+  header.innerHTML = `
+    <span class="debug-session-title">
+      <span class="debug-session-id">#${escapeHtml(session.id)}</span>
+      <span class="debug-session-mode">${escapeHtml(DEBUG_MODE_LABEL[session.mode] || session.mode)}</span>
+    </span>
+    <span class="debug-session-meta">
+      <span class="debug-session-time">${escapeHtml(session.startedAt || '')}</span>
+      <span class="debug-tag">${escapeHtml(session.model || '?')}</span>
+      <span class="debug-tag">${escapeHtml(session.durationSecs != null ? session.durationSecs.toFixed(1) : '?')}s audio</span>
+      <span class="debug-tag">${escapeHtml(session.chunks ? session.chunks.length : 0)} chunks</span>
+      <span class="debug-tag">${escapeHtml(session.elapsedMs != null ? (session.elapsedMs / 1000).toFixed(1) : '?')}s wall</span>
+      <span class="debug-tag">${escapeHtml(session.finalChars != null ? session.finalChars : 0)} chars out</span>
+      <span class="debug-caret" aria-hidden="true"></span>
+    </span>
+  `;
+
+  const body = document.createElement('div');
+  body.className = 'debug-session-body';
+  body.hidden = true;
+  body.id = `debug-body-${session.id}`;
+
+  // Group passes by chunk so they can be nested under their chunk.
+  const passesByChunk = new Map();
+  const recordingPasses = [];
+  (session.passes || []).forEach(p => {
+    const cid = p.chunkIdx;
+    if (cid === null || cid === undefined) {
+      recordingPasses.push(p);
+    } else {
+      if (!passesByChunk.has(cid)) passesByChunk.set(cid, []);
+      passesByChunk.get(cid).push(p);
+    }
+  });
+
+  const chunks = session.chunks || [];
+  const chunkHtml = chunks.length
+    ? chunks.map(c => debugChunkEl(session, c, passesByChunk.get(c.idx) || [])).join('')
+    : '<div class="debug-muted">No chunk events.</div>';
+
+  const recordingHtml = recordingPasses.length
+    ? `<div class="debug-section-label">Recording-level decode</div>
+       ${recordingPasses.map(p => debugPassEl(session.id, 0, p)).join('')}`
+    : '';
+
+  body.innerHTML = `
+    <div class="debug-section-label">Chunk timeline</div>
+    ${chunkHtml}
+    ${recordingHtml}
+    <div class="debug-final">
+      <div class="debug-section-label">Final text</div>
+      <div class="debug-final-text">${escapeHtml(session.finalText || '')}</div>
+    </div>
+  `;
+
+  el.appendChild(header);
+  el.appendChild(body);
+
+  header.addEventListener('click', () => {
+    body.hidden = !body.hidden;
+    el.classList.toggle('open', !body.hidden);
+  });
+
+  body.addEventListener('click', (ev) => {
+    const playBtn = ev.target.closest('.debug-play');
+    if (playBtn) {
+      ev.stopPropagation();
+      if (playBtn.classList.contains('debug-play-wave')) {
+        activeWaveEl = playBtn.closest('.debug-chunk') || null;
+      }
+      if (playBtn.hasAttribute('data-play-segments')) {
+        playDebugSegments(playBtn, session.id);
+      } else {
+        playDebugSlice(
+          session.id,
+          Number(playBtn.dataset.start),
+          Number(playBtn.dataset.end),
+          playBtn.dataset.key,
+          playBtn
+        );
+      }
+      return;
+    }
+    const head = ev.target.closest('.debug-chunk-head');
+    if (head) {
+      ev.stopPropagation();
+      const chunkEl = head.closest('.debug-chunk');
+      const chunkBody = chunkEl.querySelector('.debug-chunk-body');
+      const wasHidden = chunkBody.hidden;
+      chunkBody.hidden = !wasHidden;
+      chunkEl.classList.toggle('open', wasHidden);
+      head.setAttribute('aria-expanded', String(wasHidden));
+      if (wasHidden) wireChunkWaveform(chunkEl, session.id);
+    }
+  });
+
+  body.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== ' ') return;
+    const head = ev.target.closest('.debug-chunk-head');
+    if (!head) return;
+    ev.preventDefault();
+    head.click();
+  });
+
+  return el;
+}
+
+/** Play the kept segments of one pass back-to-back. */
+function playDebugSegments(btn, sessionId) {
+  let segments = [];
+  try {
+    segments = JSON.parse(btn.dataset.playSegments || '[]');
+  } catch (e) {
+    return;
+  }
+  if (!segments.length) return;
+  if (btn.dataset.playing === '1') {
+    stopDebugPlayback();
+    btn.dataset.playing = '';
+    return;
+  }
+
+  btn.dataset.playing = '1';
+  btn.classList.add('active');
+
+  let index = 0;
+  const playNext = () => {
+    if (!btn.dataset.playing) return;
+    const seg = segments[index++];
+    if (!seg) {
+      btn.dataset.playing = '';
+      btn.classList.remove('active');
+      return;
+    }
+    const key = `segs:${sessionId}:${index}:${seg.start.toFixed(3)}:${seg.end.toFixed(3)}`;
+    playDebugSlice(sessionId, seg.start, seg.end, key, btn).then(() => {
+      if (!btn.dataset.playing) return;
+      if (!debugAudio) {
+        playNext();
+        return;
+      }
+      debugAudio.audio.addEventListener('ended', playNext, { once: true });
+    });
+  };
+  playNext();
+}
+
+async function loadDebugSessions() {
+  let sessions = [];
+  try {
+    sessions = await ttipc.getDebugSessions();
+  } catch (e) {
+    console.error('Failed to load debug sessions:', e);
+    return;
+  }
+  sessions = sessions || [];
+
+  debugList.querySelectorAll('.debug-session').forEach(el => el.remove());
+
+  const empty = !sessions.length;
+  debugEmpty.style.display = empty ? '' : 'none';
+  if (empty) return;
+
+  const fragment = document.createDocumentFragment();
+  sessions.forEach(s => fragment.appendChild(createDebugSessionEl(s)));
+  debugList.appendChild(fragment);
+}
+
+document.getElementById('refresh-debug-btn').addEventListener('click', loadDebugSessions);
+
+bindConfirmButton(document.getElementById('clear-debug-btn'), {
+  confirmLabel: 'Clear log?',
+  onConfirm: async () => {
+    await ttipc.clearDebugSessions();
+    await loadDebugSessions();
   },
 });
 

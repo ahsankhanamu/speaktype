@@ -1,6 +1,7 @@
 mod audio;
 mod chunk_session;
 mod commands;
+mod debug;
 mod download_queue;
 mod downloader;
 mod format;
@@ -99,9 +100,14 @@ pub fn run() {
             commands::clear_history,
             commands::get_history_audio,
             commands::reprocess_history_entry,
+            commands::get_debug_sessions,
+            commands::clear_debug_sessions,
+            commands::get_debug_audio_slice,
         ])
         .setup(|app| {
             logging::init_logging();
+            #[cfg(not(test))]
+            debug::load_persisted();
 
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);

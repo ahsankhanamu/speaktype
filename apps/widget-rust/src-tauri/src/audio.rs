@@ -115,10 +115,13 @@ impl AudioRecorder {
                             let rms = (sum / local_downmix.len() as f32).sqrt();
                             let level = (rms * 10000.0).round() / 10000.0;
                             let peak = (peak * 10000.0).round() / 10000.0;
-                            let _ = app.emit(
-                                "sidecar:audio_level",
-                                serde_json::json!({"level": level, "peak": peak}),
-                            );
+                            let app_clone = app.clone();
+                            tauri::async_runtime::spawn(async move {
+                                let _ = app_clone.emit(
+                                    "sidecar:audio_level",
+                                    serde_json::json!({"level": level, "peak": peak}),
+                                );
+                            });
                         }
                     }
                 },
@@ -267,14 +270,17 @@ impl LevelMonitor {
                     last_emit = now;
 
                     let rms = (sum_sq / frames as f64).sqrt() as f32;
-                    let _ = app.emit(
-                        "mictest:level",
-                        serde_json::json!({
-                            "rms": (rms * 10000.0).round() / 10000.0,
-                            "peak": (peak * 10000.0).round() / 10000.0,
-                            "clipped": clipped,
-                        }),
-                    );
+                    let app_clone = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = app_clone.emit(
+                            "mictest:level",
+                            serde_json::json!({
+                                "rms": (rms * 10000.0).round() / 10000.0,
+                                "peak": (peak * 10000.0).round() / 10000.0,
+                                "clipped": clipped,
+                            }),
+                        );
+                    });
 
                     sum_sq = 0.0;
                     frames = 0;
@@ -453,7 +459,9 @@ pub fn find_phrase_flush_point(audio: &[f32], sample_rate: u32) -> Option<usize>
 }
 
 /// Split completed audio into phrase chunks on silence boundaries.
-pub fn split_on_phrase_boundaries(audio: &[f32], sample_rate: u32) -> Vec<Vec<f32>> {
+/// Split audio on phrase boundaries, returning each chunk together with its
+/// start offset so callers can map a chunk back into the full recording.
+pub fn split_on_phrase_boundaries(audio: &[f32], sample_rate: u32) -> Vec<(usize, Vec<f32>)> {
     let mut chunks = Vec::new();
     let mut start = 0usize;
     while start < audio.len() {
@@ -461,15 +469,15 @@ pub fn split_on_phrase_boundaries(audio: &[f32], sample_rate: u32) -> Vec<Vec<f3
         if let Some(rel_end) = find_phrase_flush_point(slice, sample_rate) {
             let end = start + rel_end;
             if end > start {
-                chunks.push(audio[start..end].to_vec());
+                chunks.push((start, audio[start..end].to_vec()));
             }
             start = end;
         } else {
-            chunks.push(audio[start..].to_vec());
+            chunks.push((start, audio[start..].to_vec()));
             break;
         }
     }
-    chunks.retain(|c| has_speech(c, sample_rate));
+    chunks.retain(|(_, c)| has_speech(c, sample_rate));
     chunks
 }
 

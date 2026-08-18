@@ -6,3 +6,8 @@
 export APPLE_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)"
 export APPLE_TEAM_ID="TEAMID"
 export NOTARY_PROFILE="SpeakType"
+
+# whisper.cpp sidecar CPU tuning (optional):
+#   OFF — default on macOS; safe for fresh cmake configure
+#   ON  — native CPU probes; use if you already have a working whisper.cpp/build/
+export WHISPER_GGML_NATIVE="OFF"

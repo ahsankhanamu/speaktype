@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compose SpeakType DMG background (@2x 1320×800 @144dpi → 660×400pt window)."""
+"""Compose SpeakType DMG background (@2x 1040×760 @144dpi → 520×380pt content area)."""
 
 from __future__ import annotations
 

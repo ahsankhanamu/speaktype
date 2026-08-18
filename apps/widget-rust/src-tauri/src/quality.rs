@@ -65,7 +65,7 @@ pub enum Flag {
 }
 
 impl Flag {
-    fn label(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
             Flag::NoSpeech => "no_speech",
             Flag::LowConfidence => "low_confidence",
@@ -207,7 +207,7 @@ impl Report {
             }
         }
         if labels.is_empty() {
-            "none".to_string()
+            "clean".to_string()
         } else {
             labels.join(", ")
         }
