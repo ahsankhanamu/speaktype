@@ -1,10 +1,10 @@
-"""Shared DMG installer layout (660×400pt window, 128px icons)."""
+"""Shared DMG installer layout (520×400pt window, 112px icons)."""
 
-WIN_W = 600
-WIN_H = 460  # Finder window bounds (includes title bar)
+WIN_W = 520
+WIN_H = 400  # Finder window bounds (includes title bar)
 TITLE_BAR_H = 20  # background fills the content area below this
 CONTENT_H = WIN_H - TITLE_BAR_H
-ICON_SIZE = 128
+ICON_SIZE = 112
 SCALE = 2  # background PNG is @2x logical points
 
 # Applications alias: blue folder graphic vs Finder 128px slot.
@@ -15,7 +15,7 @@ APPS_ALIAS_LEADING = APPS_VISUAL_WIDTH - APPS_VISUAL_TRAILING
 
 # Equal visual margins: alias trailing offset pulls the folder left of the slot edge.
 ICON_MARGIN = ICON_SIZE - APPS_VISUAL_TRAILING
-ICON_LABEL_H = 16  # Finder label height below 128px icons
+ICON_LABEL_H = 16  # Finder label height below the icons
 ICON_Y = round(CONTENT_H * 170 / 400)  # icon coords are relative to content area
 ICON_CENTER_Y = ICON_Y + ICON_SIZE // 2
 ARROW_Y_OFFSET = 52  # pt upward from icon center; increase if arrow still looks low

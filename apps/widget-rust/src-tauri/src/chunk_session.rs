@@ -1,4 +1,5 @@
 use crate::audio;
+use crate::debug;
 use crate::logging::log_message;
 use crate::quality::Report;
 use crate::settings::Settings;
@@ -108,19 +109,29 @@ impl ChunkSession {
 
                 let chunk = pending[..split].to_vec();
                 if !audio::has_speech(&chunk, sample_rate) {
+                    debug::record_silence(
+                        committed as f64 / sample_rate as f64,
+                        (committed + split) as f64 / sample_rate as f64,
+                    );
                     continue;
                 }
 
                 pipelined.store(true, Ordering::SeqCst);
 
                 let idx = next_chunk_idx.fetch_add(1, Ordering::SeqCst);
+                let chunk_dur = chunk.len() as f64 / sample_rate as f64;
                 log_message(&format!(
                     "[chunk] Pipelining chunk {} ({:.1}s, committed={}/{})",
                     idx,
-                    chunk.len() as f64 / sample_rate as f64,
+                    chunk_dur,
                     committed + split,
                     total_samples
                 ));
+                debug::record_pipelined(
+                    idx,
+                    committed as f64 / sample_rate as f64,
+                    (committed + split) as f64 / sample_rate as f64,
+                );
 
                 if stop_monitor.load(Ordering::SeqCst) {
                     break;
@@ -180,32 +191,48 @@ impl ChunkSession {
 
         if !pipelined {
             if samples.is_empty() || !audio::has_speech(&samples, sample_rate) {
+                debug::discard_session();
                 return None;
             }
             log_message("[chunk] Short recording — single-shot transcription");
-            return transcribe_samples(&samples, sample_rate, &self.settings, None)
+            debug::capture_audio(&samples, sample_rate);
+            debug::update_meta(
+                samples.len() as f64 / sample_rate as f64,
+                "single_shot",
+            );
+            return transcribe_samples(&samples, sample_rate, &self.settings, None, None)
                 .await
                 .ok()
-                .map(|report| report.clean_text);
+                .map(|report| {
+                    debug::finish_session(&report.clean_text);
+                    report.clean_text
+                });
         }
 
-        if !tail.is_empty() && audio::has_speech(&tail, sample_rate) {
-            let idx = self.next_chunk_idx.fetch_add(1, Ordering::SeqCst);
-            log_message(&format!(
-                "[chunk] Final tail chunk {} ({:.1}s)",
-                idx,
-                tail.len() as f64 / sample_rate as f64
-            ));
-            spawn_chunk_task(
-                self.settings.clone(),
-                sample_rate,
-                tail,
-                idx,
-                self.chunk_results.clone(),
-                self.prompt_tail.clone(),
-                self.pending_tasks.clone(),
-                self.pending_count.clone(),
-            );
+        if !tail.is_empty() {
+            let start_secs = committed as f64 / sample_rate as f64;
+            let end_secs = samples.len() as f64 / sample_rate as f64;
+            if audio::has_speech(&tail, sample_rate) {
+                let idx = self.next_chunk_idx.fetch_add(1, Ordering::SeqCst);
+                let tail_dur = tail.len() as f64 / sample_rate as f64;
+                log_message(&format!(
+                    "[chunk] Final tail chunk {} ({:.1}s)",
+                    idx, tail_dur
+                ));
+                debug::record_final_tail(idx, start_secs, end_secs);
+                spawn_chunk_task(
+                    self.settings.clone(),
+                    sample_rate,
+                    tail,
+                    idx,
+                    self.chunk_results.clone(),
+                    self.prompt_tail.clone(),
+                    self.pending_tasks.clone(),
+                    self.pending_count.clone(),
+                );
+            } else {
+                debug::record_silence(start_secs, end_secs);
+            }
         }
 
         while self.pending_count.load(Ordering::SeqCst) > 0 {
@@ -240,6 +267,12 @@ impl ChunkSession {
             parts.len(),
             combined.len()
         ));
+        debug::capture_audio(&samples, sample_rate);
+        debug::update_meta(
+            samples.len() as f64 / sample_rate as f64,
+            "live_pipelined",
+        );
+        debug::finish_session(&combined);
         Some(combined)
     }
 }
@@ -287,7 +320,7 @@ fn spawn_chunk_task(
             Some(prompt.as_str())
         };
 
-        match transcribe_samples(&chunk, sample_rate, &settings, prompt_ref).await {
+        match transcribe_samples(&chunk, sample_rate, &settings, prompt_ref, Some(idx)).await {
             Ok(report) if !report.is_empty() => {
                 let text = report.clean_text.clone();
                 if let Ok(mut results) = chunk_results.lock() {
@@ -322,6 +355,7 @@ fn spawn_chunk_task(
                         report.reason()
                     ));
                 }
+                debug::record_chunk_accepted(idx, text.len(), report.is_clean(), report.is_clean());
                 log_message(&format!("[chunk] Chunk {} done: {} chars", idx, text.len()));
             }
             Ok(report) => {
@@ -330,9 +364,11 @@ fn spawn_chunk_task(
                     idx,
                     report.reason()
                 ));
+                debug::record_chunk_rejected(idx, report.reason());
             }
             Err(e) => {
                 log_message(&format!("[chunk] Chunk {} failed: {}", idx, e));
+                debug::record_chunk_failed(idx, e);
             }
         }
     });
@@ -348,11 +384,12 @@ async fn transcribe_samples(
     sample_rate: u32,
     settings: &Settings,
     prompt: Option<&str>,
+    debug_chunk: Option<u32>,
 ) -> Result<Report, String> {
     let normalized = audio::normalize_audio(samples);
     let duration_secs = normalized.len() as f64 / sample_rate as f64;
     let wav = audio::to_wav(&normalized, sample_rate)?;
-    transcribe::transcribe_verified(wav, settings, duration_secs, prompt).await
+    transcribe::transcribe_verified(wav, settings, duration_secs, prompt, debug_chunk).await
 }
 
 /// Transcribe long audio by splitting on phrase boundaries (fallback when no live session).
@@ -377,17 +414,21 @@ pub async fn transcribe_chunked(
     let mut prompt_tail = String::new();
     let mut parts = Vec::new();
 
-    for (i, chunk) in chunks.iter().enumerate() {
+    for (i, (chunk_start, chunk)) in chunks.iter().enumerate() {
+        let start_secs = *chunk_start as f64 / sample_rate as f64;
+        let end_secs = (*chunk_start + chunk.len()) as f64 / sample_rate as f64;
+        debug::record_post_hoc(i as u32, start_secs, end_secs);
         let prompt_ref = if prompt_tail.is_empty() {
             None
         } else {
             Some(prompt_tail.as_str())
         };
-        match transcribe_samples(chunk, sample_rate, settings, prompt_ref).await {
+        match transcribe_samples(chunk, sample_rate, settings, prompt_ref, Some(i as u32)).await {
             Ok(report) if !report.is_empty() => {
                 let text = report.clean_text.clone();
                 parts.push(text.trim().to_string());
-                if report.is_clean() {
+                let clean = report.is_clean();
+                if clean {
                     prompt_tail = if prompt_tail.is_empty() {
                         text.clone()
                     } else {
@@ -398,14 +439,21 @@ pub async fn transcribe_chunked(
                             prompt_tail[prompt_tail.len() - MAX_PROMPT_CHARS..].to_string();
                     }
                 }
+                debug::record_chunk_accepted(i as u32, text.len(), clean, clean);
                 log_message(&format!("[chunk] Post-hoc chunk {} done", i));
             }
-            Ok(report) => log_message(&format!(
-                "[chunk] Post-hoc chunk {} rejected [{}]",
-                i,
-                report.reason()
-            )),
-            Err(e) => log_message(&format!("[chunk] Post-hoc chunk {} failed: {}", i, e)),
+            Ok(report) => {
+                debug::record_chunk_rejected(i as u32, report.reason());
+                log_message(&format!(
+                    "[chunk] Post-hoc chunk {} rejected [{}]",
+                    i,
+                    report.reason()
+                ));
+            }
+            Err(e) => {
+                debug::record_chunk_failed(i as u32, e.clone());
+                log_message(&format!("[chunk] Post-hoc chunk {} failed: {}", i, e));
+            }
         }
     }
 

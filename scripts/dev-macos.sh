@@ -11,6 +11,12 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=load-secrets.sh
+source "$SCRIPT_DIR/load-secrets.sh"
+speaktype_load_rust_env
+speaktype_prefer_system_xattr
+
 TAURI_DIR="$ROOT/apps/widget-rust/src-tauri"
 TARGET_DIR="${CARGO_TARGET_DIR:-$TAURI_DIR/target}/debug"
 BUNDLE="$TARGET_DIR/SpeakType Dev.app"

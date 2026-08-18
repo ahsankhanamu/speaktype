@@ -34,7 +34,7 @@ jobs:
           fi
           mkdir -p "$SIDECAR_BUILD"
           cd "$SIDECAR_BUILD"
-          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON ..
+          cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON -DGGML_NATIVE=OFF ..
           cmake --build . --target whisper-server -j"$(sysctl -n hw.ncpu)"
           mkdir -p "$GITHUB_WORKSPACE/apps/widget-rust/src-tauri/binaries"
           cp bin/whisper-server "$GITHUB_WORKSPACE/apps/widget-rust/src-tauri/binaries/whisper-server-aarch64-apple-darwin"

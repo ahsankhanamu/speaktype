@@ -2,7 +2,7 @@
 
 include make/config.mk
 
-.PHONY: dev dev-fast build clean install notary-setup server assets help
+.PHONY: dev dev-fast build clean install install-python setup notary-setup server assets help
 
 # ─── App (apps/widget-rust) ─────────────────────────────────────────────────────
 
@@ -29,7 +29,10 @@ assets: ## Regenerate README showcase images and demo animation
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 
-install: ## Create venv and install Python dependencies (requires Python 3.10+)
+install: ## Set up dev environment (Python + macOS widget prerequisites + whisper.cpp)
+	./scripts/setup-dev.sh
+
+install-python: ## Create venv and install Python dependencies only (requires Python 3.10+)
 	@PY=""; \
 	for candidate in python3.12 python3.11 python3; do \
 		if command -v $$candidate >/dev/null 2>&1 && \
@@ -45,6 +48,8 @@ install: ## Create venv and install Python dependencies (requires Python 3.10+)
 	echo "Using $$($$PY --version) ($$PY)"; \
 	$$PY -m venv .venv; \
 	.venv/bin/pip install -e ".[all]"
+
+setup: install ## Alias for install
 
 clean: ## Remove build artifacts
 	rm -rf dist logs

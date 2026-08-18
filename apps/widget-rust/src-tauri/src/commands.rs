@@ -212,6 +212,8 @@ pub fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<()
         }
     }
 
+    crate::debug::discard_session();
+
     tray::set_tray_state(&app, TrayState::Idle);
     tones::play(Tone::RecordingStop);
     let _ = app.emit("sidecar:recording_cancelled", json!({}));
@@ -321,10 +323,11 @@ fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
             let s = state.settings.lock().map_err(|e| e.to_string())?;
             s.clone()
         };
+        crate::debug::start_session(&settings.model);
         let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
         let buffer = recorder.buffer();
-        let sample_rate = recorder.sample_rate();
         recorder.start(app.clone())?;
+        let sample_rate = recorder.sample_rate();
 
         let session = ChunkSession::start(settings, sample_rate, buffer);
         let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
@@ -383,6 +386,7 @@ async fn process_recording(
         log_message(&format!("[process] Failed to load model for transcription: {}", e));
         tones::play(Tone::Error);
         tray::flash_error(&app);
+        crate::debug::discard_session();
         let _ = app.emit("sidecar:error", json!({"reason": e}));
         return;
     }
@@ -398,6 +402,7 @@ async fn process_recording(
         log_message("[process] No speech detected");
         tones::play(Tone::Error);
         tray::flash_error(&app);
+        crate::debug::discard_session();
         let _ = app.emit("sidecar:no_speech", json!({}));
         return;
     }
@@ -420,10 +425,16 @@ async fn process_recording(
             Some(t) if !t.is_empty() => t,
             _ => {
                 log_message("[process] Chunk session produced no text, falling back");
+                crate::debug::capture_audio(&samples, sample_rate);
                 match transcribe_chunked(samples, sample_rate, &settings).await {
-                    Ok(t) => t,
+                    Ok(t) => {
+                        crate::debug::update_meta(duration_secs, "post_hoc_fallback");
+                        crate::debug::finish_session(&t);
+                        t
+                    }
                     Err(e) => {
                         History::discard_saved_recording(&saved_recording);
+                        crate::debug::discard_session();
                         log_message(&format!("[process] Transcription error: {}", e));
                         tones::play(Tone::Error);
                         tray::flash_error(&app);
@@ -434,10 +445,16 @@ async fn process_recording(
             }
         }
     } else {
+        crate::debug::capture_audio(&samples, sample_rate);
         match transcribe_chunked(samples, sample_rate, &settings).await {
-            Ok(t) => t,
+            Ok(t) => {
+                crate::debug::update_meta(duration_secs, "chunked");
+                crate::debug::finish_session(&t);
+                t
+            }
             Err(e) => {
                 History::discard_saved_recording(&saved_recording);
+                crate::debug::discard_session();
                 log_message(&format!("[process] Transcription error: {}", e));
                 tones::play(Tone::Error);
                 tray::flash_error(&app);
@@ -1193,10 +1210,22 @@ pub async fn reprocess_history_entry(
     ensure_settings_api_ready(&app, &mut settings).await?;
 
     let (samples, sample_rate) = History::read_entry_audio(index)?;
+    let reprocess_duration = samples.len() as f64 / sample_rate as f64;
 
-    let text = transcribe_chunked(samples, sample_rate, &settings)
-        .await
-        .map_err(|e| format!("Transcription failed: {}", e))?;
+    crate::debug::start_session(&settings.model);
+    crate::debug::capture_audio(&samples, sample_rate);
+    let result = transcribe_chunked(samples, sample_rate, &settings).await;
+    let text = match result {
+        Ok(t) => {
+            crate::debug::update_meta(reprocess_duration, "reprocess");
+            crate::debug::finish_session(&t);
+            t
+        }
+        Err(e) => {
+            crate::debug::discard_session();
+            return Err(format!("Transcription failed: {}", e));
+        }
+    };
 
     if text.is_empty() {
         return Err("No speech detected in recording".to_string());
@@ -1426,4 +1455,28 @@ pub async fn reset_widget_position(
     );
 
     Ok(())
+}
+
+/// Latest debug sessions (newest first) captured by the Debug panel.
+#[tauri::command]
+pub fn get_debug_sessions() -> Result<Vec<crate::debug::Session>, String> {
+    Ok(crate::debug::sessions())
+}
+
+#[tauri::command]
+pub fn clear_debug_sessions() -> Result<(), String> {
+    crate::debug::clear();
+    Ok(())
+}
+
+/// Return the audio between `start_secs` and `end_secs` of a debug session's
+/// recording as a mono WAV, for per-chunk/per-segment playback in the Debug
+/// panel. Empty when the session kept no audio.
+#[tauri::command]
+pub fn get_debug_audio_slice(
+    session_id: u64,
+    start_secs: f64,
+    end_secs: f64,
+) -> Result<Vec<u8>, String> {
+    Ok(crate::debug::slice_audio(session_id, start_secs, end_secs).unwrap_or_default())
 }

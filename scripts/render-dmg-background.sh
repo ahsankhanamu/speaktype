@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Render background.png for the installer DMG (660×400 @1x).
+# Render background.png for the installer DMG (520×380 content @2x).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

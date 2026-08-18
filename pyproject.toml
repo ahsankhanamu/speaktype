@@ -27,9 +27,13 @@ client = [
 assets = [
     "pillow>=10.0.0",
 ]
+mac-dmg = [
+    "dmgbuild>=1.0.0; sys_platform == 'darwin'",
+]
 all = [
     "speaktype[client]",
     "speaktype[assets]",
+    "speaktype[mac-dmg]",
     "faster-whisper>=0.10.0",
 ]
 gpu = [

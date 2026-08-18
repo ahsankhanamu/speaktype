@@ -127,6 +127,18 @@ const ttipc = {
     return this.invoke('get_history_audio', { index });
   },
 
+  getDebugSessions() {
+    return this.invoke('get_debug_sessions');
+  },
+
+  clearDebugSessions() {
+    return this.invoke('clear_debug_sessions');
+  },
+
+  getDebugAudioSlice(sessionId, startSecs, endSecs) {
+    return this.invoke('get_debug_audio_slice', { sessionId, startSecs, endSecs });
+  },
+
   checkPermissions() {
     return this.invoke('check_permissions');
   },

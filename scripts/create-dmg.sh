@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# create-dmg.sh — WhatsApp-style compact installer DMG (660×400, 128px icons)
+# create-dmg.sh — SpeakType compact installer DMG (520×400, 112px icons)
+#
+# Headless: icon layout is written by dmgbuild, so no Finder automation
+# (Apple Events) permission is required.
 #
 # Usage: create-dmg.sh <app-bundle> <output-dmg> [volume-name]
 
@@ -15,10 +18,9 @@ if [ ! -d "$APP_BUNDLE" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BG_DIR="$SCRIPT_DIR/dmg-resources"
 BG_PNG="$BG_DIR/background.png"
-RW_DMG="${DMG_PATH%.dmg}_rw.dmg"
-MOUNT="/Volumes/$VOLUME_NAME"
 
 if [ ! -f "$BG_PNG" ] \
     || [ "$SCRIPT_DIR/compose-dmg-background.py" -nt "$BG_PNG" ] \
@@ -26,33 +28,18 @@ if [ ! -f "$BG_PNG" ] \
     "$SCRIPT_DIR/render-dmg-background.sh"
 fi
 
-cleanup() {
-    hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true
-    rm -f "$RW_DMG"
-}
-trap cleanup EXIT
+# Prefer the project venv so dmgbuild is available; fall back to PATH python3.
+PY="${PROJECT_ROOT}/.venv/bin/python3"
+if [ ! -x "$PY" ]; then
+    PY="$(command -v python3 || true)"
+fi
+if [ -z "$PY" ] || ! "$PY" -c "import dmgbuild" >/dev/null 2>&1; then
+    echo "ERROR: dmgbuild is not installed." >&2
+    echo "  Run:  make install-python   (or:  $PY -m pip install dmgbuild)" >&2
+    exit 1
+fi
 
-hdiutil detach "$MOUNT" -force >/dev/null 2>&1 || true
-rm -f "$DMG_PATH" "$RW_DMG"
+mkdir -p "$(dirname "$DMG_PATH")"
+rm -f "$DMG_PATH"
 
-echo "→ Preparing DMG layout..."
-hdiutil create -size 320m -volname "$VOLUME_NAME" -fs HFS+ -ov "$RW_DMG" >/dev/null
-hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen -mountpoint "$MOUNT" >/dev/null
-
-cp -R "$APP_BUNDLE" "$MOUNT/SpeakType.app"
-ln -sf /Applications "$MOUNT/Applications"
-mkdir -p "$MOUNT/.background"
-cp "$BG_PNG" "$MOUNT/.background/background.png"
-SetFile -a V "$MOUNT/.background" 2>/dev/null || true
-
-read -r APP_X ICON_Y APPS_X WIN_W WIN_H ICON_SIZE <<< "$(python3 -c "import sys; sys.path.insert(0, '$SCRIPT_DIR'); from dmg_layout import APP_X, APPS_X, ICON_SIZE, ICON_Y, WIN_H, WIN_W; print(APP_X, ICON_Y, APPS_X, WIN_W, WIN_H, ICON_SIZE)")"
-osascript "$SCRIPT_DIR/dmg-layout.applescript" "$VOLUME_NAME" "$APP_X" "$ICON_Y" "$APPS_X" "$WIN_W" "$WIN_H" "$ICON_SIZE"
-
-sync
-hdiutil detach "$MOUNT" >/dev/null
-trap - EXIT
-
-hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$DMG_PATH" >/dev/null
-rm -f "$RW_DMG"
-
-echo "→ DMG created at $DMG_PATH"
+"$PY" "$SCRIPT_DIR/build_dmg.py" "$APP_BUNDLE" "$DMG_PATH" "$VOLUME_NAME"
