@@ -1,3 +1,26 @@
+(() => {
+  // Forward webview console errors/warnings into speaktype.log so a frozen
+  // settings window leaves a trace next time it happens.
+  let reporting = false;
+  const report = (level, args) => {
+    if (reporting) return;
+    reporting = true;
+    try {
+      const msg = Array.from(args)
+        .map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+        .join(' ');
+      if (window.ttipc) window.ttipc.invoke('log_frontend', { level, message: msg });
+    } catch (e) { /* ignore */ }
+    finally {
+      reporting = false;
+    }
+  };
+  const origErr = console.error;
+  const origWarn = console.warn;
+  console.error = function () { report('error', arguments); return origErr.apply(console, arguments); };
+  console.warn = function () { report('warn', arguments); return origWarn.apply(console, arguments); };
+})();
+
 const tabs = document.querySelectorAll('.tab');
 const tabContents = document.querySelectorAll('.tab-content');
 const paneTitle = document.getElementById('pane-title');

@@ -123,6 +123,18 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
         .arg("--port")
         .arg(port.to_string());
 
+    // Cap decode threads so inference never saturates every core and makes the
+    // UI (widget, settings tabs, paste) unresponsive mid-transcription.
+    // Leave ~2 cores free; clamp to a sane band across machines.
+    {
+        let ncpu = std::thread::available_parallelism()
+            .map(|n| n.get())
+            .unwrap_or(6);
+        let threads = ncpu.saturating_sub(2).clamp(4, 8) as u32;
+        logging::log_message(&format!("[server] Decode threads capped at {}", threads));
+        sidecar_cmd = sidecar_cmd.arg("-t").arg(threads.to_string());
+    }
+
     if let Some(vad_path) = crate::downloader::ensure_vad_model_blocking() {
         logging::log_message(&format!(
             "[server] Enabling Silero VAD ({})",

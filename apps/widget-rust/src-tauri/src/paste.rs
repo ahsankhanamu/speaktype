@@ -5,6 +5,7 @@ pub struct WindowInfo {
     pub name: String,
     #[cfg(target_os = "macos")]
     pub bundle_id: Option<String>,
+    pub pid: Option<u32>,
 }
 
 const TERMINAL_NAMES: &[&str] = &[
@@ -28,10 +29,31 @@ const TERMINAL_BUNDLE_IDS: &[&str] = &[
 
 /// Get the currently active (frontmost) window, skipping SpeakType itself.
 /// Returns the frontmost non-SpeakType app.
+///
+/// Uses `NSWorkspace` directly instead of spawning `osascript` so the window
+/// tracker in the background thread costs ~nothing and never touches the
+/// Accessibility server. `pid` is always filled on macOS and is the most
+/// reliable identity for re-activation later — it survives stale
+/// LaunchServices registrations (e.g. an .app that was moved) that make
+/// `tell application id …` fail with `-43`.
 pub fn get_frontmost_window() -> Option<WindowInfo> {
     #[cfg(target_os = "macos")]
     {
-        macos_get_frontmost_window()
+        use objc2_app_kit::NSWorkspace;
+        let ws = NSWorkspace::sharedWorkspace();
+        let front = ws.frontmostApplication()?;
+        let pid = front.processIdentifier();
+        if pid == std::process::id() as i32 {
+            return None;
+        }
+        let name = front.localizedName().map(|s| s.to_string()).unwrap_or_default();
+        #[cfg(target_os = "macos")]
+        let bundle_id = front.bundleIdentifier().map(|s| s.to_string());
+        Some(WindowInfo {
+            name,
+            bundle_id,
+            pid: Some(pid as u32),
+        })
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -39,74 +61,66 @@ pub fn get_frontmost_window() -> Option<WindowInfo> {
     }
 }
 
-#[cfg(target_os = "macos")]
-fn macos_get_frontmost_window() -> Option<WindowInfo> {
-    // Get frontmost app with its PID. If it's our own process, return None (caller keeps previous value).
-    let script = r#"
-        tell application "System Events"
-            set frontApp to first application process whose frontmost is true
-            set appName to name of frontApp
-            set appID to bundle identifier of frontApp
-            set appPID to unix id of frontApp
-            return appName & "|" & appID & "|" & appPID
-        end tell
-    "#;
-
+/// Run one `osascript` invocation and report whether it exited successfully.
+fn run_osascript(script: &str) -> bool {
     match std::process::Command::new("osascript")
         .arg("-e")
         .arg(script)
         .output()
     {
-        Ok(output) => {
-            let result = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if result.is_empty() {
-                return None;
-            }
-            let parts: Vec<&str> = result.splitn(3, '|').collect();
-            let name = parts.first().unwrap_or(&"").to_string();
-            let bundle_id = parts.get(1).map(|s| s.to_string());
-            let pid = parts.get(2).and_then(|s| s.trim().parse::<u32>().ok());
-
-            // Skip if it's our own process (works for any bundle ID)
-            if pid == Some(std::process::id()) {
-                return None;
-            }
-
-            Some(WindowInfo { name, bundle_id })
-        }
-        Err(_) => None,
+        Ok(output) => output.status.success(),
+        Err(_) => false,
     }
 }
 
-/// Focus a previously captured window using osascript (reliable, no accessibility needed for activation)
+/// Focus a previously captured window. Tries, in order:
+///   1. `tell application id "<bundle_id>" to activate` (no Accessibility needed)
+///   2. System Events `set frontmost …` for the captured PID (needs Accessibility,
+///      but works even when LaunchServices can't resolve the app)
+///   3. System Events by process name (last resort)
 pub fn focus_window(window: &WindowInfo) -> bool {
-    let identifier = window.bundle_id.as_deref().unwrap_or(&window.name);
-    let script = format!(
-        r#"tell application id "{}" to activate"#,
-        identifier
-    );
-
-    match std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output()
+    // 1) Bundle id activation (works without Accessibility permission).
+    if let Some(id) = window
+        .bundle_id
+        .as_deref()
+        .filter(|s| !s.is_empty() && s.contains('.'))
     {
-        Ok(output) => {
-            if output.status.success() {
-                log_message(&format!("[window] Focus {:?}: ok", window.name));
-                std::thread::sleep(std::time::Duration::from_millis(50));
-                true
-            } else {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                log_message(&format!("[window] Focus {:?} failed: {}", window.name, stderr.trim()));
-                false
-            }
-        }
-        Err(e) => {
-            log_message(&format!("[window] osascript failed: {}", e));
-            false
+        let script = format!("tell application id \"{}\" to activate", id);
+        if run_osascript(&script) {
+            log_message(&format!("[window] Focus {:?}: ok (by bundle id)", window.name));
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            return true;
         }
     }
+
+    // 2) PID-based activation via the Accessibility API.
+    if let Some(pid) = window.pid {
+        let script = format!(
+            "tell application \"System Events\" to set frontmost of \
+             (first application process whose unix id is {}) to true",
+            pid
+        );
+        if run_osascript(&script) {
+            log_message(&format!("[window] Focus {:?}: ok (by pid {})", window.name, pid));
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            return true;
+        }
+    } else if !window.name.is_empty() {
+        // 3) No pid captured — fall back to process name.
+        let script = format!(
+            "tell application \"System Events\" to set frontmost of \
+             application process \"{}\" to true",
+            window.name
+        );
+        if run_osascript(&script) {
+            log_message(&format!("[window] Focus {:?}: ok (by process name)", window.name));
+            std::thread::sleep(std::time::Duration::from_millis(50));
+            return true;
+        }
+    }
+
+    log_message(&format!("[window] Focus {:?} failed: could not activate", window.name));
+    false
 }
 
 /// Check if the window is a terminal application

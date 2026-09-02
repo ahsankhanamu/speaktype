@@ -613,6 +613,7 @@ mod tests {
     fn finishes_and_retains_a_session() {
         let _guard = test_lock();
         clear();
+        SESSION_SEQ.store(1, Ordering::SeqCst);
         start_session("small");
         update_meta(4.2, "live");
         record_pipelined(0, 0.0, 2.0);

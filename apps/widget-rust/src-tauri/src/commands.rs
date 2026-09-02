@@ -12,6 +12,7 @@ use crate::tray::{self, TrayState};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
@@ -301,6 +302,13 @@ pub fn get_audio_input_info() -> Result<serde_json::Value, String> {
         "device": audio::get_default_input_device_name(),
         "inputs": audio::count_input_devices(),
     }))
+}
+
+/// Forward webview console errors/warnings into the app log so that a frozen
+/// settings window or widget leaves a trace on the next occurrence.
+#[tauri::command]
+pub fn log_frontend(level: String, message: String) {
+    crate::logging::log_message(&format!("[webview] {} {}", level, message));
 }
 
 fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {

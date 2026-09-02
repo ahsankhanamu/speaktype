@@ -24,7 +24,17 @@ def main() -> None:
 
     script_dir = Path(__file__).resolve().parent
     sys.path.insert(0, str(script_dir))
-    from dmg_layout import APP_X, APPS_X, ICON_SIZE, ICON_Y, WIN_H, WIN_W
+    # pyrefly: ignore [missing-import]
+    from dmg_layout import (
+    APP_W,
+    APP_X,
+    APPS_X,
+    ICON_Y,
+    WIN_H,
+    WIN_H_DISPLAY,
+    WIN_W,
+    WIN_W_DISPLAY,
+)
 
     background = script_dir / "dmg-resources" / "background.png"
     if not background.exists():
@@ -40,8 +50,8 @@ def main() -> None:
         "files": [str(app_bundle)],
         "symlinks": {"Applications": "/Applications"},
         "background": str(background),
-        "icon_size": ICON_SIZE,
-        "window_rect": ((200, 120), (WIN_W, WIN_H)),
+        "icon_size": APP_W,
+        "window_rect": ((200, 120), (WIN_W_DISPLAY, WIN_H_DISPLAY)),
         "icon_locations": {
             app_name: (APP_X, ICON_Y),
             "Applications": (APPS_X, ICON_Y),

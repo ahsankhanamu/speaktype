@@ -54,6 +54,14 @@ const MIN_CHARS_FOR_COMPRESSION: usize = 60;
 /// Used to weight segments when the server omits timestamps.
 const CHARS_PER_SECOND_ESTIMATE: f64 = 15.0;
 
+/// Whisper's end-of-stream repetition loop sprays the same rolling phrase out
+/// as a long run of near-identical, impossibly short segments. The per-segment
+/// gates miss it because each segment is individually short and the duplication
+/// sits *between* segments, so a cross-segment check is needed.
+const LOOP_RUN_MIN: usize = 4;
+const LOOP_RUN_SIMILARITY: f64 = 0.55;
+const LOOP_RUN_MAX_SPAN_S: f64 = 2.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Flag {
     NoSpeech,
@@ -280,6 +288,66 @@ fn push_unique(flags: &mut Vec<Flag>, flag: Flag) {
     }
 }
 
+/// Dice similarity between the word sets of two texts. Identical rolling loops
+/// score ~1.0 because they contain the same words even as each segment shifts.
+fn word_set_similarity(a: &str, b: &str) -> f64 {
+    let wa: std::collections::HashSet<&str> = a.split_whitespace().collect();
+    let wb: std::collections::HashSet<&str> = b.split_whitespace().collect();
+    if wa.is_empty() || wb.is_empty() {
+        return 0.0;
+    }
+    let inter = wa.intersection(&wb).count();
+    (2.0 * inter as f64) / (wa.len() + wb.len()) as f64
+}
+
+/// Flag a run of consecutive near-identical segments packed into a tiny audio
+/// window. Whisper's loop emits bursts of impossibly short segments, so only
+/// short segments (≤ `LOOP_RUN_MAX_SEG_SECS`) take part in the run, and the
+/// whole burst must still fit in `LOOP_RUN_MAX_SPAN_S`. Real-time repetition —
+/// even a chant repeated four times — never passes the shortness gate. Returns
+/// the number of newly-flagged segments.
+fn flag_loop_run(segments: &[Segment], reports: &mut [SegmentReport]) -> usize {
+    const SEG_SHORT: f64 = 0.6;
+    let n = segments.len().min(reports.len());
+    if n < LOOP_RUN_MIN {
+        return 0;
+    }
+    let short = |s: &Segment| s.end - s.start <= SEG_SHORT;
+    let mut i = 0;
+    let mut flagged = 0;
+    while i + LOOP_RUN_MIN <= n {
+        if !short(&segments[i])
+            || !short(&segments[i + 1])
+            || word_set_similarity(&segments[i].text, &segments[i + 1].text)
+                < LOOP_RUN_SIMILARITY
+        {
+            i += 1;
+            continue;
+        }
+        let mut end = i + 2;
+        while end < n
+            && short(&segments[end])
+            && word_set_similarity(&segments[end - 1].text, &segments[end].text)
+                >= LOOP_RUN_SIMILARITY
+        {
+            end += 1;
+        }
+        if end - i >= LOOP_RUN_MIN
+            && segments[end - 1].end - segments[i].start <= LOOP_RUN_MAX_SPAN_S
+        {
+            for r in &mut reports[i..end] {
+                if !r.bad {
+                    push_unique(&mut r.flags, Flag::Repetition);
+                    r.bad = true;
+                    flagged += 1;
+                }
+            }
+        }
+        i = end;
+    }
+    flagged
+}
+
 pub fn evaluate_segment(segment: &Segment, thresholds: &Thresholds) -> SegmentReport {
     let text = segment.text.trim().to_string();
     let lower = text.to_lowercase();
@@ -342,10 +410,12 @@ pub fn evaluate(raw_text: &str, segments: &[Segment], thresholds: &Thresholds) -
     };
 
     let had_metrics = segments.iter().any(Segment::has_metrics);
-    let reports: Vec<SegmentReport> = segments
+    let mut reports: Vec<SegmentReport> = segments
         .iter()
         .map(|s| evaluate_segment(s, thresholds))
         .collect();
+
+    flag_loop_run(segments, &mut reports);
 
     let dropped = reports.iter().filter(|r| r.bad).count();
     let trimmed_raw = raw_text.trim();
@@ -494,5 +564,84 @@ mod tests {
             &Thresholds::default(),
         );
         assert!(good.score > bad.score);
+    }
+
+    /// Shape of a real large-v3 failure (content replaced with synthetic
+    /// placeholder text): a couple of seconds of real speech followed by
+    /// whisper's end-of-stream loop spraying the same rolling phrase out as a
+    /// burst of impossibly short, identical segments. The whole loop must be
+    /// dropped while the real speech survives.
+    #[test]
+    fn drops_whisper_repetition_loop_but_keeps_real_speech() {
+        let real = [
+            Segment {
+                text: "and that is why I knew the exact route to the old station".to_string(),
+                start: 66.7,
+                end: 68.4,
+                no_speech_prob: Some(0.01),
+                avg_logprob: Some(-0.18),
+            },
+            Segment {
+                text: "and I knew the exact route to the old station so yes I".to_string(),
+                start: 68.4,
+                end: 70.1,
+                no_speech_prob: Some(0.02),
+                avg_logprob: Some(-0.15),
+            },
+        ];
+        let words: Vec<&str> = "and I knew the exact route to the old station"
+            .split_whitespace()
+            .collect();
+        let mut segments: Vec<Segment> = real.to_vec();
+        for k in 0..8 {
+            let text = words
+                .iter()
+                .cycle()
+                .skip(k % words.len())
+                .take(words.len())
+                .cloned()
+                .collect::<Vec<&str>>()
+                .join(" ");
+            segments.push(Segment {
+                text,
+                start: 70.2,
+                end: 70.3,
+                no_speech_prob: Some(0.01),
+                avg_logprob: Some(-0.2),
+            });
+        }
+
+        let report = evaluate("", &segments, &Thresholds::default());
+        assert!(report.dropped >= 8, "loop segments must be dropped, got {}", report.dropped);
+        assert_eq!(
+            report.clean_text.matches("the exact route to the old station").count(),
+            2,
+            "exactly the two real utterances must survive: {}",
+            report.clean_text
+        );
+        assert!(
+            report.clean_text.contains("that is why I knew the exact route"),
+            "real speech must survive: {}",
+            report.clean_text
+        );
+    }
+
+    /// A genuinely repeated spoken phrase (each repetition takes real time) must
+    /// NOT be flagged — the span gate separates it from a processor loop.
+    #[test]
+    fn keeps_repeated_speech_spread_over_real_time() {
+        let mut segments = Vec::new();
+        for i in 0..4u32 {
+            segments.push(Segment {
+                text: "and I knew the exact route to the old station".to_string(),
+                start: i as f64,
+                end: (i + 1) as f64,
+                no_speech_prob: Some(0.01),
+                avg_logprob: Some(-0.2),
+            });
+        }
+        let report = evaluate("", &segments, &Thresholds::default());
+        assert_eq!(report.dropped, 0, "real-time repetition must not be dropped");
+        assert!(report.is_clean());
     }
 }
