@@ -135,6 +135,10 @@ const ttipc = {
     return this.invoke('clear_debug_sessions');
   },
 
+  deleteDebugSession(sessionId) {
+    return this.invoke('delete_debug_session', { sessionId });
+  },
+
   getDebugAudioSlice(sessionId, startSecs, endSecs) {
     return this.invoke('get_debug_audio_slice', { sessionId, startSecs, endSecs });
   },

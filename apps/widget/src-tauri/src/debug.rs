@@ -421,6 +421,26 @@ pub fn clear() {
     clear_persisted();
 }
 
+/// Remove a single collected debug session by id, along with its persisted
+/// audio. Returns whether a session with that id was present.
+pub fn delete_session(id: u64) -> bool {
+    let removed = match SESSIONS.lock() {
+        Ok(mut guard) => {
+            let before = guard.len();
+            guard.retain(|s| s.id != id);
+            guard.len() != before
+        }
+        Err(_) => false,
+    };
+
+    #[cfg(not(test))]
+    if removed {
+        delete_audio(id);
+        persist_sessions_only();
+    }
+    removed
+}
+
 /* ---- Persistence ---- */
 
 /// The collector is kept on disk as `debug_sessions.json` plus one downsampled
@@ -505,6 +525,12 @@ fn persist_session(session: &Session) {
         }
     }
 
+    persist_sessions_only();
+}
+
+/// Rewrite `debug_sessions.json` from the in-memory ring buffer.
+#[cfg(not(test))]
+fn persist_sessions_only() {
     match SESSIONS.lock() {
         Ok(guard) => {
             let all: Vec<Session> = guard.iter().cloned().collect();
