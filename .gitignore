@@ -1,33 +1,39 @@
-# Python
+# ─── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-/build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+*.expected
 
-# Virtual environments
+# ─── Virtual environments ─────────────────────────────────────────────────────
 venv/
 .venv/
 .venv-*/
 ENV/
 env/
 
-# IDE
+# ─── Build outputs ────────────────────────────────────────────────────────────
+/dist/
+/logs/
+/build/
+
+# ─── Tauri app (apps/widget) ─────────────────────────────────────────────────
+apps/widget/src-tauri/target/
+apps/widget/src-tauri/scripts/
+apps/widget/src-tauri/binaries/
+apps/widget/src-tauri/resources/models/
+apps/widget/src-tauri/resources/python/
+apps/widget/node_modules/
+
+# ─── Whisper models (downloaded automatically) ────────────────────────────────
+*.bin
+*.pt
+
+# ─── IDE ──────────────────────────────────────────────────────────────────────
 .idea/
 *.swp
 *.swo
@@ -35,8 +41,9 @@ env/
 .project
 .pydevproject
 .settings/
+.cache/
 
-# OS
+# ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?
 ._*
@@ -45,44 +52,14 @@ env/
 ehthumbs.db
 Thumbs.db
 
-# Whisper models (downloaded automatically)
-*.bin
-*.pt
-
-# Logs
-*.log
-
-# Local config (if users create their own)
+# ─── Local config ─────────────────────────────────────────────────────────────
 config.local.py
 .env
 .env.local
-REDDIT_POSTS_SPEAKTYPE.md
 *.bak
-
-# Claude Code context (machine-specific)
 CLAUDE.md
-
-# Tauri build artifacts (widget)
-apps/widget/src-tauri/target/
-apps/widget/src-tauri/scripts/
-apps/widget/src-tauri/binaries/
-apps/widget/src-tauri/resources/models/
-apps/widget/src-tauri/resources/python/
-apps/widget/node_modules/
-
-# Whisper model metadata (download size cache)
-*.expected
-
-# Log directory
-logs/
-
-# Local notes & drafts (never commit)
 docs-local/
-
-# Local signing config (never commit)
 make/local.mk
 
-# Generated widget bubble PNGs (from tools/assets/render_widget_bubbles.py)
+# ─── Generated assets ─────────────────────────────────────────────────────────
 assets/source/widgets/
-
-.cache/
