@@ -38,7 +38,7 @@ Loads the model in-process — the recommended path for most CLI users:
 
 ```bash
 speaktype
-# equivalent: python packages/cli/speaktype.py
+# equivalent: python packages/python/cli/speaktype.py
 ```
 
 ## Common options

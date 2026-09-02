@@ -62,15 +62,13 @@ REDDIT_POSTS_SPEAKTYPE.md
 # Claude Code context (machine-specific)
 CLAUDE.md
 
-# Tauri build artifacts (widget-rust)
-apps/widget-rust/src-tauri/target/
-apps/widget-rust/src-tauri/scripts/
-apps/widget-rust/src-tauri/binaries/
-apps/widget-rust/node_modules/
-
-# Embedded Python + model resources (for bundled builds)
-apps/widget-rust/src-tauri/resources/models/
-apps/widget-rust/src-tauri/resources/python/
+# Tauri build artifacts (widget)
+apps/widget/src-tauri/target/
+apps/widget/src-tauri/scripts/
+apps/widget/src-tauri/binaries/
+apps/widget/src-tauri/resources/models/
+apps/widget/src-tauri/resources/python/
+apps/widget/node_modules/
 
 # Whisper model metadata (download size cache)
 *.expected
@@ -84,7 +82,7 @@ docs-local/
 # Local signing config (never commit)
 make/local.mk
 
-# Generated widget bubble PNGs (from scripts/assets/render_widget_bubbles.py)
+# Generated widget bubble PNGs (from tools/assets/render_widget_bubbles.py)
 assets/source/widgets/
 
 .cache/

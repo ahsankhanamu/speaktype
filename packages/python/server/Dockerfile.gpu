@@ -3,7 +3,7 @@
 # =============================================================================
 # For GPU-accelerated transcription with NVIDIA GPUs.
 #
-# Build:  docker build -f packages/server/Dockerfile.gpu -t speaktype-whisper:gpu .
+# Build:  docker build -f packages/python/server/Dockerfile.gpu -t speaktype-whisper:gpu .
 # Run:    docker run --gpus all -p 8002:8002 speaktype-whisper:gpu
 # =============================================================================
 
@@ -29,7 +29,7 @@ RUN groupadd --gid 1000 whisper && \
 WORKDIR /app
 
 COPY pyproject.toml .
-COPY packages/ ./packages/
+COPY packages/python/ ./packages/python/
 RUN pip3 install --no-cache-dir ".[all,gpu]"
 
 RUN mkdir -p /home/whisper/.cache && chown -R whisper:whisper /home/whisper/.cache

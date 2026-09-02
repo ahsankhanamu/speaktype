@@ -10,14 +10,14 @@
 # "SpeakType Dev" and persists across rebuilds (stable Developer ID + bundle id).
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# shellcheck source=load-secrets.sh
-source "$SCRIPT_DIR/load-secrets.sh"
+# shellcheck source=../build/load-secrets.sh
+source "$SCRIPT_DIR/../build/load-secrets.sh"
 speaktype_load_rust_env
 speaktype_prefer_system_xattr
 
-TAURI_DIR="$ROOT/apps/widget-rust/src-tauri"
+TAURI_DIR="$ROOT/apps/widget/src-tauri"
 TARGET_DIR="${CARGO_TARGET_DIR:-$TAURI_DIR/target}/debug"
 BUNDLE="$TARGET_DIR/SpeakType Dev.app"
 CONTENTS="$BUNDLE/Contents"
@@ -201,7 +201,7 @@ WATCH_PATHS=(
   "$TAURI_DIR/src"
   "$TAURI_DIR/Cargo.toml"
   "$TAURI_DIR/tauri.conf.json"
-  "$ROOT/packages/widget-ui"
+  "$ROOT/apps/widget/web"
 )
 
 POLL_INTERVAL=1

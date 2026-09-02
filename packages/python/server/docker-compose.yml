@@ -2,7 +2,7 @@ services:
   whisper-server:
     build:
       context: ../..
-      dockerfile: packages/server/Dockerfile
+      dockerfile: packages/python/server/Dockerfile
     container_name: speaktype-whisper
     ports:
       - "8002:8002"
@@ -24,7 +24,7 @@ services:
   # whisper-server-gpu:
   #   build:
   #     context: ../..
-  #     dockerfile: packages/server/Dockerfile.gpu
+  #     dockerfile: packages/python/server/Dockerfile.gpu
   #   container_name: speaktype-whisper-gpu
   #   ports:
   #     - "8002:8002"

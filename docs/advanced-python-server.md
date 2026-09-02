@@ -4,7 +4,7 @@ Optional setup for **CLI power users** who run `speaktype` frequently and want t
 
 > **Not for widget users.** The macOS desktop app uses a bundled whisper.cpp sidecar (`POST /inference`) and does **not** use this Python server.
 
-The server (`packages/server/whisper_server.py`, installed as `speaktype-server`) keeps a faster-whisper model loaded for CLI clients. It exposes `POST /transcribe` on port **8002** by default.
+The server (`packages/python/server/whisper_server.py`, installed as `speaktype-server`) keeps a faster-whisper model loaded for CLI clients. It exposes `POST /transcribe` on port **8002** by default.
 
 ## Quick start
 
@@ -90,4 +90,4 @@ Enable with `systemctl --user enable --now speaktype-server.service`.
 
 ## Docker (contributors)
 
-`Dockerfile`, `Dockerfile.gpu`, and `docker-compose.yml` in `packages/server/` are for contributors who want a containerized server setup. They are not a primary install path — use in-process `speaktype` or the Python server above for daily CLI use.
+`Dockerfile`, `Dockerfile.gpu`, and `docker-compose.yml` in `packages/python/server/` are for contributors who want a containerized server setup. They are not a primary install path — use in-process `speaktype` or the Python server above for daily CLI use.

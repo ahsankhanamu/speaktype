@@ -16,7 +16,7 @@ Related docs: [Getting started](getting-started.md) · [Build widget from source
 | **Signing keys** | Developer ID certificates live in the local Keychain (not iCloud). Export a `.p12` backup after setup. |
 | **Certificate limit** | Apple allows up to **5** Developer ID Application certificates per team. |
 | **Hardware mic** | Some Macs (e.g. Mac mini) have **no built-in microphone**. Use a USB mic, headset, or AirPods when testing recording. |
-| **`scripts/build.sh`** | Builds the whisper.cpp sidecar but does **not** clone the repo. Clone it first (step 4). |
+| **`tools/build/build.sh`** | Builds the whisper.cpp sidecar but does **not** clone the repo. Clone it first (step 4). |
 
 ---
 
@@ -90,7 +90,7 @@ Grant **Microphone** and **Accessibility** to your terminal app — see [permiss
 | Tool | Install |
 |------|---------|
 | Xcode Command Line Tools | `xcode-select --install` |
-| Rust (1.93+) | [rustup](https://rustup.rs/) — toolchain pinned in `apps/widget-rust/rust-toolchain.toml` |
+| Rust (1.93+) | [rustup](https://rustup.rs/) — toolchain pinned in `apps/widget/rust-toolchain.toml` |
 | Tauri CLI 2 | `cargo install tauri-cli` |
 | cmake | `brew install cmake` (step 2) |
 
@@ -106,12 +106,12 @@ xcode-select -p
 
 ### Clone whisper.cpp (required before `make build`)
 
-`scripts/build.sh` expects source at:
+`tools/build/build.sh` expects source at:
 
-`apps/widget-rust/src-tauri/scripts/build/whisper.cpp`
+`apps/widget/src-tauri/scripts/build/whisper.cpp`
 
 ```bash
-WHISPER_SRC="apps/widget-rust/src-tauri/scripts/build/whisper.cpp"
+WHISPER_SRC="apps/widget/src-tauri/scripts/build/whisper.cpp"
 
 if [ ! -f "$WHISPER_SRC/CMakeLists.txt" ]; then
   rm -rf "$WHISPER_SRC"
@@ -329,7 +329,7 @@ dist/SpeakType_0.1.0_aarch64.dmg
 Local run without a full signed DMG:
 
 ```bash
-open apps/widget-rust/src-tauri/target/release/bundle/macos/SpeakType.app
+open apps/widget/src-tauri/target/release/bundle/macos/SpeakType.app
 # or: make dev
 ```
 
@@ -346,7 +346,7 @@ open apps/widget-rust/src-tauri/target/release/bundle/macos/SpeakType.app
 | `Developer ID …: no identity found` | Step 6 — cert + key + G2 intermediate |
 | `MAC verification failed during PKCS12 import` | Re-export `.p12` with `-certpbe PBE-SHA1-3DES -keypbe PBE-SHA1-3DES -macalg SHA1` |
 | `1 identity imported` but `0 valid identities` | Import [DeveloperIDG2CA.cer](https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer) |
-| Wrong cargo target / missing `.app` path | Build in a normal terminal; ensure `CARGO_TARGET_DIR` is unset so output is under `apps/widget-rust/src-tauri/target` |
+| Wrong cargo target / missing `.app` path | Build in a normal terminal; ensure `CARGO_TARGET_DIR` is unset so output is under `apps/widget/src-tauri/target` |
 | `python3.12` missing or broken | Use `/opt/homebrew/bin/python3.12` (step 3) |
 | `direnv: command not found` on shell start | `brew install direnv` or guard the hook: `command -v direnv >/dev/null && eval "$(direnv hook zsh)"` |
 | No input devices / can’t record | Attach an external mic if the Mac has no built-in input |

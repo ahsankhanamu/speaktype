@@ -28,7 +28,7 @@ macOS stores Accessibility per **code signature**, not per app name. A toggle fo
 
 ### `make dev` (debug / Tauri)
 
-`make dev` runs `apps/widget-rust/src-tauri/target/debug/speaktype`, which is a different identity from `/Applications/SpeakType.app`.
+`make dev` runs `apps/widget/src-tauri/target/debug/speaktype`, which is a different identity from `/Applications/SpeakType.app`.
 
 On macOS, `make dev` builds the debug binary, wraps it in a real **SpeakType Dev.app**, signs it with your Developer ID as `com.speaktype.widget.dev`, and opens it through LaunchServices.
 

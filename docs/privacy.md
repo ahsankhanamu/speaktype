@@ -33,9 +33,9 @@ Review the privacy policy of any third-party API you use.
 
 SpeakType is MIT-licensed. You can inspect every line that touches audio, network, or storage:
 
-- Widget: `apps/widget-rust/`, `packages/widget-ui/`
-- CLI: `packages/cli/speaktype.py`
-- Server: `packages/server/whisper_server.py`
+- Widget: `apps/widget/`
+- CLI: `packages/python/cli/speaktype.py`
+- Server: `packages/python/server/whisper_server.py`
 
 ## Network use
 

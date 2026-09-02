@@ -4,33 +4,33 @@ include make/config.mk
 
 .PHONY: dev dev-fast build clean install install-python setup notary-setup server assets help
 
-# ─── App (apps/widget-rust) ─────────────────────────────────────────────────────
+# ─── App (apps/widget) ───────────────────────────────────────────────────────
 
 dev: ## Run app in dev mode (macOS: real .app bundle so Accessibility works)
 	@if [ "$$(uname -s)" = "Darwin" ]; then \
-		./scripts/dev-macos.sh; \
+		./tools/dev/dev-macos.sh; \
 	else \
-		cd apps/widget-rust && cargo tauri dev; \
+		cd apps/widget && cargo tauri dev; \
 	fi
 
 dev-fast: ## Run Tauri watch mode (fast rebuilds; Accessibility will NOT work on macOS)
-	cd apps/widget-rust && cargo tauri dev
+	cd apps/widget && cargo tauri dev
 
 build: ## Clean → sidecar → app → sign → DMG → notarize, all in one (output: dist/)
-	./scripts/log_manager.sh ./scripts/build.sh
+	./tools/build/log_manager.sh ./tools/build/build.sh
 
-# ─── Server (packages/server) ───────────────────────────────────────────────────
+# ─── Server (packages/python/server) ─────────────────────────────────────────
 
 server: ## Run whisper server locally (Python)
-	.venv/bin/python packages/server/whisper_server.py --model base
+	.venv/bin/python packages/python/server/whisper_server.py --model base
 
 assets: ## Regenerate README showcase images and demo animation
-	.venv/bin/python scripts/assets/compose_showcase.py
+	.venv/bin/python tools/assets/compose_showcase.py
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 
 install: ## Set up dev environment (Python + macOS widget prerequisites + whisper.cpp)
-	./scripts/setup-dev.sh
+	./tools/build/setup-dev.sh
 
 install-python: ## Create venv and install Python dependencies only (requires Python 3.10+)
 	@PY=""; \
@@ -42,7 +42,7 @@ install-python: ## Create venv and install Python dependencies only (requires Py
 		fi; \
 	done; \
 	if [ -z "$$PY" ]; then \
-		echo "Error: Python 3.10+ is required. Install python3.12, python3.11, or upgrade python3."; \
+		echo "Error: Python 3.10+ required. Install python3.12, python3.11, or upgrade python3."; \
 		exit 1; \
 	fi; \
 	echo "Using $$($$PY --version) ($$PY)"; \
@@ -53,7 +53,7 @@ setup: install ## Alias for install
 
 clean: ## Remove build artifacts
 	rm -rf dist logs
-	rm -rf apps/widget-rust/src-tauri/target/release/bundle
+	rm -rf apps/widget/src-tauri/target/release/bundle
 
 notary-setup: ## Store notarization credentials in Keychain (one-time setup)
 	@echo "→ This will store your Apple ID and app-specific password in the Keychain."

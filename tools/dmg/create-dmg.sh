@@ -18,7 +18,7 @@ if [ ! -d "$APP_BUNDLE" ]; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BG_DIR="$SCRIPT_DIR/dmg-resources"
 BG_PNG="$BG_DIR/background.png"
 

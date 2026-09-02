@@ -2,7 +2,7 @@
 
 Build the SpeakType desktop widget on macOS. End users should **download the `.dmg` from Releases** instead — no build required.
 
-> **Node.js is not required.** The UI is static HTML in `packages/widget-ui/`.
+> **Node.js is not required.** The UI is static HTML in `apps/widget/web/`.
 
 ## Prerequisites
 
@@ -10,7 +10,7 @@ Build the SpeakType desktop widget on macOS. End users should **download the `.d
 |------|-----------------|
 | macOS | 12+ (Apple Silicon tested) |
 | Xcode Command Line Tools | `xcode-select --install` |
-| Rust | 1.93+ (see `apps/widget-rust/rust-toolchain.toml`) |
+| Rust | 1.93+ (see `apps/widget/rust-toolchain.toml`) |
 | cmake | `brew install cmake` |
 | librsvg | `brew install librsvg` — provides `rsvg-convert` for DMG background |
 | Tauri CLI 2 | `cargo install tauri-cli` |
@@ -23,7 +23,7 @@ Build the SpeakType desktop widget on macOS. End users should **download the `.d
 The widget bundles a **whisper.cpp** binary (`whisper-server`) as an external sidecar. That binary is **gitignored** at:
 
 ```
-apps/widget-rust/src-tauri/binaries/whisper-server-aarch64-apple-darwin
+apps/widget/src-tauri/binaries/whisper-server-aarch64-apple-darwin
 ```
 
 `cargo tauri dev` and `cargo tauri build` **fail without it**. You must build the sidecar first.
@@ -33,7 +33,7 @@ apps/widget-rust/src-tauri/binaries/whisper-server-aarch64-apple-darwin
 From the repo root:
 
 ```bash
-WHISPER_SRC="apps/widget-rust/src-tauri/scripts/build/whisper.cpp"
+WHISPER_SRC="apps/widget/src-tauri/scripts/build/whisper.cpp"
 SIDECAR_BUILD="$WHISPER_SRC/build"
 
 # Clone whisper.cpp if missing (directory is gitignored)
@@ -52,7 +52,7 @@ cp bin/whisper-server ../../binaries/whisper-server-aarch64-apple-darwin
 chmod +x ../../binaries/whisper-server-aarch64-apple-darwin
 ```
 
-This matches step 2 of `scripts/build.sh`.
+This matches step 2 of `tools/build/build.sh`.
 
 ## Development
 
@@ -72,7 +72,7 @@ export APPLE_DEVELOPER_ID="Developer ID Application: Your Name (TEAMID)"
 export APPLE_TEAM_ID="TEAMID"
 # or: cp make/config.example make/local.mk  # gitignored
 
-make build     # runs scripts/build.sh → dist/SpeakType_0.1.0_aarch64.dmg
+make build     # runs tools/build/build.sh → dist/SpeakType_0.1.0_aarch64.dmg
 ```
 
 One-time notary credentials: `make notary-setup`
@@ -81,10 +81,10 @@ One-time notary credentials: `make notary-setup`
 
 | Path | Purpose |
 |------|---------|
-| `apps/widget-rust/` | Tauri Rust shell |
-| `packages/widget-ui/` | HTML/CSS/JS UI (no npm build step) |
-| `apps/widget-rust/src-tauri/binaries/` | Sidecar binaries (gitignored) |
-| `scripts/build.sh` | Full release pipeline |
+| `apps/widget/` | Tauri Rust shell + web UI |
+| `apps/widget/web/` | HTML/CSS/JS UI (no npm build step) |
+| `apps/widget/src-tauri/binaries/` | Sidecar binaries (gitignored) |
+| `tools/build/build.sh` | Full release pipeline |
 
 ## CI note
 
@@ -94,9 +94,9 @@ GitHub Actions release workflow clones whisper.cpp and builds the sidecar before
 
 ```bash
 make assets
-# or: python3 scripts/assets/compose_showcase.py
+# or: python3 tools/assets/compose_showcase.py
 ```
 
 ## Version
 
-Widget version is **0.1.0** (pre-1.0) in `apps/widget-rust/src-tauri/tauri.conf.json`. Python packages are **1.0.0**.
+Widget version is **0.1.0** (pre-1.0) in `apps/widget/src-tauri/tauri.conf.json`. Python packages are **1.0.0**.

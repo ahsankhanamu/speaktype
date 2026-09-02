@@ -155,7 +155,7 @@ async function openSettings(theme) {
   await send('Emulation.setDeviceMetricsOverride', {
     width: 880, height: 720, deviceScaleFactor: 2, mobile: false,
   });
-  await send('Page.navigate', { url: `file://${ROOT}/packages/widget-ui/settings.html` });
+  await send('Page.navigate', { url: `file://${ROOT}/apps/widget/web/settings.html` });
   await sleep(1200);
   await evaluate(`switchTab('general'); document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)});`);
   await sleep(400);

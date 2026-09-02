@@ -19,14 +19,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/widget-rust/src-tauri
+          workspaces: apps/widget/src-tauri
 
       - name: Install cmake
         run: brew install cmake
 
       - name: Build whisper.cpp sidecar
         run: |
-          WHISPER_SRC="apps/widget-rust/src-tauri/scripts/build/whisper.cpp"
+          WHISPER_SRC="apps/widget/src-tauri/scripts/build/whisper.cpp"
           SIDECAR_BUILD="$WHISPER_SRC/build"
           if [ ! -d "$WHISPER_SRC" ]; then
             mkdir -p "$(dirname "$WHISPER_SRC")"
@@ -36,8 +36,8 @@ jobs:
           cd "$SIDECAR_BUILD"
           cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DGGML_METAL=ON -DGGML_NATIVE=OFF ..
           cmake --build . --target whisper-server -j"$(sysctl -n hw.ncpu)"
-          mkdir -p "$GITHUB_WORKSPACE/apps/widget-rust/src-tauri/binaries"
-          cp bin/whisper-server "$GITHUB_WORKSPACE/apps/widget-rust/src-tauri/binaries/whisper-server-aarch64-apple-darwin"
+          mkdir -p "$GITHUB_WORKSPACE/apps/widget/src-tauri/binaries"
+          cp bin/whisper-server "$GITHUB_WORKSPACE/apps/widget/src-tauri/binaries/whisper-server-aarch64-apple-darwin"
 
       - name: Install tauri-cli
         run: cargo install tauri-cli
@@ -63,13 +63,13 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN_PATH"
 
       - name: Build signed .dmg
-        working-directory: apps/widget-rust
+        working-directory: apps/widget
         run: cargo tauri build
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/widget-rust/src-tauri/target/release/bundle/dmg/*.dmg
+          files: apps/widget/src-tauri/target/release/bundle/dmg/*.dmg
 
   build-server:
     runs-on: ubuntu-latest
@@ -91,7 +91,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: packages/server/Dockerfile
+          file: packages/python/server/Dockerfile
           push: true
           tags: |
             ghcr.io/${{ github.repository }}/whisper-server:${{ steps.version.outputs.tag }}
