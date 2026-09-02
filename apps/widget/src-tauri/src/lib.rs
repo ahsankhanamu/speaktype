@@ -65,6 +65,7 @@ pub fn run() {
             commands::start_mic_test,
             commands::stop_mic_test,
             commands::get_audio_input_info,
+            commands::get_input_devices,
             commands::log_frontend,
             commands::request_accessibility,
             commands::request_microphone_access,
@@ -111,7 +112,7 @@ pub fn run() {
             debug::load_persisted();
 
             #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            app.set_activation_policy(tauri::ActivationPolicy::Regular);
 
             {
                 let app_handle = app.handle().clone();
@@ -474,9 +475,27 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building SpeakType")
         .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                commands::stop_mic_test_for_app(app, "app_exit");
-                server::stop_server();
+            match event {
+                tauri::RunEvent::Exit => {
+                    commands::stop_mic_test_for_app(app, "app_exit");
+                    server::stop_server();
+                }
+                // Clicking the dock icon: reveal the floating widget and open
+                // the settings window so the user always has a way back in.
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.unminimize();
+                        let _ = window.show();
+                        let _ = window.set_always_on_top(true);
+                        let _ = window.set_focus();
+                    }
+                    let app_clone = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = commands::open_settings(app_clone).await;
+                    });
+                }
+                _ => {}
             }
         });
 }

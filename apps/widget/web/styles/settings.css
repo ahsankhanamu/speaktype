@@ -470,6 +470,16 @@ input[type="range"]:focus-visible {
   cursor: default;
 }
 
+.server-connection-row {
+  margin-top: 4px;
+}
+
+.server-manage {
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .status-dot {
   width: 12px;
   height: 12px;

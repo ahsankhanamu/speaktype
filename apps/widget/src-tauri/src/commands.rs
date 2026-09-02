@@ -277,7 +277,8 @@ pub fn start_mic_test(
 
     let info = {
         let mut monitor = state.level_monitor.lock().map_err(|e| e.to_string())?;
-        monitor.start(app.clone())?
+        let input_device = state.settings.lock().ok().and_then(|s| s.input_device.clone());
+        monitor.start_with_input(app.clone(), input_device.as_deref())?
     };
     spawn_mic_test_watchdog(app.clone(), info.generation);
 
@@ -304,6 +305,14 @@ pub fn get_audio_input_info() -> Result<serde_json::Value, String> {
     }))
 }
 
+#[tauri::command]
+pub fn get_input_devices() -> Result<serde_json::Value, String> {
+    Ok(json!({
+        "devices": audio::list_input_devices(),
+        "default": audio::get_default_input_device_name(),
+    }))
+}
+
 /// Forward webview console errors/warnings into the app log so that a frozen
 /// settings window or widget leaves a trace on the next occurrence.
 #[tauri::command]
@@ -327,14 +336,15 @@ fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
     }
 
     {
-        let settings = {
+        let (settings, input_device) = {
             let s = state.settings.lock().map_err(|e| e.to_string())?;
-            s.clone()
+            (s.clone(), s.input_device.clone())
         };
         crate::debug::start_session(&settings.model);
         let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
         let buffer = recorder.buffer();
-        recorder.start(app.clone())?;
+        recorder
+            .start_with_input(app.clone(), input_device.as_deref())?;
         let sample_rate = recorder.sample_rate();
 
         let session = ChunkSession::start(settings, sample_rate, buffer);

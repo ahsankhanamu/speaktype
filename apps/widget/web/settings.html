@@ -118,7 +118,7 @@
 
         <div class="tab-content" id="tab-server">
           <section class="card">
-            <h2 class="card-title">Endpoint</h2>
+            <h2 class="card-title">Server</h2>
             <div class="field">
               <label>API URL</label>
               <div class="url-row">
@@ -127,7 +127,17 @@
               </div>
               <p class="hint">Whisper-compatible transcription endpoint</p>
             </div>
-            <button class="btn" id="check-server-btn">Check Connection</button>
+            <div class="server-connection-row">
+              <button class="btn" id="check-server-btn">Check Connection</button>
+            </div>
+            <div class="field server-manage">
+              <label>Local whisper sidecar</label>
+              <div class="server-actions" id="server-actions">
+                <button class="btn secondary" id="restart-server-btn" type="button">Restart Server</button>
+                <button class="btn secondary" id="stop-server-btn" type="button">Stop Server</button>
+              </div>
+              <p class="hint" id="server-actions-hint">Stop or restart the local whisper sidecar. Restart reloads the active model.</p>
+            </div>
           </section>
           <section class="card">
             <h2 class="card-title">Language</h2>
@@ -136,14 +146,6 @@
               <select id="language-select"></select>
               <p class="hint">Type to filter. Set to "Auto-detect" for multilingual. Language detection requires a multilingual model (not .en variants).</p>
             </div>
-          </section>
-          <section class="card">
-            <h2 class="card-title">Local Server</h2>
-            <div class="server-actions" id="server-actions">
-              <button class="btn secondary" id="restart-server-btn" type="button">Restart Server</button>
-              <button class="btn secondary" id="stop-server-btn" type="button">Stop Server</button>
-            </div>
-            <p class="hint" id="server-actions-hint">Stop or restart the local whisper sidecar. Restart reloads the active model.</p>
           </section>
         </div>
 
@@ -184,6 +186,13 @@
           <section class="card" id="mic-test-card" hidden>
             <h2 class="card-title">Microphone Check</h2>
             <div class="field">
+              <label for="input-device-select">Input Device</label>
+              <select id="input-device-select">
+                <option value="">System default (follows Display Audio settings)</option>
+              </select>
+              <p class="hint">Pick the microphone to dictate with. Use the built-in mic or a wired input for the most reliable capture — Bluetooth headsets (16 kHz hands-free) are often unstable and can produce only a burst of sound.</p>
+            </div>
+            <div class="field">
               <div class="mic-test" id="mic-test">
                 <div class="mic-test-head">
                   <span class="mic-test-device" id="mic-test-device">Checking input…</span>
@@ -198,7 +207,7 @@
                 <p class="mic-test-detail" id="mic-test-detail" hidden></p>
                 <button class="btn secondary btn-small mic-test-sound" id="mic-test-sound-btn" type="button" hidden>Open Sound Settings</button>
               </div>
-              <p class="hint">Speak normally and watch the bars move. The test uses the macOS default input and stops on its own when you leave this section.</p>
+              <p class="hint">Speak normally and watch the bars move. The test uses the input selected above and stops on its own when you leave this section.</p>
             </div>
           </section>
           <section class="card">

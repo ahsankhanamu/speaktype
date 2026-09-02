@@ -363,8 +363,16 @@
       if (!this.els || this.running) return;
       try {
         const info = await ttipc.getAudioInputInfo();
-        if (!info) return;
-        this.els.device.textContent = info.device || 'No input device';
+        const select = document.getElementById('input-device-select');
+        const selected = select && select.value;
+        if (selected) {
+          const opt = select.selectedOptions && select.selectedOptions[0];
+          this.els.device.textContent = (opt && opt.textContent.replace(/ — current default.*$/, '')) || selected;
+        } else if (info && info.device) {
+          this.els.device.textContent = info.device || 'No input device';
+        } else {
+          this.els.device.textContent = 'No input device';
+        }
       } catch (e) {
         console.error('Failed to read input device:', e);
       }
