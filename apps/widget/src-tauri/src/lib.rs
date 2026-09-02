@@ -104,6 +104,7 @@ pub fn run() {
             commands::reprocess_history_entry,
             commands::get_debug_sessions,
             commands::clear_debug_sessions,
+            commands::delete_debug_session,
             commands::get_debug_audio_slice,
         ])
         .setup(|app| {

@@ -1487,6 +1487,13 @@ pub fn clear_debug_sessions() -> Result<(), String> {
     Ok(())
 }
 
+/// Remove a single debug session (and its persisted audio) by id.
+#[tauri::command]
+pub fn delete_debug_session(session_id: u64) -> Result<(), String> {
+    crate::debug::delete_session(session_id);
+    Ok(())
+}
+
 /// Return the audio between `start_secs` and `end_secs` of a debug session's
 /// recording as a mono WAV, for per-chunk/per-segment playback in the Debug
 /// panel. Empty when the session kept no audio.

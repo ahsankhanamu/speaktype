@@ -1677,10 +1677,14 @@ function createDebugSessionEl(session) {
   const el = document.createElement('div');
   el.className = 'debug-session';
 
-  const header = document.createElement('button');
-  header.className = 'debug-session-head';
-  header.type = 'button';
-  header.innerHTML = `
+  const head = document.createElement('div');
+  head.className = 'debug-session-head';
+
+  const toggle = document.createElement('button');
+  toggle.type = 'button';
+  toggle.className = 'debug-session-toggle';
+  toggle.setAttribute('aria-expanded', 'false');
+  toggle.innerHTML = `
     <span class="debug-session-title">
       <span class="debug-session-id">#${escapeHtml(session.id)}</span>
       <span class="debug-session-mode">${escapeHtml(DEBUG_MODE_LABEL[session.mode] || session.mode)}</span>
@@ -1695,6 +1699,30 @@ function createDebugSessionEl(session) {
       <span class="debug-caret" aria-hidden="true"></span>
     </span>
   `;
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.type = 'button';
+  deleteBtn.className = 'debug-session-delete';
+  deleteBtn.title = 'Delete this session';
+  deleteBtn.setAttribute('aria-label', `Delete session #${escapeHtml(session.id)}`);
+  deleteBtn.innerHTML =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>';
+  deleteBtn.addEventListener('click', async (ev) => {
+    ev.stopPropagation();
+    ev.preventDefault();
+    try {
+      await ttipc.deleteDebugSession(session.id);
+      el.remove();
+      if (!debugList.querySelector('.debug-session')) {
+        debugEmpty.style.display = '';
+      }
+    } catch (e) {
+      console.error('Failed to delete debug session:', e);
+    }
+  });
+
+  head.appendChild(toggle);
+  head.appendChild(deleteBtn);
 
   const body = document.createElement('div');
   body.className = 'debug-session-body';
@@ -1734,12 +1762,13 @@ function createDebugSessionEl(session) {
     </div>
   `;
 
-  el.appendChild(header);
+  el.appendChild(head);
   el.appendChild(body);
 
-  header.addEventListener('click', () => {
+  toggle.addEventListener('click', () => {
     body.hidden = !body.hidden;
     el.classList.toggle('open', !body.hidden);
+    toggle.setAttribute('aria-expanded', String(!body.hidden));
   });
 
   body.addEventListener('click', (ev) => {
@@ -1944,6 +1973,43 @@ syncPermissionPoll();
 document.getElementById('about-btn').addEventListener('click', () => {
   ttipc.openAbout().catch(e => console.error('Failed to open about:', e));
 });
+
+// Compact info-icon buttons that reveal a popover on click (close via Escape
+// or clicking elsewhere). Any element with class "info-icon" and an
+// aria-controls target gets this behavior.
+(function initInfoPopovers() {
+  const items = document.querySelectorAll('.info-icon[aria-controls]');
+
+  const close = (icon) => {
+    icon.setAttribute('aria-expanded', 'false');
+    const pop = document.getElementById(icon.getAttribute('aria-controls'));
+    if (pop) pop.hidden = true;
+  };
+
+  const open = (icon) => {
+    items.forEach((other) => { if (other !== icon) close(other); });
+    icon.setAttribute('aria-expanded', 'true');
+    const pop = document.getElementById(icon.getAttribute('aria-controls'));
+    if (pop) pop.hidden = false;
+  };
+
+  items.forEach((icon) => {
+    icon.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (icon.getAttribute('aria-expanded') === 'true') close(icon);
+      else open(icon);
+    });
+  });
+
+  document.addEventListener('mousedown', (e) => {
+    const inside = e.target.closest && e.target.closest('.info-icon, .info-popover');
+    if (!inside) items.forEach(close);
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') items.forEach(close);
+  });
+})();
 
 loadSettings();
 modelGrid.ensureListeners();
