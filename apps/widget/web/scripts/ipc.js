@@ -159,6 +159,10 @@ const ttipc = {
     return this.invoke('get_audio_input_info');
   },
 
+  getInputDevices() {
+    return this.invoke('get_input_devices');
+  },
+
   openSystemPane(pane) {
     return this.invoke('open_system_pane', { pane });
   },

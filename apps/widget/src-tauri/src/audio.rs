@@ -41,11 +41,15 @@ impl AudioRecorder {
         })
     }
 
-    pub fn start(&mut self, app_handle: AppHandle) -> Result<(), String> {
+    /// Start capturing using a specific named input device, or the system
+    /// default when `selected` is None/empty.
+    pub(crate) fn start_with_input(
+        &mut self,
+        app_handle: AppHandle,
+        selected: Option<&str>,
+    ) -> Result<(), String> {
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| "No input device available".to_string())?;
+        let device = resolve_input_device(&host, selected)?;
 
         let config = device
             .default_input_config()
@@ -213,13 +217,17 @@ impl LevelMonitor {
         self.generation
     }
 
-    pub fn start(&mut self, app_handle: AppHandle) -> Result<MonitorInfo, String> {
+    /// Capture levels from a specific named input device, or the system default
+    /// when `selected` is None/empty.
+    pub(crate) fn start_with_input(
+        &mut self,
+        app_handle: AppHandle,
+        selected: Option<&str>,
+    ) -> Result<MonitorInfo, String> {
         self.stop();
 
         let host = cpal::default_host();
-        let device = host
-            .default_input_device()
-            .ok_or_else(|| "No input device available".to_string())?;
+        let device = resolve_input_device(&host, selected)?;
 
         let config = device
             .default_input_config()
@@ -495,6 +503,72 @@ pub fn get_default_input_device_name() -> Option<String> {
     let host = cpal::default_host();
     host.default_input_device()
         .and_then(|d| d.name().ok())
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct InputDeviceInfo {
+    /// Raw cpal device name, used as the unique key for selection.
+    pub name: String,
+    /// Human-friendly label with a transport/sample-rate hint.
+    pub label: String,
+    pub is_default: bool,
+}
+
+/// Enumerate connected input devices, labeling each with a transport/sample-rate
+/// hint so a user can tell a Bluetooth hands-free mic (16 kHz) from the built-in
+/// (48 kHz). Falls back to an empty list on any error.
+pub fn list_input_devices() -> Vec<InputDeviceInfo> {
+    let host = cpal::default_host();
+    let default_name = get_default_input_device_name();
+
+    let Ok(devices) = host.input_devices() else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    for device in devices {
+        let Ok(name) = device.name() else {
+            continue;
+        };
+        let rate = device
+            .default_input_config()
+            .ok()
+            .map(|c| c.sample_rate().0);
+        let label = match rate {
+            Some(16000) => format!("{} (Bluetooth hands-free, 16 kHz)", name),
+            Some(r) => format!("{} ({} kHz)", name, r / 1000),
+            None => name.clone(),
+        };
+        out.push(InputDeviceInfo {
+            is_default: default_name.as_deref() == Some(&*name),
+            name,
+            label,
+        });
+    }
+    out
+}
+
+/// Resolve the device to open for capture. `selected` is a stored name (empty =
+/// macOS default). If the selected device no longer exists, falls back to default.
+fn resolve_input_device(
+    host: &cpal::Host,
+    selected: Option<&str>,
+) -> Result<cpal::Device, String> {
+    if let Some(selected) = selected {
+        if !selected.is_empty() {
+            if let Ok(devices) = host.input_devices() {
+                for device in devices {
+                    if let Ok(name) = device.name() {
+                        if name == selected {
+                            return Ok(device);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    host.default_input_device()
+        .ok_or_else(|| "No input device available".to_string())
 }
 
 pub fn count_input_devices() -> usize {

@@ -50,6 +50,10 @@ pub struct Settings {
     /// Above this gzip ratio the text is repetitive enough to be a decode loop.
     #[serde(default = "default_quality_compression_ratio")]
     pub quality_compression_ratio: f32,
+    /// Named input device to capture from. None/empty = use the macOS default
+    /// input (which jumps around as Bluetooth/iPhone/mic connect and disconnect).
+    #[serde(default)]
+    pub input_device: Option<String>,
 }
 
 fn default_paste_mode() -> String {
@@ -112,6 +116,7 @@ impl Default for Settings {
             quality_no_speech_prob: default_quality_no_speech_prob(),
             quality_avg_logprob: default_quality_avg_logprob(),
             quality_compression_ratio: default_quality_compression_ratio(),
+            input_device: None,
         }
     }
 }

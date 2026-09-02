@@ -277,6 +277,7 @@ function getFormValues() {
     save_recordings: document.getElementById('save-recordings').checked,
     hallucination_guard: document.getElementById('hallucination-guard').checked,
     theme: getThemePref(),
+    input_device: document.getElementById('input-device-select').value,
   };
 }
 
@@ -290,7 +291,8 @@ function checkDirty() {
     current.post_paste_keys !== loadedSnapshot.post_paste_keys ||
     current.save_recordings !== loadedSnapshot.save_recordings ||
     current.hallucination_guard !== loadedSnapshot.hallucination_guard ||
-    current.theme !== loadedSnapshot.theme;
+    current.theme !== loadedSnapshot.theme ||
+    current.input_device !== loadedSnapshot.input_device;
 
   saveBtn.disabled = !dirty;
   saveBtn.classList.toggle('disabled', !dirty);
@@ -301,6 +303,10 @@ function checkDirty() {
 });
 ['model-select', 'language-select', 'paste-mode-select', 'post-paste-keys-select'].forEach(id => {
   document.getElementById(id).addEventListener('change', checkDirty);
+});
+document.getElementById('input-device-select').addEventListener('change', () => {
+  checkDirty();
+  if (window.MicTest) window.MicTest.refreshDevice();
 });
 document.getElementById('save-recordings').addEventListener('change', checkDirty);
 document.getElementById('hallucination-guard').addEventListener('change', checkDirty);
@@ -324,6 +330,38 @@ document.getElementById('post-paste-keys-select').addEventListener('change', () 
     document.getElementById('post-paste-keys-custom').value = '';
   }
 });
+
+async function populateInputDevices(selected) {
+  const select = document.getElementById('input-device-select');
+  if (!select) return;
+  try {
+    const data = await ttipc.getInputDevices();
+    const devices = (data && data.devices) || [];
+    // Preserve the current value unless an explicit stored selection was passed
+    // in (e.g. on initial load), so background refreshes never discard a choice
+    // the user has made but not yet saved.
+    const current = select.value;
+    select.innerHTML = '';
+    const defaultOpt = document.createElement('option');
+    defaultOpt.value = '';
+    defaultOpt.textContent = 'System default (follows Display Audio settings)';
+    select.appendChild(defaultOpt);
+    devices.forEach((d) => {
+      const opt = document.createElement('option');
+      opt.value = d.name;
+      opt.textContent = d.label + (d.is_default ? '  — current default' : '');
+      select.appendChild(opt);
+    });
+    const hasValid = (v) => [...select.options].some(o => o.value === v);
+    let value = current;
+    if (value && !hasValid(value)) value = '';
+    if (!value && selected) value = selected && hasValid(selected) ? selected : '';
+    if (!value) value = (data.default && hasValid(data.default)) ? data.default : '';
+    select.value = value;
+  } catch (e) {
+    console.error('Failed to load input devices:', e);
+  }
+}
 
 async function loadSettings() {
   try {
@@ -361,6 +399,8 @@ async function loadSettings() {
     document.getElementById('save-recordings').checked = !!settings.save_recordings;
     document.getElementById('hallucination-guard').checked = settings.hallucination_guard !== false;
 
+    await populateInputDevices(settings.input_device || '');
+
     const themePref = setThemePref(settings.theme);
     if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(themePref);
 
@@ -374,6 +414,7 @@ async function loadSettings() {
       save_recordings: !!settings.save_recordings,
       hallucination_guard: settings.hallucination_guard !== false,
       theme: themePref,
+      input_device: document.getElementById('input-device-select').value || '',
     };
 
     checkDirty();
@@ -677,6 +718,8 @@ document.getElementById('restore-defaults-btn').addEventListener('click', () => 
   document.getElementById('post-paste-keys-custom').value = '';
   document.getElementById('save-recordings').checked = defaults.save_recordings;
   document.getElementById('hallucination-guard').checked = defaults.hallucination_guard;
+  const devSelect = document.getElementById('input-device-select');
+  if (devSelect) devSelect.value = '';
   setThemePref(defaults.theme);
   if (window.SpeakTypeTheme) window.SpeakTypeTheme.applyTheme(defaults.theme);
 
@@ -704,6 +747,7 @@ saveBtn.addEventListener('click', async () => {
     settings.save_recordings = document.getElementById('save-recordings').checked;
     settings.hallucination_guard = document.getElementById('hallucination-guard').checked;
     settings.theme = getThemePref();
+    settings.input_device = document.getElementById('input-device-select').value || null;
 
     const modelChanged = settings.model !== loadedSnapshot.model;
     const hotkeyChanged = settings.hotkey !== loadedSnapshot.hotkey;
@@ -722,6 +766,7 @@ saveBtn.addEventListener('click', async () => {
       save_recordings: settings.save_recordings,
       hallucination_guard: settings.hallucination_guard,
       theme: settings.theme,
+      input_device: settings.input_device || '',
     };
     capturedHotkey = '';
     checkDirty();
@@ -1828,6 +1873,9 @@ async function checkPermissions() {
     if (!result) return;
 
     if (window.MicTest) MicTest.setPermission(!!result.microphone);
+    // Refresh the available-input list (devices connect/disconnect, the user
+    // may have switched the default in Sound settings, etc.).
+    populateInputDevices();
 
     if (result.microphone) {
       micEl.textContent = 'Granted';
