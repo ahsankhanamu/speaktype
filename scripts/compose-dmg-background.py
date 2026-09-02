@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Compose SpeakType DMG background (@2x 1040×760 @144dpi → 520×380pt content area)."""
+"""Compose the SpeakType DMG background (1x 600x380).
+
+v5 design: a plain shade of gray with a single slate arrow baked in,
+pointing from the app icon over to the Applications folder.  The arrow is
+kept smaller than the icons and floats in the spacer gap between them, so
+the layout reads cleanly and never suggests a misaligned element.
+"""
 
 from __future__ import annotations
 
@@ -10,36 +16,20 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
-from dmg_layout import (
-    APP_SLOT_RIGHT,
-    APPS_VISUAL_LEFT,
-    ARROW_W,
-    ARROW_Y_OFFSET,
-    ICON_CENTER_Y,
-    BG_H,
-    BG_W,
-    ICON_SIZE,
-    ICON_Y,
-    SCALE,
-)
+from dmg_layout import ARROW_W, ARROW_X, ARROW_Y, BG_H, BG_W
 
 ROOT = Path(__file__).resolve().parent
 RES = ROOT / "dmg-resources"
 OUT = RES / "background.png"
 ARROW_SVG = RES / "arrow.svg"
 
+# Vertical variation between two close grays (reads as flat, without enough
+# banding to matter).  #cfd0d4 -> #bcbdc2 (a bit darker than before)
+GRAY_TOP = (207, 208, 212)
+GRAY_BOTTOM = (188, 189, 194)
 
-def _light_background() -> Image.Image:
-    img = Image.new("RGB", (BG_W, BG_H))
-    draw = ImageDraw.Draw(img)
-    for y in range(BG_H):
-        t = y / (BG_H - 1)
-        if t < 0.72:
-            c = _lerp((247, 247, 248), (240, 240, 242), t / 0.72)
-        else:
-            c = _lerp((240, 240, 242), (228, 228, 232), (t - 0.72) / 0.28)
-        draw.line([(0, y), (BG_W, y)], fill=c)
-    return img
+# Slate arrow colour: soft, clearly visible on the light gray, not harsh black.
+ARROW_COLOR = (84, 88, 98)  # #545862
 
 
 def _lerp(a: tuple[int, int, int], b: tuple[int, int, int], t: float) -> tuple[int, int, int]:
@@ -57,24 +47,29 @@ def _render_svg(svg: Path, width: int) -> Image.Image:
     return Image.open(BytesIO(result.stdout)).convert("RGBA")
 
 
-def _arrow_position(arrow: Image.Image) -> tuple[int, int]:
-    gap_left = APP_SLOT_RIGHT * SCALE
-    gap_right = APPS_VISUAL_LEFT * SCALE
-    x = (gap_left + gap_right - arrow.width) // 2
-    anchor_y = ICON_CENTER_Y * SCALE
-    y = anchor_y - arrow.height // 2 - ARROW_Y_OFFSET * SCALE
-    return x, y
+def _recolor(image: Image.Image, rgb: tuple[int, int, int]) -> Image.Image:
+    """Replace the arrow's black art with a given colour, keeping the alpha."""
+    alpha = image.getchannel("A")
+    tinted = Image.new("RGBA", image.size, (*rgb, 255))
+    tinted.putalpha(alpha)
+    return tinted
 
 
 def compose() -> None:
     if not ARROW_SVG.exists():
         raise SystemExit(f"Missing {ARROW_SVG}")
 
-    bg = _light_background().convert("RGBA")
-    arrow = _render_svg(ARROW_SVG, ARROW_W)
-    bg.alpha_composite(arrow, _arrow_position(arrow))
+    bg = Image.new("RGB", (BG_W, BG_H))
+    draw = ImageDraw.Draw(bg)
+    for y in range(BG_H):
+        draw.line([(0, y), (BG_W, y)], fill=_lerp(GRAY_TOP, GRAY_BOTTOM, y / (BG_H - 1)))
+    bg = bg.convert("RGBA")
+
+    arrow = _recolor(_render_svg(ARROW_SVG, ARROW_W), ARROW_COLOR)
+    bg.alpha_composite(arrow, (round(ARROW_X), round(ARROW_Y)))
+
     bg.convert("RGB").save(OUT, optimize=True)
-    print(f"→ Composed {OUT} ({BG_W}x{BG_H})")
+    print(f"→ Composed {OUT} ({BG_W}x{BG_H}) with arrow at ({ARROW_X},{ARROW_Y})")
 
 
 if __name__ == "__main__":

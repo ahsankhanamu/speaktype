@@ -147,6 +147,29 @@
       openSystemPane(pane) { return this.invoke('open_system_pane', { pane }); },
     };
 
+    (() => {
+      // Forward webview console errors/warnings into speaktype.log so a frozen
+      // widget leaves a trace next time it happens.
+      let reporting = false;
+      const report = (level, args) => {
+        if (reporting) return;
+        reporting = true;
+        try {
+          const msg = Array.from(args)
+            .map((x) => (typeof x === 'string' ? x : JSON.stringify(x)))
+            .join(' ');
+          if (window.ttipc) window.ttipc.invoke('log_frontend', { level, message: msg });
+        } catch (e) { /* ignore */ }
+        finally {
+          reporting = false;
+        }
+      };
+      const origErr = console.error;
+      const origWarn = console.warn;
+      console.error = function () { report('error', arguments); return origErr.apply(console, arguments); };
+      console.warn = function () { report('warn', arguments); return origWarn.apply(console, arguments); };
+    })();
+
     const BEACON_RING_EXTRA = 28;
     const SHELL_VERT_SLACK = 14;
     const READY_PAD_X = 24;

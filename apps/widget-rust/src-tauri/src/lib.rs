@@ -65,6 +65,7 @@ pub fn run() {
             commands::start_mic_test,
             commands::stop_mic_test,
             commands::get_audio_input_info,
+            commands::log_frontend,
             commands::request_accessibility,
             commands::request_microphone_access,
             commands::get_onboarding_status,
