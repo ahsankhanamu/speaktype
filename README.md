@@ -91,7 +91,7 @@ git clone https://github.com/ahsankhanamu/speaktype.git && cd speaktype
 make install          # Python venv + pip install -e ".[all]"
 # Build whisper.cpp sidecar first — see build doc
 make dev              # Tauri widget (macOS)
-make build            # Signed DMG via scripts/build.sh
+make build            # Signed DMG via tools/build/build.sh
 ```
 
 Node.js is **not** required for the widget. See [docs/build-widget-from-source.md](docs/build-widget-from-source.md).

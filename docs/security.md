@@ -1,6 +1,6 @@
 # Security notes
 
-## Python server (`packages/server/whisper_server.py`)
+## Python server (`packages/python/server/whisper_server.py`)
 
 - **Upload size limit:** 50MB max per file — reduces memory exhaustion risk
 - **Model name validation:** Only whitelisted names (`tiny`, `base`, `small`, `medium`, `large-v3`)

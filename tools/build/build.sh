@@ -13,8 +13,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-APP_DIR="$PROJECT_ROOT/apps/widget-rust"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+APP_DIR="$PROJECT_ROOT/apps/widget"
 
 # shellcheck source=load-secrets.sh
 source "$SCRIPT_DIR/load-secrets.sh"
@@ -107,7 +107,7 @@ DMG_PATH="$PROJECT_ROOT/dist/SpeakType_${VERSION}_aarch64.dmg"
 echo "→ Creating DMG at $DMG_PATH..."
 hdiutil detach "/Volumes/SpeakType" 2>/dev/null || true
 rm -f "$DMG_PATH"
-"$SCRIPT_DIR/create-dmg.sh" "$APP_BUNDLE" "$DMG_PATH" "SpeakType"
+"$SCRIPT_DIR/../dmg/create-dmg.sh" "$APP_BUNDLE" "$DMG_PATH" "SpeakType"
 
 echo "→ Signing DMG..."
 codesign_retry "$DMG_PATH"

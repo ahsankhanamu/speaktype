@@ -41,7 +41,7 @@ speaktype
 Or without the entry point:
 
 ```bash
-python packages/cli/speaktype.py
+python packages/python/cli/speaktype.py
 ```
 
 Press **F9**, speak, press **F9** again.

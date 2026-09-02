@@ -4,9 +4,9 @@
 # Runs the whisper_server.py FastAPI transcription service.
 # The speaktype.py client runs on your host (needs audio/keyboard/display).
 #
-# Build:  docker build -f packages/server/Dockerfile -t speaktype-whisper .
+# Build:  docker build -f packages/python/server/Dockerfile -t speaktype-whisper .
 # Run:    docker run -p 8002:8002 speaktype-whisper
-# Compose: docker compose -f packages/server/docker-compose.yml up --build
+# Compose: docker compose -f packages/python/server/docker-compose.yml up --build
 # =============================================================================
 
 FROM python:3.13-slim
@@ -29,7 +29,7 @@ WORKDIR /app
 
 # Copy project files needed for setuptools (packages/ layout in pyproject.toml)
 COPY pyproject.toml ./
-COPY packages/ ./packages/
+COPY packages/python/ ./packages/python/
 
 # Install base dependencies (server) from pyproject.toml
 RUN pip install --no-cache-dir .

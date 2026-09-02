@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "identifier": "com.speaktype.widget",
   "build": {
-    "frontendDist": "../../../packages/widget-ui"
+    "frontendDist": "../../../apps/widget/web"
   },
   "app": {
     "withGlobalTauri": true,

@@ -46,10 +46,10 @@ speaktype = "cli.speaktype:main"
 speaktype-server = "server.whisper_server:main"
 
 [tool.setuptools.package-dir]
-"" = "packages"
+"" = "packages/python"
 
 [tool.setuptools.packages.find]
-where = ["packages"]
+where = ["packages/python"]
 
 [build-system]
 requires = ["setuptools>=68.0"]

@@ -9,8 +9,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-WHISPER_SRC="$PROJECT_ROOT/apps/widget-rust/src-tauri/scripts/build/whisper.cpp"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+WHISPER_SRC="$PROJECT_ROOT/apps/widget/src-tauri/scripts/build/whisper.cpp"
 
 MIN_PYTHON="3.10.0"
 MIN_CMAKE="3.16.0"
@@ -113,7 +113,7 @@ ensure_system_xattr() {
 
 ensure_rust() {
     speaktype_load_rust_env
-    local toolchain_file="$PROJECT_ROOT/apps/widget-rust/rust-toolchain.toml"
+    local toolchain_file="$PROJECT_ROOT/apps/widget/rust-toolchain.toml"
     local channel="1.93.1"
     if [ -f "$toolchain_file" ]; then
         channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$toolchain_file" | head -1)"

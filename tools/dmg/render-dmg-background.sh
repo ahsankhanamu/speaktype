@@ -3,7 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VENV_PYTHON="$SCRIPT_DIR/../.venv/bin/python3"
+VENV_PYTHON="$SCRIPT_DIR/../../.venv/bin/python3"
 if [ -x "$VENV_PYTHON" ]; then
   PYTHON="$VENV_PYTHON"
 else
