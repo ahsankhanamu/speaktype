@@ -35,6 +35,8 @@
   import MicTest from './MicTest.svelte';
 import HistoryTab from './HistoryTab.svelte';
 import DebugTab from './DebugTab.svelte';
+import * as Select from '$lib/ui/select/index.js';
+import SettingsFooter from '$lib/SettingsFooter.svelte';
 
   let historyRef: HistoryTab;
   let debugRef: DebugTab;
@@ -82,11 +84,14 @@ import DebugTab from './DebugTab.svelte';
   // Server
   let serverDotClass = $state('status-dot checking');
   let serverDotTitle = $state('Checking...');
+  let serverCheckText = $state('');
   let serverControlsHidden = $state(true);
   let serverHint = $state('');
   let stopDisabled = $state(true);
   let restartLabel = $state('Restart Server');
   let serverBusy = $state(false);
+  let checkBusy = $state(false);
+  let checkLabel = $state('Check Connection');
 
   // Permissions
   let permMicClass = $state('permission-status');
@@ -288,22 +293,33 @@ import DebugTab from './DebugTab.svelte';
 
   // ---- Server ----
   async function runCheckServer(url?: string) {
+    if (checkBusy) return;
+    checkBusy = true;
+    checkLabel = 'Checking…';
     serverDotClass = 'status-dot checking';
     serverDotTitle = 'Checking...';
+    serverCheckText = 'Checking…';
     try {
       const result = await checkServer(url || apiUrl);
       if (result && result.status === 'connected') {
         serverDotClass = 'status-dot connected';
         serverDotTitle = 'Connected';
+        serverCheckText = result.message || 'Connected';
       } else {
         serverDotClass = 'status-dot disconnected';
         serverDotTitle = (result && result.message) || 'Disconnected';
+        serverCheckText = result?.message || 'Disconnected';
       }
+      checkLabel = 'Check Connection';
       return result;
     } catch (e) {
       serverDotClass = 'status-dot disconnected';
       serverDotTitle = 'Error: ' + e;
+      serverCheckText = 'Error: ' + e;
+      checkLabel = 'Check Connection';
       return null;
+    } finally {
+      checkBusy = false;
     }
   }
 
@@ -682,6 +698,41 @@ import DebugTab from './DebugTab.svelte';
           title={tab.title}
           onclick={() => switchTab(tab.id)}
         >
+          {#if tab.id === 'hotkey'}
+            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="2" y="6" width="20" height="12" rx="2"/>
+              <path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/>
+            </svg>
+          {:else if tab.id === 'server'}
+            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="7" rx="2"/>
+              <rect x="3" y="13" width="18" height="7" rx="2"/>
+              <path d="M7 7.5h.01M7 16.5h.01"/>
+            </svg>
+          {:else if tab.id === 'general'}
+            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="3"/>
+              <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-2.82 1.17V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 7.6 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 3.09 14H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 8.6a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.09V4a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1.51 1 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19 9.6V10a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+            </svg>
+          {:else if tab.id === 'models'}
+            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 2l9 5-9 5-9-5 9-5z"/>
+              <path d="M3 12l9 5 9-5M3 17l9 5 9-5"/>
+            </svg>
+          {:else if tab.id === 'history'}
+            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3-6.7L3 8"/>
+              <path d="M3 3v5h5M12 7v5l3 2"/>
+            </svg>
+          {:else if tab.id === 'debug'}
+            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M8 9l-2-2a1.5 1.5 0 0 1 2.5-1.5L10 7a2 2 0 0 1 4 0l1.5-1.5A1.5 1.5 0 0 1 18 7l-2 2"/>
+              <path d="M12 5v14"/>
+              <path d="M8 12h8"/>
+              <path d="M12 12l-4 6"/>
+              <path d="M12 12l4 6"/>
+            </svg>
+          {/if}
           <span class="tab-label">{tab.title}</span>
           {#if tab.id === 'models'}
             <span class="tab-badge" id="models-download-badge" aria-live="polite" aria-atomic="true" hidden={downloadCount === 0}>
@@ -748,7 +799,13 @@ import DebugTab from './DebugTab.svelte';
             <p class="hint">Whisper-compatible transcription endpoint</p>
           </div>
           <div class="server-connection-row">
-            <button class="btn" id="check-server-btn" onclick={() => runCheckServer(apiUrl)}>Check Connection</button>
+            <button class="btn" id="check-server-btn" onclick={() => runCheckServer(apiUrl)} disabled={checkBusy}>
+              {#if checkBusy}<span class="btn-spinner" aria-hidden="true"></span>{/if}
+              {checkLabel}
+            </button>
+            {#if serverCheckText}
+              <span class="server-check-result" id="server-check-result">{serverCheckText}</span>
+            {/if}
           </div>
           <div class="field server-manage">
             <span class="field-label">Local whisper sidecar</span>
@@ -763,11 +820,16 @@ import DebugTab from './DebugTab.svelte';
           <h2 class="card-title">Language</h2>
           <div class="field">
             <input type="text" id="language-search" placeholder="Search language..." class="input-filter" bind:value={languageFilter}>
-            <select id="language-select" bind:value={languageValue}>
-              {#each languageDisplay as l}
-                <option value={l.code}>{l.label}</option>
-              {/each}
-            </select>
+            <Select.Root bind:value={languageValue}>
+              <Select.Trigger aria-label="Select language">
+                {languageDisplay.find(l => l.code === languageValue)?.label ?? 'Auto-detect'}
+              </Select.Trigger>
+              <Select.Content>
+                {#each languageDisplay as l (l.code)}
+                  <Select.Item value={l.code} label={l.label} />
+                {/each}
+              </Select.Content>
+            </Select.Root>
             <p class="hint">Type to filter. Set to "Auto-detect" for multilingual. Language detection requires a multilingual model (not .en variants).</p>
           </div>
         </section>
@@ -816,7 +878,9 @@ import DebugTab from './DebugTab.svelte';
                   <span class="permission-label">Microphone</span>
                   <span class={permMicClass} id="perm-mic">{permMicText}</span>
                 </div>
-                <button class="btn secondary btn-small open-settings-btn" id="open-mic-btn" hidden={openMicHidden} onclick={() => openSystemPane('com.apple.preference.security?Privacy_Microphone')}>Open Settings</button>
+                {#if !openMicHidden}
+                  <button class="btn secondary btn-small open-settings-btn" id="open-mic-btn" onclick={() => openSystemPane('com.apple.preference.security?Privacy_Microphone')}>Open Settings</button>
+                {/if}
               </div>
               <div class="permission-cell">
                 <div class="permission-row-top">
@@ -828,10 +892,16 @@ import DebugTab from './DebugTab.svelte';
                   <span class="permission-label">Accessibility</span>
                   <span class={permAccClass} id="perm-acc">{permAccText}</span>
                 </div>
-                <div class="permission-actions">
-                  <button class="btn secondary btn-small" id="request-acc-btn" hidden={requestAccHidden} onclick={requestAccessibility}>Prompt</button>
-                  <button class="btn secondary btn-small open-settings-btn" id="open-acc-btn" hidden={openAccHidden} onclick={() => openSystemPane('com.apple.preference.security?Privacy_Accessibility')}>Open Settings</button>
-                </div>
+                {#if !requestAccHidden || !openAccHidden}
+                  <div class="permission-actions">
+                    {#if !requestAccHidden}
+                      <button class="btn secondary btn-small" id="request-acc-btn" onclick={requestAccessibility}>Prompt</button>
+                    {/if}
+                    {#if !openAccHidden}
+                      <button class="btn secondary btn-small open-settings-btn" id="open-acc-btn" onclick={() => openSystemPane('com.apple.preference.security?Privacy_Accessibility')}>Open Settings</button>
+                    {/if}
+                  </div>
+                {/if}
               </div>
             </div>
             <p class="hint">Microphone for recording. Accessibility to paste text into other apps.</p>
@@ -844,12 +914,20 @@ import DebugTab from './DebugTab.svelte';
             <InfoPopover label="Input Device" title="About input devices">
               Pick the microphone to dictate with. Use the built-in mic or a wired input for the most reliable capture — Bluetooth headsets (16 kHz hands-free) are often unstable and can produce only a burst of sound.
             </InfoPopover>
-            <select id="input-device-select" bind:value={inputDevice}>
-              <option value="">System default (follows Display Audio settings)</option>
-              {#each inputDevices as d}
-                <option value={d.name}>{d.label}{d.is_default ? '  — current default' : ''}</option>
-              {/each}
-            </select>
+            <Select.Root bind:value={inputDevice}>
+              <Select.Trigger aria-label="Select input device">
+                {inputDevice ? inputDevices.find(d => d.name === inputDevice)?.label ?? inputDevice : 'System default (follows Display Audio settings)'}
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Item value="" label="System default (follows Display Audio settings)" />
+                {#each inputDevices as d (d.name)}
+                  <Select.Item
+                    value={d.name}
+                    label={d.label + (d.is_default ? ' — current default' : '')}
+                  />
+                {/each}
+              </Select.Content>
+            </Select.Root>
           </div>
           <div class="field mic-test-field">
             {#if micPermission}
@@ -867,19 +945,29 @@ import DebugTab from './DebugTab.svelte';
           <h2 class="card-title">Paste Behavior</h2>
           <div class="field">
             <label for="paste-mode-select">Destination Window</label>
-            <select id="paste-mode-select" bind:value={pasteMode}>
-              <option value="original">Paste to original window</option>
-              <option value="active">Paste to active window</option>
-            </select>
+            <Select.Root bind:value={pasteMode}>
+              <Select.Trigger id="paste-mode-select" aria-label="Destination Window">
+                {pasteMode === 'active' ? 'Paste to active window' : 'Paste to original window'}
+              </Select.Trigger>
+              <Select.Content>
+                <Select.Item value="original" label="Paste to original window" />
+                <Select.Item value="active" label="Paste to active window" />
+              </Select.Content>
+            </Select.Root>
             <p class="hint">Original: pastes to app you were in when recording started. Active: pastes to whichever app is focused when recording stops.</p>
           </div>
           <div class="field">
             <label for="post-paste-keys-select">Keys After Paste</label>
-            <select id="post-paste-keys-select" bind:value={postPasteKeysSelect} onchange={onPostPastePresetChange}>
-              {#each POST_PASTE_PRESETS as p}
-                <option value={p.value}>{p.label}</option>
-              {/each}
-            </select>
+            <Select.Root bind:value={postPasteKeysSelect} onValueChange={(v) => { if (v) postPasteKeysCustom = ''; }}>
+              <Select.Trigger id="post-paste-keys-select" aria-label="Keys After Paste">
+                {POST_PASTE_PRESETS.find(p => p.value === postPasteKeysSelect)?.label ?? (postPasteKeysSelect || 'None')}
+              </Select.Trigger>
+              <Select.Content>
+                {#each POST_PASTE_PRESETS as p (p.value)}
+                  <Select.Item value={p.value} label={p.label} />
+                {/each}
+              </Select.Content>
+            </Select.Root>
             <input type="text" id="post-paste-keys-custom" placeholder="Or type custom: e.g. enter+tab" style="margin-top: 6px" bind:value={postPasteKeysCustom} oninput={onPostPasteCustomInput}>
             <p class="hint">Keys to press automatically after text is pasted. Use + to chain keys (e.g., enter+tab).</p>
           </div>
@@ -949,49 +1037,69 @@ import DebugTab from './DebugTab.svelte';
       </div>
     </div>
 
-    <footer class="pane-footer">
-      <div class="actions" id="actions-settings" hidden={activeTab === 'history' || activeTab === 'models' || activeTab === 'debug'}>
-        <div class="actions-left">
-          <button class="btn secondary" id="reset-position-btn" hidden={activeTab !== 'general'} onclick={onResetPosition}>{resetPositionText}</button>
-        </div>
-        <div class="actions-right">
+    <div class="pane-footer-strip">
+      <SettingsFooter hidden={activeTab !== 'hotkey'}>
+        {#snippet right()}
           <button class="btn secondary" id="restore-defaults-btn" onclick={restoreDefaults}>Restore Defaults</button>
           <button class="btn primary" class:disabled={!dirty} id="save-btn" disabled={!dirty || saveBusy} bind:this={saveBtn} onclick={onSave}>{saveLabel}</button>
-        </div>
-      </div>
+        {/snippet}
+      </SettingsFooter>
 
-      <div class="actions" id="actions-history" hidden={activeTab !== 'history'}>
-        <div class="actions-left">
-          <button type="button" class="folder-link-btn" id="open-recordings-folder-btn" title="Open recordings folder in Finder" onclick={openRecordingsFolder}>
-            <span class="folder-link-label">Recordings</span>
-          </button>
-        </div>
-        <div class="actions-right">
-          <button class="btn secondary" id="clear-history-btn" onclick={() => historyRef?.clearAll()}>Clear All History</button>
-        </div>
-      </div>
+      <SettingsFooter hidden={activeTab !== 'server'}>
+        {#snippet right()}
+          <button class="btn secondary" id="restore-defaults-btn" onclick={restoreDefaults}>Restore Defaults</button>
+          <button class="btn primary" class:disabled={!dirty} id="save-btn" disabled={!dirty || saveBusy} bind:this={saveBtn} onclick={onSave}>{saveLabel}</button>
+        {/snippet}
+      </SettingsFooter>
 
-      <div class="actions" id="actions-models" hidden={activeTab !== 'models'}>
-        <div class="actions-left">
+      <SettingsFooter hidden={activeTab !== 'general'}>
+        {#snippet left()}
+          <button class="btn secondary" id="reset-position-btn" onclick={onResetPosition}>{resetPositionText}</button>
+        {/snippet}
+        {#snippet right()}
+          <button class="btn secondary" id="restore-defaults-btn" onclick={restoreDefaults}>Restore Defaults</button>
+          <button class="btn primary" class:disabled={!dirty} id="save-btn" disabled={!dirty || saveBusy} bind:this={saveBtn} onclick={onSave}>{saveLabel}</button>
+        {/snippet}
+      </SettingsFooter>
+
+      <SettingsFooter hidden={activeTab !== 'models'}>
+        {#snippet left()}
           <button type="button" class="folder-link-btn" id="open-models-folder-btn" title="Open models folder in Finder" onclick={openModelsFolder}>
+            <svg class="folder-link-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+            </svg>
             <span class="folder-link-label">Models</span>
           </button>
-        </div>
-      </div>
+        {/snippet}
+      </SettingsFooter>
 
-      <div class="actions" id="actions-debug" hidden={activeTab !== 'debug'}>
-        <div class="actions-left">
+      <SettingsFooter hidden={activeTab !== 'history'}>
+        {#snippet left()}
+          <button type="button" class="folder-link-btn" id="open-recordings-folder-btn" title="Open recordings folder in Finder" onclick={openRecordingsFolder}>
+            <svg class="folder-link-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/>
+            </svg>
+            <span class="folder-link-label">Recordings</span>
+          </button>
+        {/snippet}
+        {#snippet right()}
+          <button class="btn secondary" id="clear-history-btn" onclick={() => historyRef?.clearAll()}>Clear All History</button>
+        {/snippet}
+      </SettingsFooter>
+
+      <SettingsFooter hidden={activeTab !== 'debug'}>
+        {#snippet left()}
           <button class="btn secondary" id="refresh-debug-btn" onclick={() => debugRef?.refresh()}>
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="margin-right:6px;vertical-align:-2px">
               <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
             </svg>
             Refresh
           </button>
-        </div>
-        <div class="actions-right">
+        {/snippet}
+        {#snippet right()}
           <button class="btn secondary" id="clear-debug-btn" onclick={() => debugRef?.clearAll()}>Clear Log</button>
-        </div>
-      </div>
-    </footer>
+        {/snippet}
+      </SettingsFooter>
+    </div>
   </section>
 </div>

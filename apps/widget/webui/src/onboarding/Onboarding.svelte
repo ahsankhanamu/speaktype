@@ -35,14 +35,8 @@
   let descModel = '';
   let submitting = false;
   let submitDisabled = true;
-  let hostHidden = true;
 
   let modelGrid: ModelGrid;
-  let stepsScroll: HTMLDivElement;
-  let modelStepEl: HTMLDivElement;
-  let hostEl: HTMLDivElement;
-  let headerEl: HTMLElement;
-  let footerEl: HTMLElement;
 
   function statusKey(s: OnboardingStatus): string {
     return [
@@ -57,23 +51,7 @@
     ].join('|');
   }
 
-  function updateModelStepLayout() {
-    const showingList =
-      !status.model && !hostHidden && modelStepEl.classList.contains('active');
-    modelStepEl.classList.toggle('expand', showingList);
-    stepsScroll.classList.toggle('model-active', showingList);
-    syncScrollMetrics();
-  }
-
-  function syncScrollMetrics() {
-    if (!headerEl || !footerEl) return;
-    const bodyPad = 40;
-    const minH = window.innerHeight - headerEl.offsetHeight - footerEl.offsetHeight - bodyPad;
-    document.documentElement.style.setProperty(
-      '--onboarding-model-min-h',
-      `${Math.max(minH, 200)}px`,
-    );
-  }
+  let modelStepState: 'locked' | 'active' | 'done' = 'locked';
 
   function render(refreshModels = false) {
     const micDone = status.microphone;
@@ -84,7 +62,7 @@
     const accEl = document.getElementById('step-acc');
     if (micEl) setStep(micEl, micDone ? 'done' : 'active');
     if (accEl) setStep(accEl, !micDone ? 'locked' : accDone ? 'done' : 'active');
-    if (modelStepEl) setStep(modelStepEl, !accDone ? 'locked' : modelDone ? 'done' : 'active');
+    modelStepState = modelDone ? 'done' : 'active';
 
     if (micDone) micSettingsOpened = false;
     descMic = micDone
@@ -109,26 +87,20 @@
 
     if (modelDone) {
       descModel = 'Model "' + status.active_model + '" is ready.' + SETTINGS_MODELS_HINT;
-      hostHidden = true;
       modelGridShown = false;
-    } else if (accDone) {
+    } else {
       descModel =
         'Pick a model to download. ' +
         RECOMMENDED +
         ' is recommended for most Macs.' +
         SETTINGS_MODELS_HINT;
-      hostHidden = false;
       modelGrid.ensureListeners();
       if (!modelGridShown || refreshModels) {
         modelGridShown = true;
         modelGrid.refresh(true);
       }
-    } else {
-      hostHidden = true;
-      modelGridShown = false;
     }
 
-    updateModelStepLayout();
     submitDisabled = !(status.microphone && status.accessibility && status.model);
   }
 
@@ -228,12 +200,9 @@
 
   onMount(() => {
     poll(true);
-    syncScrollMetrics();
-    window.addEventListener('resize', syncScrollMetrics);
-    interval = setInterval(() => poll(false), 1500);
+    interval = setInterval(() => poll(false), 2000);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      window.removeEventListener('resize', syncScrollMetrics);
       document.removeEventListener('visibilitychange', onVisibility);
       if (interval) clearInterval(interval);
     };
@@ -244,135 +213,152 @@
   }
 </script>
 
-<div class="header" bind:this={headerEl}>
-  <div class="logo-wrap">
-    <svg class="logo" viewBox="0 0 24 24" fill="currentColor">
-      <path
-        d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
-      />
-      <path
-        d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
-      />
-    </svg>
+<div class="onboarding">
+  <div class="header">
+    <div class="header-title">
+      <div class="logo-wrap">
+        <svg class="logo" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
+          />
+          <path
+            d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
+          />
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>Welcome to SpeakType</h1>
+        <p>Three quick steps to get you set up.</p>
+      </div>
+    </div>
   </div>
-  <h1>Welcome to SpeakType</h1>
-  <p>Three quick steps to get you set up.</p>
-</div>
 
-<div class="widget-hint">
-  <div class="widget-hint-visual">
-    <svg viewBox="0 0 24 24" fill="currentColor">
-      <path
-        d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
-      />
-      <path
-        d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
-      />
-    </svg>
-  </div>
-  <p class="widget-hint-text">
-    The <strong>pulsing orange mic bubble</strong> on your screen is SpeakType. Complete the
-    steps below, then click it to start dictating.
-  </p>
-</div>
-
-<div class="steps-scroll" id="steps-scroll" bind:this={stepsScroll}>
-  <div class="steps">
-    <div class="step" id="step-mic">
-      <div class="step-body">
-        <div class="step-title">
-          <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
-          <span>Microphone access</span>
+  <div class="main">
+    <div class="col-left">
+      <div class="widget-hint">
+        <div class="widget-hint-visual">
+          <svg viewBox="0 0 24 24" fill="currentColor">
+            <path
+              d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
+            />
+            <path
+              d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
+            />
+          </svg>
         </div>
-        <div class="step-desc" id="desc-mic">{descMic}</div>
-        <p class="step-relaunch-hint" id="hint-mic-relaunch" hidden={micRelaunchHidden}>
-          Microphone access isn't active yet. If you just enabled it in System Settings, quit and
-          reopen SpeakType once.
+        <p class="widget-hint-text">
+          The <strong>pulsing orange mic bubble</strong> on your screen is SpeakType. Complete the
+          steps below, then click it to start dictating.
         </p>
-        <div class="step-actions">
-          <button class="btn settings" id="btn-mic-settings" onclick={openMicSettings}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-            Open System Settings
-          </button>
-          <button class="btn quit" id="btn-quit-mic" hidden={btnQuitMicHidden} onclick={quitForRelaunch}>
-            Quit SpeakType
-          </button>
+      </div>
+
+      <div class="steps-scroll" id="steps-scroll">
+        <div class="steps">
+          <div class="step" id="step-mic">
+            <div class="step-body">
+              <div class="step-title">
+                <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
+                <span>Microphone access</span>
+              </div>
+              <div class="step-desc" id="desc-mic">{descMic}</div>
+              <p class="step-relaunch-hint" id="hint-mic-relaunch" hidden={micRelaunchHidden}>
+                Microphone access isn't active yet. If you just enabled it in System Settings, quit and
+                reopen SpeakType once.
+              </p>
+              <div class="step-actions">
+                <button class="btn settings" id="btn-mic-settings" onclick={openMicSettings}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                  Open System Settings
+                </button>
+                <button class="btn quit" id="btn-quit-mic" hidden={btnQuitMicHidden} onclick={quitForRelaunch}>
+                  Quit SpeakType
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="step locked" id="step-acc">
+            <div class="step-body">
+              <div class="step-title">
+                <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
+                <span>Accessibility access</span>
+              </div>
+              <div class="step-desc" id="desc-acc">{descAcc}</div>
+              <p class="step-relaunch-hint" id="hint-acc-relaunch" hidden={accRelaunchHidden}>
+                System Settings can show SpeakType ON for an old or debug copy while this app is still
+                blocked. Remove SpeakType from the Accessibility list, quit every SpeakType process, open
+                only /Applications/SpeakType.app, turn it ON, then use Quit &amp; Reopen once.
+              </p>
+              <p class="step-relaunch-hint" id="hint-acc-dev" hidden={accDevHidden}>{accDevText}</p>
+              <p class="step-exe-path" id="hint-acc-path" hidden={accPathHidden}>{accPathText}</p>
+              <div class="step-actions">
+                <button class="btn settings" id="btn-acc-settings" onclick={openAccSettings}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+                  Open System Settings
+                </button>
+                <button class="btn quit" id="btn-quit-acc" hidden={btnQuitAccHidden} onclick={quitForRelaunch}>
+                  Quit &amp; Reopen SpeakType
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
 
-    <div class="step locked" id="step-acc">
-      <div class="step-body">
-        <div class="step-title">
-          <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
-          <span>Accessibility access</span>
-        </div>
-        <div class="step-desc" id="desc-acc">{descAcc}</div>
-        <p class="step-relaunch-hint" id="hint-acc-relaunch" hidden={accRelaunchHidden}>
-          System Settings can show SpeakType ON for an old or debug copy while this app is still
-          blocked. Remove SpeakType from the Accessibility list, quit every SpeakType process, open
-          only /Applications/SpeakType.app, turn it ON, then use Quit &amp; Reopen once.
-        </p>
-        <p class="step-relaunch-hint" id="hint-acc-dev" hidden={accDevHidden}>{accDevText}</p>
-        <p class="step-exe-path" id="hint-acc-path" hidden={accPathHidden}>{accPathText}</p>
-        <div class="step-actions">
-          <button class="btn settings" id="btn-acc-settings" onclick={openAccSettings}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
-            Open System Settings
-          </button>
-          <button class="btn quit" id="btn-quit-acc" hidden={btnQuitAccHidden} onclick={quitForRelaunch}>
-            Quit &amp; Reopen SpeakType
-          </button>
-        </div>
-      </div>
-    </div>
-
-    <div class="step locked" id="step-model" bind:this={modelStepEl}>
-      <div class="step-body">
+    <div class="col-right">
+      <div class="model-panel" class:locked={modelStepState === 'locked'} class:done={modelStepState === 'done'}>
         <div class="step-title">
           <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
           <span>Download a speech model</span>
         </div>
         <div class="step-desc" id="desc-model">{descModel}</div>
-        <div class="model-grid-host scrollable" id="model-grid-host" hidden={hostHidden} bind:this={hostEl}>
-          <ModelGrid
-            bind:this={modelGrid}
-            mode="onboarding"
-            recommendedModel={RECOMMENDED}
-            getActiveModel={(): string =>
-              status.model ? status.active_model || '' : ''
-            }
-            hooks={{
-              onReady: () => poll(true),
-              onError: (message) => {
-                descModel =
-                  (message || 'Model operation failed') + ' — try again.';
-                modelGrid.refresh(true);
-                render();
-              },
-              onPaused: () => {
-                modelGrid.refresh(true);
-                poll(true);
-              },
-              onRefresh: () => updateModelStepLayout(),
-            }}
-          />
-        </div>
+        {#if modelStepState === 'done'}
+          <div class="panel-done-note">
+            <svg class="step-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 12.75l6 6 9-13.5" /></svg>
+            <span>All set — you’re ready to start.</span>
+          </div>
+        {:else}
+          <div class="model-grid-host scrollable" id="model-grid-host">
+            <ModelGrid
+              bind:this={modelGrid}
+              mode="onboarding"
+              recommendedModel={RECOMMENDED}
+              getActiveModel={(): string =>
+                status.model ? status.active_model || '' : ''
+              }
+              hooks={{
+                onReady: () => poll(true),
+                onError: (message) => {
+                  descModel =
+                    (message || 'Model operation failed') + ' — try again.';
+                  modelGrid.refresh(true);
+                  render();
+                },
+                onPaused: () => {
+                  modelGrid.refresh(true);
+                  poll(true);
+                },
+              }}
+            />
+          </div>
+        {/if}
       </div>
     </div>
   </div>
+
+  <div class="footer">
+    <button
+      class="start-btn"
+      id="start-btn"
+      disabled={submitDisabled}
+      onclick={start}
+    >
+      {#if submitting}<span class="spinner"></span> Starting…{:else}Start Using SpeakType{/if}
+    </button>
+  </div>
 </div>
 
-<div class="footer" bind:this={footerEl}>
-  <button
-    class="start-btn"
-    id="start-btn"
-    disabled={submitDisabled}
-    onclick={start}
-  >
-    {#if submitting}<span class="spinner"></span> Starting…{:else}Start Using SpeakType{/if}
-  </button>
-</div>
 
 <style>
   :global(*) {
@@ -388,43 +374,79 @@
     color: var(--text);
     overflow: hidden;
   }
-  :global(body) {
+  :global(#app) {
+    height: 100%;
+  }
+
+  .onboarding {
     display: flex;
     flex-direction: column;
+    height: 100%;
     padding: 22px 24px 18px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+  .main {
+    display: flex;
+    flex-direction: row;
+    gap: 16px;
+    flex: 1;
+    min-height: 0;
+  }
+  .col-left {
+    display: flex;
+    flex-direction: column;
+    flex: 1.1;
+    min-width: 0;
+    min-height: 0;
+  }
+  .col-right {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
   }
 
   .header {
-    text-align: center;
-    margin-bottom: 18px;
+    text-align: left;
+    margin-bottom: 16px;
     flex-shrink: 0;
+    display: flex;
+    justify-content: center;
+  }
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
   }
   .header .logo-wrap {
-    width: 48px;
-    height: 48px;
-    margin: 0 auto 12px;
+    width: 44px;
+    height: 44px;
+    flex-shrink: 0;
     background: var(--logo-grad);
     border: 1px solid var(--widget-panel-border);
-    border-radius: 12px;
+    border-radius: 11px;
     box-shadow: inset 0 1px 0 var(--border-subtle);
     display: flex;
     align-items: center;
     justify-content: center;
   }
   .header .logo {
-    width: 24px;
-    height: 24px;
+    width: 22px;
+    height: 22px;
     color: var(--text-strong);
   }
   .header h1 {
-    font-size: 19px;
+    font-size: 18px;
     font-weight: 650;
     letter-spacing: -0.01em;
+    color: var(--text);
   }
   .header p {
-    font-size: 13px;
+    font-size: 12.5px;
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 2px;
   }
 
   .widget-hint {
@@ -519,10 +541,6 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    min-height: min-content;
-  }
-  :global(.steps-scroll.model-active .steps) {
-    min-height: 100%;
   }
 
   :global(.step) {
@@ -538,22 +556,6 @@
     background: linear-gradient(160deg, var(--surface-3) 0%, var(--surface) 100%);
     box-shadow: inset 0 1px 0 var(--border-subtle);
   }
-  :global(#step-model.expand) {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    flex: 1;
-    min-height: var(--onboarding-model-min-h, 280px);
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    background: var(--bg);
-    box-shadow: 0 -8px 16px var(--shadow);
-  }
-  :global(#step-model.expand.active) {
-    border-color: var(--accent-border);
-    background: linear-gradient(160deg, var(--surface-3) 0%, var(--surface) 100%);
-  }
   :global(.step.locked) {
     opacity: 0.42;
     pointer-events: none;
@@ -565,13 +567,6 @@
 
   .step-body {
     min-width: 0;
-  }
-  :global(#step-model.expand .step-body) {
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
   }
   :global(.step-title) {
     display: flex;
@@ -676,8 +671,75 @@
     color: var(--text);
   }
 
-  .model-grid-host {
-    margin-top: 10px;
+  .model-panel {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    background: var(--surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 12px;
+    padding: 16px;
+    transition: opacity 0.2s, border-color 0.2s, background 0.2s;
+  }
+  .model-panel.locked {
+    opacity: 0.6;
+  }
+  .model-panel.done {
+    border-color: var(--success-border);
+  }
+  .model-panel .step-title {
+    font-size: 15px;
+  }
+  .model-panel.done .step-title .step-check {
+    display: block;
+    color: var(--success);
+  }
+  .model-panel .step-desc {
+    margin-top: 4px;
+    margin-bottom: 12px;
+  }
+  .model-panel .model-grid-host {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+    margin: 0 -4px;
+    padding-left: 4px;
+  }
+  .model-panel .model-grid-host::-webkit-scrollbar {
+    width: 6px;
+  }
+  .model-panel .model-grid-host::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .model-panel .model-grid-host::-webkit-scrollbar-thumb {
+    background: var(--scrollbar);
+    border-radius: 3px;
+  }
+  .model-panel .model-grid-host::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-hover);
+  }
+  .panel-done-note {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 12px 14px;
+    background: var(--success-soft);
+    border: 1px solid var(--success-border);
+    border-radius: 8px;
+    color: var(--success-alt);
+    font-size: 12.5px;
+  }
+  .panel-done-note svg {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    color: var(--success);
+    display: block;
   }
 
   .footer {

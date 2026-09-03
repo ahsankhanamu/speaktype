@@ -250,6 +250,10 @@
     rafId = 0;
     level = 0;
     target = 0;
+    hold = 0;
+    holdUntil = 0;
+    bestRms = 0;
+    lastClipAt = 0;
     draw();
     if (statusState === 'listening' || statusState === 'idle') renderVerdict('idle');
     const note = STOP_NOTES[reason];

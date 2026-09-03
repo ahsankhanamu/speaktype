@@ -229,10 +229,19 @@ body {
 }
 .pane-body::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-hover); }
 
-.pane-footer {
-  padding: var(--space-3) var(--space-6);
+.pane-footer-strip {
+  grid-row: 3;
+  min-height: 0;
   border-top: 1px solid var(--border-subtle);
   background: var(--bg-elevated);
+}
+
+.pane-footer {
+  padding: var(--space-3) var(--space-6);
+}
+
+.pane-footer[hidden] {
+  display: none;
 }
 
 /* Tab content */
@@ -279,11 +288,17 @@ body {
 
 .field label {
   display: block;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
   color: var(--text-label);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  margin-bottom: 6px;
+}
+
+.field-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-label);
   margin-bottom: 6px;
 }
 
@@ -580,7 +595,29 @@ input[type="range"]:focus-visible {
 }
 
 .server-connection-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-top: 4px;
+}
+
+.server-check-result {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.btn-spinner {
+  width: 13px;
+  height: 13px;
+  display: inline-block;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: -2px;
+  margin-right: 6px;
 }
 
 .server-manage {
@@ -627,11 +664,27 @@ input[type="range"]:focus-visible {
   color: var(--text);
   font-size: 14px;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: background 0.15s, border-color 0.15s, transform 0.06s, filter 0.15s;
 }
 
 .btn:hover {
   background: var(--surface-4);
+  border-color: var(--border-strong);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .btn.primary {
@@ -679,8 +732,8 @@ input[type="range"]:focus-visible {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 10px;
-  padding: 12px;
+  gap: 6px;
+  padding: 10px 12px;
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -697,9 +750,9 @@ input[type="range"]:focus-visible {
   align-items: center;
   justify-content: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 7px;
   background: var(--surface-3);
   border: 1px solid var(--border-subtle);
   color: var(--text-muted);
@@ -1263,6 +1316,21 @@ input[type="range"]:focus-visible {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.debug-date-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.debug-date-label {
+  padding: 4px 4px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-faint);
 }
 
 .debug-empty {

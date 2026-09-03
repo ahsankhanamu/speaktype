@@ -88,7 +88,11 @@
     let duration = Number(wrap.dataset.durationHint) || 0;
     let seeking = false;
 
-    const setProgressUI = (frac: number) => seek?.style.setProperty('--progress', `${Math.round(frac * 100)}%`);
+    const setProgressUI = (frac: number) => {
+      const pct = Math.round(frac * 100);
+      seek?.style.setProperty('--progress', `${pct}%`);
+      if (seek) seek.value = String(Math.round(frac * 1000));
+    };
     const setPlayingUI = (playing: boolean) => {
       if (playBtn) {
         playBtn.textContent = playing ? '⏸' : '▶';

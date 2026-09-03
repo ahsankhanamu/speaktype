@@ -619,9 +619,9 @@ pub fn open_onboarding_window(app: &AppHandle) -> Result<(), String> {
 
     let window = WebviewWindowBuilder::new(app, "onboarding", WebviewUrl::App("onboarding.html".into()))
         .title("Welcome to SpeakType")
-        .inner_size(440.0, 600.0)
-        .resizable(false)
-        .always_on_top(true)
+        .inner_size(SETTINGS_WINDOW_W, SETTINGS_WINDOW_H)
+        .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
+        .resizable(true)
         .build()
         .map_err(|e| e.to_string())?;
 
