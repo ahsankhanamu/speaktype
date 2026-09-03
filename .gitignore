@@ -28,6 +28,8 @@ apps/widget/src-tauri/binaries/
 apps/widget/src-tauri/resources/models/
 apps/widget/src-tauri/resources/python/
 apps/widget/node_modules/
+apps/widget/webui/node_modules/
+apps/widget/webui/dist/
 
 # ─── Whisper models (downloaded automatically) ────────────────────────────────
 *.bin
