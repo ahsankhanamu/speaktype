@@ -5,6 +5,8 @@
   "scripts": {
     "tauri": "cargo tauri",
     "dev": "cargo tauri dev",
-    "build": "cargo tauri build"
+    "build": "cargo tauri build",
+    "frontend:webui": "node scripts/toggle-frontend.mjs webui",
+    "frontend:legacy": "node scripts/toggle-frontend.mjs legacy"
   }
 }

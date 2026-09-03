@@ -1,0 +1,120 @@
+<script lang="ts">
+  import { openUrl } from '@tauri-apps/plugin-opener';
+
+  function openExternal(url: string) {
+    openUrl(url);
+  }
+</script>
+
+<div class="about">
+  <div class="app-icon">
+    <svg viewBox="0 0 24 24">
+      <path
+        d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"
+      />
+      <path
+        d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"
+      />
+    </svg>
+  </div>
+  <div class="app-name">SpeakType</div>
+  <div class="app-version">v0.1.0</div>
+  <div class="app-desc">
+    Voice typing that works everywhere.<br />
+    Press a key, speak, and your words appear.
+  </div>
+  <div class="divider"></div>
+  <div class="creator">
+    Created by
+    <button type="button" class="link" onclick={() => openExternal('https://ahsankhan.dev')}>
+      Ahsan Khan
+    </button>
+  </div>
+  <div class="copyright">&copy; 2026 Ahsan Khan. All rights reserved.</div>
+</div>
+
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  :global(html),
+  :global(body) {
+    margin: 0;
+    padding: 0;
+  }
+  :global(body) {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  .about {
+    text-align: center;
+    padding: 32px;
+  }
+  .app-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    background: linear-gradient(135deg, var(--accent), #8b5cf6);
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .app-icon svg {
+    width: 36px;
+    height: 36px;
+    fill: white;
+  }
+  .app-name {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-strong);
+    margin-bottom: 4px;
+  }
+  .app-version {
+    font-size: 13px;
+    color: var(--text-dim);
+    margin-bottom: 20px;
+  }
+  .app-desc {
+    font-size: 13px;
+    color: var(--text-muted);
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 16px 0;
+  }
+  .creator {
+    font-size: 13px;
+    color: var(--text-dim);
+  }
+  .creator .link {
+    color: var(--accent);
+    text-decoration: none;
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+  }
+  .creator .link:hover {
+    text-decoration: underline;
+  }
+  .copyright {
+    font-size: 11px;
+    color: var(--text-faint);
+    margin-top: 12px;
+  }
+</style>

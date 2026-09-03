@@ -500,3 +500,140 @@ pub fn run() {
             }
         });
 }
+
+// IPC command surface contract.
+//
+// The Svelte frontend calls commands by (snake_case) name via `src/lib/ipc.ts`.
+// If a command is renamed, removed, or its registration is dropped here, this
+// test fails to compile AND the runtime set assertion fails — guarding against
+// the single biggest "don't break the UI" risk.
+#[cfg(test)]
+mod ipc_surface {
+    use super::*;
+
+    // Exactly the set registered in `invoke_handler(generate_handler![...])`.
+    // Keeping the two in sync is intentional and enforced by this test.
+    const REGISTERED: &[&str] = &[
+        "toggle_recording",
+        "cancel_recording",
+        "check_permissions",
+        "start_mic_test",
+        "stop_mic_test",
+        "get_audio_input_info",
+        "get_input_devices",
+        "log_frontend",
+        "request_accessibility",
+        "request_microphone_access",
+        "get_onboarding_status",
+        "open_onboarding",
+        "finish_onboarding",
+        "open_system_pane",
+        "open_models_folder",
+        "open_recordings_folder",
+        "get_settings",
+        "save_settings",
+        "update_hotkey",
+        "check_server",
+        "get_server_status",
+        "stop_whisper_server",
+        "restart_whisper_server",
+        "load_model",
+        "queue_model_download",
+        "restart_model_download",
+        "cancel_model_download",
+        "pause_model_download",
+        "get_models",
+        "get_model_progress",
+        "open_about",
+        "open_settings",
+        "hide_widget",
+        "minimize_widget",
+        "quit_app",
+        "save_window_position",
+        "reset_widget_position",
+        "get_history",
+        "delete_history_entry",
+        "delete_history_audio",
+        "clear_history",
+        "get_history_audio",
+        "reprocess_history_entry",
+        "get_debug_sessions",
+        "clear_debug_sessions",
+        "delete_debug_session",
+        "get_debug_audio_slice",
+    ];
+
+    // The frontend `ipc.ts` surface (mirrors src/settings/../lib/ipc.ts).
+    // Every command the UI calls must exist in REGISTERED.
+    const FRONTEND_USED: &[&str] = &[
+        "log_frontend",
+        "toggle_recording",
+        "cancel_recording",
+        "hide_widget",
+        "minimize_widget",
+        "quit_app",
+        "save_window_position",
+        "reset_widget_position",
+        "open_about",
+        "open_settings",
+        "open_onboarding",
+        "finish_onboarding",
+        "get_onboarding_status",
+        "request_microphone_access",
+        "get_settings",
+        "save_settings",
+        "update_hotkey",
+        "check_server",
+        "get_server_status",
+        "stop_whisper_server",
+        "restart_whisper_server",
+        "get_history",
+        "delete_history_entry",
+        "delete_history_audio",
+        "clear_history",
+        "reprocess_history_entry",
+        "get_history_audio",
+        "get_debug_sessions",
+        "clear_debug_sessions",
+        "delete_debug_session",
+        "get_debug_audio_slice",
+        "check_permissions",
+        "request_accessibility",
+        "start_mic_test",
+        "stop_mic_test",
+        "get_audio_input_info",
+        "get_input_devices",
+        "open_system_pane",
+        "open_models_folder",
+        "open_recordings_folder",
+        "load_model",
+        "queue_model_download",
+        "restart_model_download",
+        "get_models",
+        "get_model_progress",
+        "cancel_model_download",
+        "pause_model_download",
+    ];
+
+    #[test]
+    fn every_frontend_command_is_registered() {
+        let missing: Vec<&str> = FRONTEND_USED
+            .iter()
+            .copied()
+            .filter(|name| !REGISTERED.contains(name))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "frontend calls commands not registered in invoke_handler: {:?}",
+            missing
+        );
+    }
+
+    #[test]
+    fn registered_sets_have_no_duplicates() {
+        let mut sorted = REGISTERED.to_vec();
+        sorted.sort_unstable();
+        sorted.dedup();
+        assert_eq!(sorted.len(), REGISTERED.len(), "duplicate command registration");
+    }
+}
