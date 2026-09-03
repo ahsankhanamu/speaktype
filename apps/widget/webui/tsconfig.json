@@ -15,7 +15,10 @@
     "skipLibCheck": true,
     "noEmit": true,
     "strict": true,
-    "types": ["svelte", "vite/client", "node"]
+    "types": ["svelte", "vite/client", "node"],
+    "paths": {
+      "$lib/*": ["./src/lib/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.svelte", "svelte.config.js", "vite.config.ts"]
 }

@@ -840,13 +840,13 @@
     justify-content: center;
   }
 
-  .model-icon {
+  :global(.model-icon) {
     width: 24px;
     height: 24px;
   }
 
-  .model-icon.icon-active { stroke: var(--success); }
-  .model-icon.icon-downloading {
+  :global(.model-icon.icon-active) { stroke: var(--success); }
+  :global(.model-icon.icon-downloading) {
     stroke: var(--warning-download);
     animation: model-grid-pulse 1.5s ease-in-out infinite;
   }
@@ -856,10 +856,10 @@
     50% { opacity: 0.5; }
   }
 
-  .model-icon.icon-waiting { stroke: var(--waiting-icon); }
-  .model-icon.icon-downloaded { stroke: var(--text-dim); }
-  .model-icon.icon-cloud { stroke: var(--text-dim); }
-  .model-icon.icon-partial { stroke: var(--warning-alt); }
+  :global(.model-icon.icon-waiting) { stroke: var(--waiting-icon); }
+  :global(.model-icon.icon-downloaded) { stroke: var(--text-dim); }
+  :global(.model-icon.icon-cloud) { stroke: var(--text-dim); }
+  :global(.model-icon.icon-partial) { stroke: var(--warning-alt); }
 
   .model-card-body {
     flex: 1;

@@ -90,6 +90,28 @@
     return `${a.toFixed(1)}s–${b.toFixed(1)}s`;
   }
 
+  function startedDate(startedAt?: string): string {
+    return startedAt ? startedAt.slice(0, 10) : '';
+  }
+
+  function startedTime(startedAt?: string): string {
+    return startedAt && startedAt.length > 11 ? startedAt.slice(11) : (startedAt || '');
+  }
+
+  const groups = $derived.by(() => {
+    const order: string[] = [];
+    const map: Record<string, Session[]> = {};
+    for (const s of sessions) {
+      const key = startedDate(s.startedAt) || 'Unknown';
+      if (!map[key]) {
+        map[key] = [];
+        order.push(key);
+      }
+      map[key].push(s);
+    }
+    return order.map((date) => ({ date, sessions: map[date] }));
+  });
+
   function chunkBadgeText(chunk: Chunk): string {
     return STATUS_LABEL[chunk.status || ''] || chunk.status || '';
   }
@@ -450,47 +472,50 @@
     <div class="debug-empty" id="debug-empty">No transcription sessions logged yet</div>
   {:else}
     <div class="debug-list" id="debug-list" bind:this={listEl}>
-      {#each sessions as session}
-        <div class="debug-session" class:open={!!openSessions[session.id]}>
-          <div class="debug-session-head">
-            <button
-              type="button"
-              class="debug-session-toggle"
-              aria-expanded={!!openSessions[session.id]}
-              onclick={() => toggleSession(session.id)}
-            >
-              <span class="debug-session-title">
-                <span class="debug-session-id">#{session.id}</span>
-                <span class="debug-session-mode">{MODE_LABEL[session.mode || ''] || session.mode}</span>
-              </span>
-              <span class="debug-session-meta">
-                <span class="debug-session-time">{session.startedAt || ''}</span>
-                <span class="debug-tag">{session.model || '?'}</span>
-                <span class="debug-tag">{session.durationSecs != null ? session.durationSecs.toFixed(1) : '?'}s audio</span>
-                <span class="debug-tag">{session.chunks ? session.chunks.length : 0} chunks</span>
-                <span class="debug-tag">{session.elapsedMs != null ? (session.elapsedMs / 1000).toFixed(1) : '?'}s wall</span>
-                <span class="debug-tag">{session.finalChars != null ? session.finalChars : 0} chars out</span>
-                <span class="debug-caret" aria-hidden="true"></span>
-              </span>
-            </button>
-            <button
-              type="button"
-              class="debug-session-delete"
-              title="Delete this session"
-              aria-label={'Delete session #' + session.id}
-              onclick={() => deleteSession(session.id)}
-            >
-              <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
-            </button>
-          </div>
-          {#if openSessions[session.id]}
-            <div
-              class="debug-session-body"
-              id={'debug-body-' + session.id}
-              role="presentation"
-              onclick={(e) => onBodyClick(e, session.id)}
-              onkeydown={onBodyKeydown}
-            >
+      {#each groups as group (group.date)}
+        <div class="debug-date-group">
+          <div class="debug-date-label">{group.date}</div>
+          {#each group.sessions as session (session.id)}
+            <div class="debug-session" class:open={!!openSessions[session.id]}>
+              <div class="debug-session-head">
+                <button
+                  type="button"
+                  class="debug-session-toggle"
+                  aria-expanded={!!openSessions[session.id]}
+                  onclick={() => toggleSession(session.id)}
+                >
+                  <span class="debug-session-title">
+                    <span class="debug-session-id">#{session.id}</span>
+                    <span class="debug-session-mode">{MODE_LABEL[session.mode || ''] || session.mode}</span>
+                  </span>
+                  <span class="debug-session-meta">
+                    <span class="debug-session-time">{startedTime(session.startedAt)}</span>
+                    <span class="debug-tag">{session.model || '?'}</span>
+                    <span class="debug-tag">{session.durationSecs != null ? session.durationSecs.toFixed(1) : '?'}s audio</span>
+                    <span class="debug-tag">{session.chunks ? session.chunks.length : 0} chunks</span>
+                    <span class="debug-tag">{session.elapsedMs != null ? (session.elapsedMs / 1000).toFixed(1) : '?'}s wall</span>
+                    <span class="debug-tag">{session.finalChars != null ? session.finalChars : 0} chars out</span>
+                    <span class="debug-caret" aria-hidden="true"></span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="debug-session-delete"
+                  title="Delete this session"
+                  aria-label={'Delete session #' + session.id}
+                  onclick={() => deleteSession(session.id)}
+                >
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                </button>
+              </div>
+              {#if openSessions[session.id]}
+                <div
+                  class="debug-session-body"
+                  id={'debug-body-' + session.id}
+                  role="presentation"
+                  onclick={(e) => onBodyClick(e, session.id)}
+                  onkeydown={onBodyKeydown}
+                >
               <div class="debug-section-label">Chunk timeline</div>
               {#if session.chunks && session.chunks.length}
                 {#each session.chunks as chunk}
@@ -507,6 +532,7 @@
                     {@const passes = (session.passes || []).filter((p) => p.chunkIdx === chunk.idx)}
                     <div
                       class="debug-chunk"
+                      class:open={!!openChunks[`${session.id}:${chunk.idx}`]}
                       data-index={chunk.idx}
                       data-start={chunk.startSecs || 0}
                       data-end={chunk.endSecs || chunk.startSecs || 0}
@@ -644,6 +670,8 @@
               </div>
             </div>
           {/if}
+        </div>
+      {/each}
         </div>
       {/each}
     </div>

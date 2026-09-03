@@ -5,6 +5,11 @@ import { resolve } from 'node:path';
 export default defineConfig({
   base: './',
   plugins: [svelte()],
+  resolve: {
+    alias: {
+      $lib: resolve(__dirname, 'src/lib'),
+    },
+  },
   build: {
     outDir: 'dist',
     rollupOptions: {
