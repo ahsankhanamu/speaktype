@@ -57,9 +57,15 @@ clean: ## Remove build artifacts
 
 notary-setup: ## Store notarization credentials in Keychain (one-time setup)
 	@echo "→ This will store your Apple ID and app-specific password in the Keychain."
-	@read -p "Apple ID email: " apple_id; \
-	read -s -p "App-specific password: " apple_pwd; \
-	echo ""; \
+	@apple_id="$(APPLE_ID_EMAIL)"; \
+	if [ -z "$$apple_id" ]; then read -p "Apple ID email: " apple_id; fi; \
+	if [ -n "$(NOTARY_PASSWORD)" ]; then \
+		apple_pwd="$(NOTARY_PASSWORD)"; \
+		export NOTARY_PASSWORD=""; \
+	else \
+		read -s -p "App-specific password: " apple_pwd; \
+		echo ""; \
+	fi; \
 	xcrun notarytool store-credentials "$(NOTARY_PROFILE)" \
 		--apple-id "$$apple_id" \
 		--password "$$apple_pwd" \
