@@ -24,7 +24,12 @@ build: ## Clean → sidecar → app → sign → DMG → notarize, all in one (o
 server: ## Run whisper server locally (Python)
 	.venv/bin/python packages/python/server/whisper_server.py --model base
 
-assets: ## Regenerate README showcase images and demo animation
+screenshots: ## Rebuild webui and capture fresh framed settings/onboarding screenshots
+	npm --prefix apps/widget/webui run build
+	node tools/assets/render_settings_screenshots.mjs
+	.venv/bin/python tools/assets/frame_screenshots.py
+
+assets: screenshots ## Regenerate README showcase images and demo animation
 	.venv/bin/python tools/assets/compose_showcase.py
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
