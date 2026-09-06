@@ -65,3 +65,7 @@ make/local.mk
 
 # ─── Generated assets ─────────────────────────────────────────────────────────
 assets/source/widgets/
+
+# ─── Screenshot harness ─────────────────────────────────────────────────────
+.screenshot-chrome-profile/
+assets/source/screenshots/raw/
