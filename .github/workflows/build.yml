@@ -37,6 +37,17 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/apps/widget/src-tauri/binaries"
           cp bin/whisper-server "$GITHUB_WORKSPACE/apps/widget/src-tauri/binaries/whisper-server-aarch64-apple-darwin"
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build frontend
+        working-directory: apps/widget/webui
+        run: |
+          npm ci
+          npm run build
+
       - name: Install tauri-cli
         run: cargo install tauri-cli
 
