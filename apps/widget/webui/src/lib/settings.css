@@ -657,12 +657,12 @@ input[type="range"]:focus-visible {
 
 /* Buttons */
 .btn {
-  padding: 10px 20px;
+  padding: 7px 16px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--surface-2);
   color: var(--text);
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, transform 0.06s, filter 0.15s;
 }
@@ -709,10 +709,14 @@ input[type="range"]:focus-visible {
   background: transparent;
 }
 
+.btn.danger {
+  color: var(--danger, #ef4444);
+}
+
 .btn.btn-small {
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 5px;
 }
 
 /* Permissions */

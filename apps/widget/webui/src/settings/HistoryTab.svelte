@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { getHistory, getHistoryAudio, deleteHistoryEntry, deleteHistoryAudio, clearHistory, reprocessHistoryEntry } from '../lib/ipc';
+  import { getHistory, getHistoryAudio, deleteHistoryEntry, deleteHistoryAudio, clearHistory, reprocessHistoryEntry, copyToClipboard } from '../lib/ipc';
   import { formatDuration } from '../lib/format';
 
   interface HistoryItem {
@@ -250,14 +250,16 @@
     switch (action) {
       case 'copy':
         try {
-          await navigator.clipboard.writeText(entry.text);
+          await copyToClipboard(entry.text);
           btn.innerHTML = COPIED_ICON;
           copiedIndex[index] = true;
           window.setTimeout(() => {
             btn.innerHTML = COPY_ICON;
             copiedIndex[index] = false;
           }, 1200);
-        } catch (_) {}
+        } catch (e) {
+          console.error('Failed to copy:', e);
+        }
         break;
       case 'play':
         playEntry(index, btn);

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings dictation and speech models</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.st{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.85);font-size:13px}
+.nav{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:8px;color:rgba(255,255,255,.92);text-decoration:none;transition:background-color .12s ease-out;font-size:17px}
+.nav:hover{background:rgba(255,255,255,.07)}
+.nav[aria-current="page"]:hover{background:#0a84ff}
+.ngrp{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.tile{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:none}
+.grp{background:#2a2a2c;border-radius:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.06)}
+.r{display:flex;align-items:center;gap:12px;min-height:50px;padding:8px 14px 8px 16px;position:relative}
+.r + .r::before{content:"";position:absolute;left:14px;right:0;top:0;height:.5px;background:rgba(255,255,255,.09)}
+.lab{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.lab b{font-weight:400;font-size:14px;color:rgba(255,255,255,.9)}
+.lab span{font-size:12px;color:rgba(255,255,255,.45)}
+.sec{font-size:15px;font-weight:600;color:rgba(255,255,255,.85);margin:0 0 8px 2px}
+.kc{font-size:13px;font-weight:500;min-width:24px;height:24px;padding:0 6px;box-sizing:border-box;border-radius:6px;background:linear-gradient(180deg,#535357,#404044);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 1px 0 rgba(0,0,0,.65),0 1px 3px rgba(0,0,0,.3);color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.rec{display:inline-flex;align-items:center;gap:4px;height:32px;padding:0 6px 0 5px;border-radius:16px;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);cursor:default;transition:box-shadow .12s ease-out}
+.rec:hover{box-shadow:inset 0 0 0 .5px rgba(255,255,255,.28)}
+.rec .x{width:18px;height:18px;border-radius:9px;margin-left:4px;display:inline-flex;align-items:center;justify-content:center;background:rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:10px;line-height:1}
+.trig{font:inherit;display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 10px 0 14px;border-radius:14px;border:0;background:#3a3a3c;box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4);color:rgba(255,255,255,.9);cursor:pointer;min-width:190px;white-space:nowrap}
+.btn{font:inherit;font-size:13px;height:28px;padding:0 14px;border-radius:14px;border:0;background:#3a3a3c;box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4);color:rgba(255,255,255,.9);cursor:pointer;white-space:nowrap}
+.ib{width:24px;height:24px;border-radius:12px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.radio{width:16px;height:16px;border-radius:50%;flex:none;box-sizing:border-box}
+.meta{font-size:12px;color:rgba(255,255,255,.45);white-space:nowrap;font-variant-numeric:tabular-nums}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="st" style="width:960px;height:760px;background:#1e1e1e;border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12);display:flex;position:relative">
+  <nav style="width:256px;flex:none;background:#262628;padding:44px 10px 12px;display:flex;flex-direction:column;box-shadow:inset -.5px 0 0 rgba(0,0,0,.6);position:relative" aria-label="SpeakType">
+    <div style="position:absolute;top:18px;left:18px;display:flex;gap:8px" aria-hidden="true"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+    <label style="display:flex;align-items:center;gap:5px;height:32px;padding:0 13px;margin:0 0 14px;border-radius:16px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input type="search" placeholder="Search" aria-label="Search SpeakType" style="all:unset;flex:1;font-size:15px;color:#fff">
+    </label>
+    <a class="nav" href="#" style="height:48px;gap:10px;margin-bottom:10px;border-radius:7px">
+      <span style="width:32px;height:32px;border-radius:8px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 1px 2px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+      <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:600;color:rgba(255,255,255,.92);font-size:15px">SpeakType</span><span style="font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap">Version 1.0 · Up to date</span></span>
+    </a>
+    <div class="ngrp">
+      <a class="nav" href="Prompt.dc.html"><span class="tile" style="background:#30b0c7"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></span>History</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="#"><span class="tile" style="background:#8e8e93"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></span>General</a>
+      <a class="nav" href="SettingsAppearance.dc.html"><span class="tile" style="background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.25)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 4a8 8 0 0 0 0 16z" fill="#fff"></path></svg></span>Appearance</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="SettingsDictation.dc.html" aria-current="page" style="background:#0a84ff;color:#fff"><span class="tile" style="background:#0a84ff;box-shadow:0 0 0 .5px rgba(255,255,255,.45)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>Dictation</a>
+      <a class="nav" href="Settings.dc.html"><span class="tile" style="background:#ff6a3d"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg></span>Sessions</a>
+      <a class="nav" href="SettingsProviders.dc.html"><span class="tile" style="background:#bf5af2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg></span>Providers</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="SettingsPermissions.dc.html"><span class="tile" style="background:#5e5ce6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>Permissions</a>
+      <a class="nav" href="#"><span class="tile" style="background:#8e8e93"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"></ellipse><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"></path></svg></span>Storage</a>
+      <a class="nav" href="#"><span class="tile" style="background:#636366"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg></span>Advanced</a>
+    </div>
+  </nav>
+
+  <main style="flex:1;min-width:0;padding:44px 28px 24px;display:flex;flex-direction:column;gap:22px;overflow:hidden">
+    <h1 style="margin:0 0 -6px 2px;font-size:20px;font-weight:600;letter-spacing:-.015em;color:#fff">Dictation</h1>
+
+    <div class="grp">
+      <div class="r">
+        <div class="lab"><b>Start and stop dictation</b><span>Press once to start, again to stop</span></div>
+        <span class="rec" role="button" tabindex="0" aria-label="Dictation shortcut, Control Command. Click to record a new one."><span class="kc">⌃</span><span class="kc">⌘</span><span class="x" role="button" aria-label="Clear shortcut">✕</span></span>
+      </div>
+      <div class="r">
+        <div class="lab"><b>Language</b></div>
+        <button class="trig" type="button" aria-haspopup="listbox"><span style="flex:1;text-align:left">Automatic</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+      </div>
+      <div class="r">
+        <div class="lab"><b>Microphone</b></div>
+        <span style="display:flex;align-items:flex-end;gap:2px;height:14px" aria-label="Input level" role="img">
+          <span style="width:3px;height:5px;border-radius:1px;background:#30d158"></span><span style="width:3px;height:8px;border-radius:1px;background:#30d158"></span><span style="width:3px;height:12px;border-radius:1px;background:#30d158"></span><span style="width:3px;height:14px;border-radius:1px;background:rgba(255,255,255,.18)"></span><span style="width:3px;height:14px;border-radius:1px;background:rgba(255,255,255,.18)"></span>
+        </span>
+        <button class="trig" type="button" aria-haspopup="listbox"><span style="flex:1;text-align:left">MacBook Pro Microphone</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+      </div>
+      <div class="r">
+        <div class="lab"><b>Paste into</b><span>Where your words go if you switch apps while it's transcribing</span></div>
+        <button class="trig" type="button" aria-haspopup="listbox"><span style="flex:1;text-align:left">The app you're in now</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+      </div>
+      <div class="r">
+        <div class="lab"><b>After pasting, press</b><span>Handy for sending chat messages straight away</span></div>
+        <button class="trig" type="button" aria-haspopup="listbox"><span style="flex:1;text-align:left">Return</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+      </div>
+    </div>
+
+    <div>
+      <p class="sec">Speech model</p>
+      <div class="grp">
+        <div class="r" style="min-height:64px">
+          <span style="width:36px;height:36px;border-radius:9px;flex:none;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#5ac8fa,#007aff);box-shadow:inset 0 .5px 0 rgba(255,255,255,.25)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 11v2M8 8v8M12 5v14M16 8v8M20 11v2"></path></svg></span>
+          <div class="lab"><b>Balanced</b><span>In use · fast and accurate for most people · ~500 MB</span></div>
+          <a class="btn" href="ModelsSheet.dc.html" style="text-decoration:none;display:inline-flex;align-items:center">Manage models…</a>
+        </div>
+        <div class="r">
+          <div class="lab" style="gap:6px"><b style="font-size:13px">Accurate is downloading</b>
+            <span style="display:flex;align-items:center;gap:10px"><span style="flex:1;max-width:300px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden"><span style="display:block;width:38%;height:4px;border-radius:2px;background:#0a84ff"></span></span><span style="font-variant-numeric:tabular-nums">580 MB of 1.5 GB · about 2 min · switches over when ready</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":960,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

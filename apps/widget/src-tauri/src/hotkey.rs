@@ -85,21 +85,20 @@ fn register_global_shortcut(
     label: &str,
 ) -> bool {
     let app_handle = app.clone();
-    match app.global_shortcut().on_shortcut(shortcut, move |_app, _shortcut, event| {
-        if event.state != ShortcutState::Pressed {
-            return;
-        }
-        spawn_toggle(app_handle.clone(), is_recording.clone());
-    }) {
+    match app
+        .global_shortcut()
+        .on_shortcut(shortcut, move |_app, _shortcut, event| {
+            if event.state != ShortcutState::Pressed {
+                return;
+            }
+            spawn_toggle(app_handle.clone(), is_recording.clone());
+        }) {
         Ok(()) => {
             crate::logging::log_message(&format!("[shortcut] Registered: {}", label));
             true
         }
         Err(e) => {
-            crate::logging::log_message(&format!(
-                "[shortcut] Failed to register {}: {}",
-                label, e
-            ));
+            crate::logging::log_message(&format!("[shortcut] Failed to register {}: {}", label, e));
             false
         }
     }
@@ -126,10 +125,7 @@ fn stop_macos_super_control_listener() {
 }
 
 #[cfg(target_os = "macos")]
-fn start_macos_super_control_listener(
-    app: AppHandle,
-    is_recording: Arc<AtomicBool>,
-) {
+fn start_macos_super_control_listener(app: AppHandle, is_recording: Arc<AtomicBool>) {
     stop_macos_super_control_listener();
     let my_gen = SUPER_CONTROL_GEN.load(Ordering::SeqCst);
     std::thread::spawn(move || {

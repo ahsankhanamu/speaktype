@@ -16,6 +16,9 @@
     openSystemPane,
     saveWindowPosition,
     invokeCommand,
+    getScribeActiveSession,
+    setScribeEnabled,
+    captureScribeScreenshot,
   } from '../lib/ipc';
 
   let widgetRoot: HTMLDivElement;
@@ -61,8 +64,14 @@
   const LOCATE_HIGHLIGHT_MS = 2500;
   const GUIDE_READY_MS = 10000;
   const STATUS_POLL_MS = 2000;
+  const SCRIBE_BAR_GAP = 20;
 
   let currentState = 'idle';
+  let scribeSummary: { id: number; name: string; count: number } | null = null;
+  let scribeMode = false;
+  let scribeBusy = false;
+  let scribePulse = false;
+  let scribePulseTimer: ReturnType<typeof setTimeout> | null = null;
   let permissionsMissing = false;
   let beaconActive = false;
   let readyVisible = false;
@@ -130,6 +139,33 @@
     return resizeSeq;
   }
 
+  async function setWindowSizeKeepCenterImpl(w: number, h: number) {
+    if (w === lastWindowWidth && h === lastWindowHeight) return;
+    try {
+      const win = getCurrentWindow();
+      const delta = w - lastWindowWidth;
+      if (delta !== 0) {
+        const scale = await win.scaleFactor();
+        const pos = await win.outerPosition();
+        await win.setPosition(
+          new PhysicalPosition(Math.round(pos.x - (delta * scale) / 2), pos.y),
+        );
+      }
+      await win.setSize(new LogicalSize(w, h));
+      lastWindowWidth = w;
+      lastWindowHeight = h;
+    } catch (e) {
+      setWindowSize(w, h);
+      lastWindowWidth = w;
+      lastWindowHeight = h;
+    }
+  }
+
+  function setWindowSizeKeepCenter(w: number, h: number) {
+    resizeSeq = resizeSeq.then(() => setWindowSizeKeepCenterImpl(w, h));
+    return resizeSeq;
+  }
+
   function waitForLayout() {
     return new Promise((resolve) => {
       requestAnimationFrame(() => requestAnimationFrame(resolve));
@@ -146,8 +182,10 @@
       : readyConnector.getBoundingClientRect().width || 28;
     const gaps = 12;
     const rootPad = 24;
+    const strip = document.getElementById('scribeStrip');
+    const stripH = strip ? strip.offsetHeight || 0 : 0;
     const w = cardW + connW + shellW + gaps + rootPad + READY_PAD_X;
-    const h = Math.max(readyCard.offsetHeight, shellW) + READY_PAD_Y;
+    const h = Math.max(readyCard.offsetHeight, shellW) + stripH + SCRIBE_BAR_GAP + READY_PAD_Y;
     await setWindowSizeKeepRightEdge(Math.max(w, READY_MIN_W), Math.max(h, READY_MIN_H));
   }
 
@@ -170,9 +208,16 @@
     if (currentState === 'recording') {
       contentH = Math.max(contentH, shellH + 40);
     }
+    if (scribeVisible()) {
+      const strip = document.getElementById('scribeStrip');
+      const stripW = strip ? strip.offsetWidth || 0 : 0;
+      const stripH = strip ? strip.offsetHeight || 0 : 0;
+      contentW = Math.max(contentW, stripW);
+      contentH += stripH + SCRIBE_BAR_GAP;
+    }
     const w = Math.ceil(contentW + pad.x);
     const h = Math.ceil(contentH + pad.y);
-    await setWindowSizeKeepRightEdge(w, h);
+    await setWindowSizeKeepCenter(w, h);
   }
 
   function syncWindowSize() {
@@ -371,6 +416,81 @@
     setTimeout(() => setState('idle'), ms || DEFAULT_FLASH_MS);
   }
 
+  function scribeVisible() {
+    return (
+      currentState === 'idle' ||
+      currentState === 'recording' ||
+      currentState === 'success' ||
+      currentState === 'error'
+    );
+  }
+
+  async function refreshScribe() {
+    let s: { id: number; name: string; count: number } | null = null;
+    let mode = scribeMode;
+    try {
+      s = await getScribeActiveSession();
+    } catch {
+      s = null;
+    }
+    try {
+      const settings = await getSettings();
+      mode = settings.scribe_enabled === true;
+    } catch {
+      // keep last known mode
+    }
+    if (
+      (s === null) === (scribeSummary === null) &&
+      (s?.id ?? null) === (scribeSummary?.id ?? null) &&
+      (s?.count ?? 0) === (scribeSummary?.count ?? 0) &&
+      mode === scribeMode
+    ) {
+      return;
+    }
+    scribeSummary = s;
+    scribeMode = mode;
+    await waitForLayout();
+    syncWindowSize();
+  }
+
+  async function scribeSnapshot() {
+    if (scribeBusy) return;
+    scribeBusy = true;
+    try {
+      await captureScribeScreenshot();
+      // Keep the session running: no success/tick flash (the session did not
+      // end). Just pulse the strip so the capture is acknowledged.
+      pulseScribe();
+    } catch {
+      flashState('error');
+    } finally {
+      scribeBusy = false;
+      await refreshScribe();
+    }
+  }
+
+  function pulseScribe() {
+    scribePulse = true;
+    if (scribePulseTimer) clearTimeout(scribePulseTimer);
+    scribePulseTimer = setTimeout(() => {
+      scribePulse = false;
+    }, 950);
+  }
+
+  async function scribeToggle() {
+    if (scribeBusy) return;
+    scribeBusy = true;
+    try {
+      await setScribeEnabled(!scribeMode);
+      scribeMode = !scribeMode;
+    } catch {
+      flashState('error');
+    } finally {
+      scribeBusy = false;
+      await refreshScribe();
+    }
+  }
+
   function highlightWidget(ms?: number) {
     const duration = ms || LOCATE_HIGHLIGHT_MS;
     locateHighlightActive = true;
@@ -483,6 +603,7 @@
       return;
     }
     if (source !== 'widget') return;
+    if ((e.target as Element).closest('.scribe-strip')) return;
     if (currentState === 'transcribing') return;
     if (currentState === 'recording') return;
     if (permissionsMissing) {
@@ -495,7 +616,7 @@
   }
 
   onMount(() => {
-    bindDragSurface(widgetShell, 'widget', '.rec-btn');
+    bindDragSurface(widgetShell, 'widget', '.rec-btn, .scribe-strip');
     bindDragSurface(readyCard, 'ready', '.ready-close');
     bindDragSurface(readyConnector, 'ready');
 
@@ -635,7 +756,12 @@
       resumeStatusPolling();
     });
 
+    registerListen('scribe:session_started', refreshScribe);
+    registerListen('scribe:session_stopped', refreshScribe);
+    registerListen('scribe:event_added', refreshScribe);
+
     startStatusPolling();
+    refreshScribe();
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
         stopStatusPolling();
@@ -670,6 +796,7 @@
       if (statusPollInterval) clearInterval(statusPollInterval);
       if (readyGuideTimer) clearTimeout(readyGuideTimer);
       if (locateTimer) clearTimeout(locateTimer);
+      if (scribePulseTimer) clearTimeout(scribePulseTimer);
       if (waveAnimFrame) cancelAnimationFrame(waveAnimFrame);
       resizeObserver.disconnect();
     };
@@ -789,6 +916,61 @@
         </svg>
       </div>
     </div>
+    {#if scribeVisible()}
+      <div
+        class="scribe-strip"
+        id="scribeStrip"
+        class:live={!!scribeSummary}
+        class:pulse={scribePulse}
+        title={scribeSummary ? `Scribe session live: ${scribeSummary.name}` : scribeMode ? 'Scribe on — the mic button captures into a session' : 'Scribe off — flip the switch to enable'}
+      >
+        {#if scribeMode || scribeSummary}
+          <button
+            type="button"
+            class="scribe-switch on"
+            id="scribe-switch-live"
+            role="switch"
+            aria-checked={scribeMode}
+            aria-label="Toggle scribe mode"
+            title={scribeMode ? 'Scribe mode on — click to turn off' : 'Scribe mode off — click to turn on'}
+            onclick={scribeToggle}
+          >
+            <span class="scribe-switch-knob"></span>
+          </button>
+          <span class="scribe-label">Scribe</span>
+          {#if scribeSummary}
+            <span class="scribe-rec-state">recording</span>
+            <span class="scribe-count">{scribeSummary.count}</span>
+          {/if}
+          <button
+            type="button"
+            class="scribe-btn scribe-shot"
+            title="Select a region or window to capture into the session"
+            aria-label="Capture screenshot into session"
+            onclick={scribeSnapshot}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
+              <circle cx="12" cy="13" r="4" />
+            </svg>
+          </button>
+        {:else}
+          <button
+            type="button"
+            class="scribe-switch"
+            id="scribe-switch"
+            role="switch"
+            aria-checked="false"
+            aria-label="Toggle scribe mode"
+            title="Scribe off — click to turn on"
+            onclick={scribeToggle}
+          >
+            <span class="scribe-switch-knob"></span>
+          </button>
+          <span class="scribe-label">Scribe</span>
+        {/if}
+      </div>
+    {/if}
   </div>
 </div>
 
@@ -843,7 +1025,7 @@
   .widget-root {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
+    align-items: center;
     justify-content: center;
     width: 100%;
     height: 100%;
@@ -1091,6 +1273,15 @@
       opacity: 0.4;
     }
   }
+  @keyframes recTextFade {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.45;
+    }
+  }
   .server-status {
     display: none;
     position: absolute;
@@ -1113,6 +1304,111 @@
   .server-status.error {
     background: var(--danger);
     box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+  }
+  .scribe-strip {
+    position: absolute;
+    top: calc(100% + 8px);
+    right: 0;
+    left: auto;
+    transform: none;
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 9px;
+    border-radius: 999px;
+    background: var(--widget-panel);
+    border: 1px solid var(--widget-panel-border);
+    box-shadow: 0 2px 10px var(--shadow);
+    color: var(--widget-text);
+    font-size: 11px;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: default;
+    transition: box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+  .widget-root:not(.ready) .scribe-strip {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+  }
+  .scribe-strip.pulse {
+    border-color: rgba(74, 222, 128, 0.65);
+    box-shadow: 0 0 14px rgba(74, 222, 128, 0.45), 0 2px 10px var(--shadow);
+  }
+  .scribe-switch {
+    position: relative;
+    width: 26px;
+    height: 15px;
+    flex-shrink: 0;
+    padding: 0;
+    border: 1px solid var(--widget-panel-border);
+    border-radius: 999px;
+    background: var(--widget-switch-off, rgba(127, 127, 127, 0.25));
+    cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease;
+  }
+  .scribe-switch.on {
+    background: var(--success);
+    border-color: var(--success);
+  }
+  .scribe-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--widget-text);
+    transition: transform 0.18s ease;
+  }
+  .scribe-switch.on .scribe-switch-knob {
+    transform: translateX(11px);
+  }
+  .scribe-strip:not(.live) {
+    background: var(--widget-panel);
+  }
+  .scribe-strip.live {
+    border-color: rgba(74, 222, 128, 0.5);
+  }
+  .scribe-label {
+    font-weight: 600;
+  }
+  .scribe-rec-state {
+    color: var(--success);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    animation: recTextFade 1.6s ease-in-out infinite;
+  }
+  .scribe-count {
+    font-variant-numeric: tabular-nums;
+    color: var(--widget-text-muted);
+  }
+  .scribe-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--widget-text-muted);
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .scribe-btn svg {
+    width: 13px;
+    height: 13px;
+  }
+  .scribe-btn:hover {
+    color: var(--widget-icon-hover);
+    background: var(--widget-btn-hover);
+  }
+  .scribe-stop:hover {
+    color: var(--danger);
   }
   .widget.recording {
     --level: 0;

@@ -244,7 +244,7 @@ fn looks_like_sound_effect_markup(text: &str) -> bool {
 
 fn has_repetitive_clauses(text: &str) -> bool {
     let clauses: Vec<&str> = text
-        .split(|c| matches!(c, '.' | '!' | '?'))
+        .split(['.', '!', '?'])
         .map(str::trim)
         .filter(|s| s.len() > 5)
         .collect();
@@ -259,7 +259,7 @@ fn has_repetitive_clauses(text: &str) -> bool {
     }
 
     let words: Vec<&str> = text.split_whitespace().collect();
-    if words.len() >= 6 && words.len() % 2 == 0 {
+    if words.len() >= 6 && words.len().is_multiple_of(2) {
         let half = words.len() / 2;
         if words[..half] == words[half..] {
             return true;
@@ -270,7 +270,7 @@ fn has_repetitive_clauses(text: &str) -> bool {
 }
 
 fn matches_blocklist(text: &str) -> bool {
-    if HALLUCINATION_WORDS.iter().any(|w| *w == text) {
+    if HALLUCINATION_WORDS.contains(&text) {
         return true;
     }
     if text.len() < 40 && HALLUCINATION_PHRASES.iter().any(|p| text.contains(p)) {
@@ -318,8 +318,7 @@ fn flag_loop_run(segments: &[Segment], reports: &mut [SegmentReport]) -> usize {
     while i + LOOP_RUN_MIN <= n {
         if !short(&segments[i])
             || !short(&segments[i + 1])
-            || word_set_similarity(&segments[i].text, &segments[i + 1].text)
-                < LOOP_RUN_SIMILARITY
+            || word_set_similarity(&segments[i].text, &segments[i + 1].text) < LOOP_RUN_SIMILARITY
         {
             i += 1;
             continue;
@@ -502,7 +501,10 @@ mod tests {
             avg_logprob: Some(-0.2),
         };
         let report = evaluate("Thank you.", &[segment], &Thresholds::default());
-        assert!(report.is_clean(), "confident metrics should override blocklist");
+        assert!(
+            report.is_clean(),
+            "confident metrics should override blocklist"
+        );
     }
 
     #[test]
@@ -612,15 +614,24 @@ mod tests {
         }
 
         let report = evaluate("", &segments, &Thresholds::default());
-        assert!(report.dropped >= 8, "loop segments must be dropped, got {}", report.dropped);
+        assert!(
+            report.dropped >= 8,
+            "loop segments must be dropped, got {}",
+            report.dropped
+        );
         assert_eq!(
-            report.clean_text.matches("the exact route to the old station").count(),
+            report
+                .clean_text
+                .matches("the exact route to the old station")
+                .count(),
             2,
             "exactly the two real utterances must survive: {}",
             report.clean_text
         );
         assert!(
-            report.clean_text.contains("that is why I knew the exact route"),
+            report
+                .clean_text
+                .contains("that is why I knew the exact route"),
             "real speech must survive: {}",
             report.clean_text
         );
@@ -641,7 +652,10 @@ mod tests {
             });
         }
         let report = evaluate("", &segments, &Thresholds::default());
-        assert_eq!(report.dropped, 0, "real-time repetition must not be dropped");
+        assert_eq!(
+            report.dropped, 0,
+            "real-time repetition must not be dropped"
+        );
         assert!(report.is_clean());
     }
 }

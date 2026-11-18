@@ -370,16 +370,19 @@ async fn fetch_chunk(
 fn write_chunk_sync(path: &Path, start: u64, data: &[u8]) -> Result<(), String> {
     let mut file = OpenOptions::new()
         .create(true)
+        .truncate(false)
         .write(true)
         .read(true)
         .open(path)
         .map_err(|e| e.to_string())?;
-    file.seek(SeekFrom::Start(start)).map_err(|e| e.to_string())?;
+    file.seek(SeekFrom::Start(start))
+        .map_err(|e| e.to_string())?;
     file.write_all(data).map_err(|e| e.to_string())?;
     file.sync_all().map_err(|e| e.to_string())?;
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn emit_progress(
     app: &AppHandle,
     model_name: &str,
@@ -457,9 +460,7 @@ pub async fn download_segmented(
 
     // Legacy single-stream .part → contiguous prefix.
     if temp_path.exists() && state.completed.is_empty() {
-        let len = std::fs::metadata(&temp_path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let len = std::fs::metadata(&temp_path).map(|m| m.len()).unwrap_or(0);
         if len > 0 {
             state.completed.push((0, len));
             merge_ranges(&mut state.completed);
@@ -561,7 +562,15 @@ pub async fn download_segmented(
 
     let remaining = total_size.saturating_sub(sum_completed(&state.completed));
     if remaining == 0 {
-        return finalize(&app, &model_name, &temp_path, &file_path, &parts_file, &state).await;
+        return finalize(
+            &app,
+            &model_name,
+            &temp_path,
+            &file_path,
+            &parts_file,
+            &state,
+        )
+        .await;
     }
 
     if remaining < SMALL_FILE_THRESHOLD && state.completed.is_empty() {
@@ -577,12 +586,16 @@ pub async fn download_segmented(
         tokio::task::spawn_blocking(move || {
             let file = OpenOptions::new()
                 .create(true)
+                .truncate(false)
                 .write(true)
                 .open(&path)
                 .map_err(|e| e.to_string())?;
             file.set_len(total).map_err(|e| {
                 if e.raw_os_error() == Some(28) || e.to_string().to_lowercase().contains("space") {
-                    format!("Not enough disk space to download model ({} bytes): {}", total, e)
+                    format!(
+                        "Not enough disk space to download model ({} bytes): {}",
+                        total, e
+                    )
                 } else {
                     e.to_string()
                 }
@@ -674,37 +687,41 @@ pub async fn download_segmented(
 
     // If already complete after probe
     if sum_completed(&state.completed) >= total_size {
-        return finalize(&app, &model_name, &temp_path, &file_path, &parts_file, &state).await;
+        return finalize(
+            &app,
+            &model_name,
+            &temp_path,
+            &file_path,
+            &parts_file,
+            &state,
+        )
+        .await;
     }
 
-    let mut in_flight: FuturesUnordered<
-        tokio::task::JoinHandle<Result<ChunkResult, ChunkFail>>,
-    > = FuturesUnordered::new();
+    let mut in_flight: FuturesUnordered<tokio::task::JoinHandle<Result<ChunkResult, ChunkFail>>> =
+        FuturesUnordered::new();
     let mut issued: Vec<(u64, u64)> = Vec::new();
     // Skip ranges already covered / currently issued when advancing
     let mut issue_cursor = next_missing_offset(&state.completed, total_size);
 
     // Helper to find next unissued missing range start
-    let advance_cursor = |completed: &[(u64, u64)],
-                          issued: &[(u64, u64)],
-                          mut cursor: u64,
-                          total: u64|
-     -> u64 {
-        while cursor < total {
-            let mut covered = false;
-            for &(s, e) in completed.iter().chain(issued.iter()) {
-                if cursor >= s && cursor < e {
-                    cursor = e;
-                    covered = true;
+    let advance_cursor =
+        |completed: &[(u64, u64)], issued: &[(u64, u64)], mut cursor: u64, total: u64| -> u64 {
+            while cursor < total {
+                let mut covered = false;
+                for &(s, e) in completed.iter().chain(issued.iter()) {
+                    if cursor >= s && cursor < e {
+                        cursor = e;
+                        covered = true;
+                        break;
+                    }
+                }
+                if !covered {
                     break;
                 }
             }
-            if !covered {
-                break;
-            }
-        }
-        cursor
-    };
+            cursor
+        };
 
     issue_cursor = advance_cursor(&state.completed, &issued, issue_cursor, total_size);
 
@@ -866,7 +883,7 @@ pub async fn download_segmented(
                 }
                 save_parts_sync(&parts_file, &state).map_err(SegmentedError::Failed)?;
 
-                let n = (chunk.end - chunk.start) as u64;
+                let n = chunk.end - chunk.start;
                 window_bytes += n;
                 rolling_bytes += n;
 
@@ -996,7 +1013,15 @@ pub async fn download_segmented(
         )));
     }
 
-    finalize(&app, &model_name, &temp_path, &file_path, &parts_file, &state).await
+    finalize(
+        &app,
+        &model_name,
+        &temp_path,
+        &file_path,
+        &parts_file,
+        &state,
+    )
+    .await
 }
 
 async fn finalize(
@@ -1043,7 +1068,16 @@ async fn finalize(
     .map_err(SegmentedError::Failed)?;
 
     downloader::remove_expected_size(model_name);
-    emit_progress(app, model_name, downloaded, state.total, 0.0, 0, "done", None);
+    emit_progress(
+        app,
+        model_name,
+        downloaded,
+        state.total,
+        0.0,
+        0,
+        "done",
+        None,
+    );
     logging::log_message(&format!(
         "[downloader] Model {} downloaded to {} ({:.1} MB) [segmented]",
         model_name,

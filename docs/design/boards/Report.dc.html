@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Report a problem</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.rp{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.88);font-size:14px}
+.sec{font-size:15px;font-weight:600;color:#fff;margin:0 0 10px 2px}
+.card{background:rgba(255,255,255,.05);border-radius:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08)}
+.r{display:flex;align-items:center;gap:12px;min-height:46px;padding:6px 16px;position:relative}
+.r + .r::before{content:"";position:absolute;left:16px;right:16px;top:0;height:.5px;background:rgba(255,255,255,.08)}
+.k{width:150px;flex:none;color:rgba(255,255,255,.55);font-size:13px}
+.v{flex:1;min-width:0;color:rgba(255,255,255,.9);font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.b{font:inherit;font-size:13px;height:32px;padding:0 18px;border-radius:16px;border:0;cursor:default;white-space:nowrap;display:inline-flex;align-items:center;gap:8px;transition:background-color .12s ease-out}
+.pri{background:#0a84ff;color:#fff;font-weight:600}.pri:hover{background:#2a93ff}.pri:active{background:#0070d9}
+.sec2{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)}.sec2:hover{background:rgba(255,255,255,.13)}.sec2:active{background:rgba(255,255,255,.18)}
+.tog{width:38px;height:22px;border-radius:11px;position:relative;flex:none;display:inline-block}
+.tog i{position:absolute;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+.thumb{width:150px;height:96px;border-radius:10px;background:#fbfbfa;position:relative;overflow:hidden;box-shadow:0 0 0 .5px rgba(0,0,0,.5);flex:none}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="rp" style="width:1280px;height:1000px;background:#141416;border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12);position:relative">
+  <div aria-hidden="true" style="position:absolute;inset:0;display:flex;opacity:.35">
+    <div style="width:232px;background:#262628"></div>
+    <div style="width:340px;box-shadow:inset -.5px 0 0 rgba(0,0,0,.6)"></div>
+    <div style="flex:1;padding:40px 24px"><div style="width:420px;height:22px;border-radius:6px;background:rgba(255,255,255,.12)"></div><div style="margin-top:60px;height:300px;border-radius:16px;background:rgba(255,255,255,.05)"></div></div>
+  </div>
+    <div aria-hidden="true" style="position:absolute;top:20px;left:20px;display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+
+  <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(0,0,0,.42)"></div>
+  <section role="dialog" aria-modal="true" aria-labelledby="rp-t" style="position:absolute;left:50%;top:64px;transform:translateX(-50%);width:760px;border-radius:28px;background:#2a2a2c;box-shadow:0 0 0 .5px rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden">
+    <header style="padding:30px 28px 4px">
+      <h2 id="rp-t" style="margin:0;font-size:20px;font-weight:700;letter-spacing:-.015em;color:#fff">Report a problem</h2>
+      <p style="margin:6px 0 0;color:rgba(255,255,255,.55);font-size:13px">About “Checkout overlaps total on mobile” · Today at 10:41. Nothing leaves this Mac until you choose how to send it.</p>
+    </header>
+
+    <sc-if value="{{ editing }}" hint-placeholder-val="{{ true }}">
+    <div style="padding:16px 28px 0;display:flex;flex-direction:column;gap:20px">
+      <div>
+        <p class="sec">What happened?</p>
+        <textarea rows="3" aria-label="What happened" style="width:100%;box-sizing:border-box;font:inherit;font-size:14px;line-height:1.5;color:#fff;background:rgba(255,255,255,.06);border:0;box-shadow:0 0 0 1.5px rgba(10,132,255,.85);border-radius:12px;padding:10px 14px;resize:none">The second mark was captured after I scrolled, so the circle is around the wrong button.</textarea>
+      </div>
+
+      <div>
+        <p class="sec" style="display:flex;align-items:center">Screenshots<span style="flex:1"></span><button class="b sec2" type="button" style="height:28px;padding:0 14px;font-weight:400"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3"></path></svg>Capture screen…</button></p>
+        <div style="display:flex;gap:10px;align-items:center">
+          <span class="thumb"><span style="position:absolute;left:16px;top:14px;width:60px;height:7px;border-radius:2px;background:#1d1d1f"></span><span style="position:absolute;left:44px;top:52px;width:70px;height:16px;border-radius:3px;background:#1d1d1f"></span><span style="position:absolute;left:30px;top:40px;width:96px;height:40px;border:2px solid #ef643c;border-radius:50%"></span><button type="button" aria-label="Remove screenshot" style="position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:11px;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:22px;padding:0">✕</button></span>
+          <span style="width:150px;height:96px;border-radius:10px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:rgba(255,255,255,.5);font-size:12px;text-align:center;padding:0 12px;box-sizing:border-box;border:1px dashed rgba(255,255,255,.18)">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>Drop images or files here
+          </span>
+          <span style="font-size:12px;color:rgba(255,255,255,.5);margin-left:6px;line-height:1.5;max-width:260px">Mark 2 from this session is attached already, because the problem is about it.</span>
+        </div>
+      </div>
+
+      <div>
+        <p class="sec">Your email <span style="font-weight:400;font-size:13px;color:rgba(255,255,255,.5)">optional, so we can reply</span></p>
+        <input type="email" placeholder="you@example.com" aria-label="Your email" style="width:320px;box-sizing:border-box;font:inherit;font-size:14px;height:32px;padding:0 14px;border-radius:16px;border:0;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff">
+      </div>
+      <div>
+        <p class="sec">Included automatically</p>
+        <div class="card">
+          <div class="r"><span class="k">About your Mac</span><span class="v">SpeakType 1.0 (124) · macOS 26.1 · MacBook Pro M3 · 18 GB</span><span class="tog" style="background:#0a84ff;opacity:.5" role="switch" aria-checked="true" aria-disabled="true" aria-label="Always included"><i style="right:2px"></i></span></div>
+          <div class="r"><span class="k">This session's details</span><span class="v">Model, timings, screens, what each mark was framed to, problems found</span><span class="tog" style="background:#0a84ff" role="switch" aria-checked="true" aria-label="Include session details"><i style="right:2px"></i></span></div>
+          <div class="r"><span class="k">Recent app log</span><span class="v">Last 30 minutes, with names and file paths removed</span><span class="tog" style="background:#0a84ff" role="switch" aria-checked="true" aria-label="Include app log"><i style="right:2px"></i></span></div>
+          <div class="r"><span class="k">Audio of this session</span><span class="v">Helps with transcription problems · 2.1 MB</span><span class="tog" style="background:#4a4a4d" role="switch" aria-checked="false" aria-label="Include audio"><i style="left:2px"></i></span></div>
+        </div>
+        <p style="margin:8px 4px 0;font-size:12px;color:rgba(255,255,255,.45)"><a href="#">Preview everything that will be sent</a> · Sent securely to the SpeakType team only when you press Send.</p>
+      </div>
+    </div>
+
+    <footer style="display:flex;align-items:center;gap:10px;padding:22px 28px 24px">
+      <button class="b sec2" type="button">Save report…</button>
+      <span style="flex:1"></span>
+      <button class="b sec2" type="button">Cancel</button>
+      <button class="b pri" type="button" onClick="{{ send }}">Send report</button>
+    </footer>
+    </sc-if>
+    <sc-if value="{{ sent }}" hint-placeholder-val="{{ false }}">
+      <div style="padding:30px 28px 28px;display:flex;flex-direction:column;align-items:center;text-align:center;gap:10px">
+        <svg width="44" height="44" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="#30d158" stroke-width="1.2"></circle><path d="M5 8.2l2 2 4-4.4" stroke="#30d158" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <p style="margin:6px 0 0;font-size:17px;font-weight:600;color:#fff">Report sent. Thank you.</p>
+        <p style="margin:0;font-size:14px;line-height:1.5;color:rgba(255,255,255,.62);max-width:420px">Your reference is <span style="color:#fff;font-variant-numeric:tabular-nums">ST-4F2K-91</span>. If you added your email, we'll reply there. A copy is saved in History → Details.</p>
+        <div style="display:flex;gap:10px;margin-top:14px"><button class="b sec2" type="button">Copy reference</button><button class="b pri" type="button" onClick="{{ reset }}">Done</button></div>
+      </div>
+    </sc-if>
+
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { sent: false }; }
+  renderVals() {
+    const sent = !!this.state.sent;
+    return { sent, editing: !sent, send: () => this.setState({ sent: true }), reset: () => this.setState({ sent: false }) };
+  }
+}
+</script>
+</body>
+</html>

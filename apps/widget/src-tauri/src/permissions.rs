@@ -166,8 +166,8 @@ mod macos {
     pub fn check_microphone() -> bool {
         use std::process::Command;
         use std::sync::mpsc;
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let script = r#"
             use framework "AVFoundation"
@@ -178,8 +178,10 @@ mod macos {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let result = Command::new("osascript")
-                .arg("-l").arg("AppleScript")
-                .arg("-e").arg(script)
+                .arg("-l")
+                .arg("AppleScript")
+                .arg("-e")
+                .arg(script)
                 .output();
             let _ = tx.send(result);
         });
@@ -194,8 +196,8 @@ mod macos {
     pub fn request_microphone() -> bool {
         use std::process::Command;
         use std::sync::mpsc;
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let script = r#"
             use framework "AVFoundation"
@@ -212,8 +214,10 @@ mod macos {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let result = Command::new("osascript")
-                .arg("-l").arg("AppleScript")
-                .arg("-e").arg(script)
+                .arg("-l")
+                .arg("AppleScript")
+                .arg("-e")
+                .arg(script)
                 .output();
             let _ = tx.send(result);
         });

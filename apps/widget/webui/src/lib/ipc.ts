@@ -24,6 +24,17 @@ export interface Settings {
   quality_avg_logprob: number;
   quality_compression_ratio: number;
   input_device: string | null;
+  scribe_screenshot_hotkey: string;
+  scribe_enabled: boolean;
+  scribe_clipboard_monitor: boolean;
+  scribe_max_screenshots: number;
+  scribe_template: string;
+  scribe_llm_base_url: string;
+  scribe_llm_api_key: string;
+  scribe_llm_model: string;
+  scribe_llm_use_local: boolean;
+  scribe_llm_local_model: string;
+  scribe_llm_local_ctx: number;
 }
 
 export interface InputDeviceInfo {
@@ -78,6 +89,11 @@ export function invokeCommand<T>(cmd: string, args?: Record<string, unknown>): P
 export const logFrontend = (level: string, message: string) =>
   invokeCommand<void>('log_frontend', { level, message });
 
+// The webview's navigator.clipboard is unavailable under Tauri's custom
+// protocol, so UI copy actions go through the native command.
+export const copyToClipboard = (text: string) =>
+  invokeCommand<void>('copy_to_clipboard', { text });
+
 // Recording / widget
 export const toggleRecording = (isRecording: boolean) =>
   invokeCommand('toggle_recording', { isRecording });
@@ -107,6 +123,80 @@ export interface OnboardingStatus {
   responsible_app: string;
   responsible_app_path: string;
 }
+
+// Scribe
+export interface ScribeSession {
+  id: number;
+  name: string;
+  template: string;
+  created_at: string;
+  ended_at: string | null;
+}
+
+export interface ScribeEvent {
+  id: number;
+  session_id: number;
+  event_type: string;
+  timestamp: string;
+  content: string | null;
+  image_path: string | null;
+  source_app: string | null;
+  metadata: string | null;
+}
+
+export interface ScribePermissions {
+  screen_recording: boolean;
+}
+
+export const scribePermissions = () =>
+  invokeCommand<ScribePermissions>('scribe_permissions');
+export const scribeRequestScreenAccess = () =>
+  invokeCommand<{ granted: boolean; denied: boolean }>('scribe_request_screen_access');
+export const startScribeSession = (name: string, template?: string) =>
+  invokeCommand<{ session: ScribeSession; active: boolean }>('start_scribe_session', {
+    name,
+    template,
+  });
+export const stopScribeSession = (sessionId?: number) =>
+  invokeCommand<{ session: ScribeSession | null; active: boolean }>('stop_scribe_session', {
+    sessionId,
+  });
+export const setScribeEnabled = (enabled: boolean) =>
+  invokeCommand<{ enabled: boolean }>('set_scribe_enabled', { enabled });
+export const getScribeSessions = () =>
+  invokeCommand<ScribeSession[]>('get_scribe_sessions');
+export const getScribeActiveSession = () =>
+  invokeCommand<{ id: number; name: string; count: number } | null>('get_scribe_active_session');
+export const getScribeSessionEvents = (sessionId: number) =>
+  invokeCommand<ScribeEvent[]>('get_scribe_session_events', { sessionId });
+export const deleteScribeSession = (sessionId: number) =>
+  invokeCommand<void>('delete_scribe_session', { sessionId });
+export const captureScribeScreenshot = () =>
+  invokeCommand<ScribeEvent>('capture_scribe_screenshot');
+export const scribeSessionImagePath = (sessionId: number, relative: string) =>
+  invokeCommand<string>('scribe_session_image_path', { sessionId, relative });
+export const exportScribeSession = (sessionId: number) =>
+  invokeCommand<string>('export_scribe_session', { sessionId });
+export const exportScribeSessionDocx = (sessionId: number) =>
+  invokeCommand<string>('export_scribe_session_docx', { sessionId });
+export const exportScribeSessionAll = (sessionId: number) =>
+  invokeCommand<string[]>('export_scribe_session_all', { sessionId });
+export const revealPath = (path: string) =>
+  invokeCommand<void>('reveal_path', { path });
+export const searchScribeSessions = (query: string) =>
+  invokeCommand<ScribeEvent[]>('search_scribe_sessions', { query });
+export const generateScribeDocument = (sessionId: number) =>
+  invokeCommand<string>('generate_scribe_document', { sessionId });
+export const validateScribeLlmSettings = () =>
+  invokeCommand<{ ok: boolean; error?: string }>('validate_scribe_llm_settings');
+export const startScribeLlmLocal = () =>
+  invokeCommand<string>('start_scribe_llm_local');
+export const stopScribeLlmLocal = () =>
+  invokeCommand<void>('stop_scribe_llm_local');
+export const getScribeLlmLocalStatus = () =>
+  invokeCommand<{ running: boolean; port: number | null; base_url: string | null }>(
+    'get_scribe_llm_local_status'
+  );
 
 // Settings
 export const getSettings = () => invokeCommand<Settings>('get_settings');

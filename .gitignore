@@ -60,6 +60,7 @@ config.local.py
 .env.local
 *.bak
 CLAUDE.md
+.commandcode/
 docs-local/
 make/local.mk
 
@@ -69,3 +70,9 @@ assets/source/widgets/
 # ─── Screenshot harness ─────────────────────────────────────────────────────
 .screenshot-chrome-profile/
 assets/source/screenshots/raw/
+
+# agent handoffs (reports are kept)
+.handoff/*
+!.handoff/*/
+.handoff/*/*
+!.handoff/*/REPORT.md

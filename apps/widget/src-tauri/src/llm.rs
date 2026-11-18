@@ -1,0 +1,196 @@
+use crate::commands::AppState;
+use crate::settings::Settings;
+use crate::templates;
+use serde_json::json;
+
+/// Generate a document from a scribe session.
+///
+/// Phase 1: no LLM configured → returns the plain chronological markdown
+/// render. Phase 2: an OpenAI-compatible endpoint (base URL + key + model in
+/// Settings) is POSTed the template prompt + the session's raw captures.
+///
+/// When "use local llama.cpp" is enabled the local `llama-server` is started
+/// (if needed) and used instead of the configured remote base URL.
+///
+/// The document template is taken from the session and, when it was left as
+/// "general", re-inferred from the session's actual captures so the assembly
+/// style follows the content instead of a manual up-front choice.
+pub async fn generate_session_document(
+    app: &tauri::AppHandle,
+    state: &tauri::State<'_, AppState>,
+    session_id: i64,
+) -> Result<String, String> {
+    let (mut base_url, mut api_key, model, use_local, local_model, local_ctx) = {
+        let settings = state.settings.lock().map_err(|e| e.to_string())?;
+        (
+            settings.scribe_llm_base_url.clone().trim().to_string(),
+            settings.scribe_llm_api_key.clone(),
+            settings.scribe_llm_model.clone().trim().to_string(),
+            settings.scribe_llm_use_local,
+            settings.scribe_llm_local_model.clone(),
+            settings.scribe_llm_local_ctx,
+        )
+    };
+
+    // Resolve the template: the session's stored one, re-inferred from the
+    // captured content when it is still generic ("general").
+    let stored_template = state
+        .scribe
+        .get_session(session_id)?
+        .map(|s| s.template.clone())
+        .unwrap_or_default();
+    let content_text = collective_session_text(&state.scribe, session_id)?;
+    let template = if stored_template == "general" || stored_template.is_empty() {
+        templates::infer_template(&content_text).to_string()
+    } else {
+        stored_template
+    };
+
+    let raw = templates::render_session_markdown(&state.scribe, session_id)?;
+
+    if use_local {
+        match crate::llm_server::local_base_url() {
+            Some(url) => base_url = url,
+            None => {
+                if local_model.trim().is_empty() {
+                    return Err("Local LLM: no GGUF model path set in Scribe settings".to_string());
+                }
+                crate::logging::log_message("[scribe] Starting local llama-server for generation");
+                let info = crate::llm_server::start_llm_server(app, &local_model, local_ctx)?;
+                if !crate::llm_server::wait_for_llm_server(info.port).await {
+                    crate::llm_server::stop_llm_server();
+                    return Err("Local LLM: llama-server failed to start in time".to_string());
+                }
+                base_url = crate::llm_server::local_base_url()
+                    .ok_or("Local LLM: server port unavailable")?;
+            }
+        }
+        api_key = String::new();
+    }
+
+    if base_url.is_empty() {
+        crate::logging::log_message(
+            "[scribe] No LLM endpoint configured — returning plain session render",
+        );
+        return Ok(raw);
+    }
+
+    if api_key.is_empty() && !use_local {
+        return Err("Scribe LLM: API key is not set".to_string());
+    }
+
+    let url = base_url.trim_end_matches('/').to_string() + "/chat/completions";
+    let model = if model.is_empty() {
+        "gpt-4o-mini".to_string()
+    } else {
+        model
+    };
+
+    let system = templates::template_prompt(&template).to_string();
+    let user = format!(
+        "Here are the raw captures from a working session:\n\n---\n{}\n---\n\nTask: {}",
+        raw, system
+    );
+
+    let client = reqwest::Client::new();
+    let mut req = client
+        .post(&url)
+        .json(&json!({
+            "model": model,
+            "messages": [
+                { "role": "system", "content": system },
+                { "role": "user", "content": user },
+            ],
+            "temperature": 0.3,
+            "max_tokens": 4096,
+        }))
+        .timeout(std::time::Duration::from_secs(300));
+    if !api_key.is_empty() {
+        req = req.header("Authorization", format!("Bearer {}", api_key));
+    }
+
+    let resp = req
+        .send()
+        .await
+        .map_err(|e| format!("Scribe LLM request failed: {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Scribe LLM error {}: {}", status, body));
+    }
+
+    let json_resp: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Scribe LLM response parse failed: {}", e))?;
+    let content = json_resp
+        .pointer("/choices/0/message/content")
+        .and_then(|c| c.as_str())
+        .map(|s| s.trim().to_string())
+        .ok_or_else(|| "Scribe LLM returned no message content".to_string())?;
+
+    // LLMs routinely summarize screenshots away, so re-attach the actual images
+    // to the end of the returned markdown — the Settings preview and exports
+    // then always show them even without an LLM round-trip.
+    let screenshots = templates::session_screenshot_images(&state.scribe, session_id)?;
+    if !screenshots.trim().is_empty() {
+        return Ok(format!("{}\n\n## Screenshots\n\n{}", content, screenshots));
+    }
+    Ok(content)
+}
+
+/// Concatenate every textual capture in a session (dictation, clipboard copies,
+/// and screenshot OCR text) so template inference and the assembly prompt have
+/// the real content rather than just the session name.
+fn collective_session_text(
+    store: &crate::scribe::ScribeStore,
+    session_id: i64,
+) -> Result<String, String> {
+    let events = store.get_events(session_id)?;
+    let mut parts: Vec<String> = Vec::new();
+    for event in &events {
+        if let Some(content) = &event.content {
+            if !content.trim().is_empty() {
+                parts.push(content.clone());
+            }
+        }
+        if let Some(meta) = &event.metadata {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(meta) {
+                if let Some(ocr) = v.get("ocr").and_then(|o| o.as_str()) {
+                    if !ocr.trim().is_empty() {
+                        parts.push(ocr.to_string());
+                    }
+                }
+            }
+        }
+    }
+    Ok(parts.join("\n"))
+}
+
+/// Validate the scribe LLM settings before showtime — cheap and useful for the
+/// Settings UI to surface configuration problems immediately.
+pub fn validate_llm_settings(settings: &Settings) -> Result<(), String> {
+    if settings.scribe_llm_use_local {
+        let model = settings.scribe_llm_local_model.trim();
+        if model.is_empty() {
+            return Err("Local LLM: no GGUF model path set".to_string());
+        }
+        if !std::path::Path::new(model).exists() {
+            return Err(format!("Local LLM: GGUF model not found at {}", model));
+        }
+        return Ok(());
+    }
+    let base = settings.scribe_llm_base_url.trim();
+    let key = settings.scribe_llm_api_key.trim();
+    if base.is_empty() {
+        return Ok(()); // no LLM → fall back to plain export (fine)
+    }
+    if key.is_empty() {
+        return Err("API key is empty while a base URL is set".to_string());
+    }
+    if !(base.starts_with("http://") || base.starts_with("https://")) {
+        return Err("Base URL must start with http:// or https://".to_string());
+    }
+    Ok(())
+}

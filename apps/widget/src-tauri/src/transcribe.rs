@@ -165,7 +165,7 @@ pub async fn transcribe_verified(
         });
 
         let clean = report.is_clean();
-        if best.as_ref().map_or(true, |b| report.score > b.score) {
+        if best.as_ref().is_none_or(|b| report.score > b.score) {
             best = Some(report);
         }
         if clean {
@@ -212,7 +212,7 @@ async fn transcribe_once(
     let api_url = &settings.api_url;
     let is_openai = is_openai_api(api_url);
 
-    let timeout_secs = (duration_secs * 2.0).max(30.0).min(300.0) as u64;
+    let timeout_secs = (duration_secs * 2.0).clamp(30.0, 300.0) as u64;
 
     log_message(&format!(
         "[transcribe] Sending {}KB to {} (duration={:.1}s, timeout={}s, openai_compat={})",
@@ -278,7 +278,10 @@ async fn transcribe_once(
 
     if !resp.status().is_success() {
         let status = resp.status();
-        let body = resp.text().await.unwrap_or_else(|e| format!("<failed to read response body: {}>", e));
+        let body = resp
+            .text()
+            .await
+            .unwrap_or_else(|e| format!("<failed to read response body: {}>", e));
         return Err(format!("API error: HTTP {} - {}", status, body));
     }
 
@@ -339,7 +342,11 @@ fn loose_f64(value: Option<&serde_json::Value>) -> Option<f64> {
 }
 
 fn parse_segment(item: &serde_json::Value) -> Option<Segment> {
-    let text = item.get("text").and_then(|v| v.as_str())?.trim().to_string();
+    let text = item
+        .get("text")
+        .and_then(|v| v.as_str())?
+        .trim()
+        .to_string();
     Some(Segment {
         text,
         start: loose_f64(item.get("start")).unwrap_or(0.0),

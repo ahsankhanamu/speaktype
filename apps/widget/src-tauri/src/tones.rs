@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
+use std::f32::consts::PI;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::f32::consts::PI;
 
 use crate::logging::log_message;
 
@@ -23,8 +23,8 @@ fn generate_chord(freqs: &[f32], duration_secs: f32, volume: f32, sample_rate: u
             let t = i as f32 / sample_rate as f32;
 
             // Mix all frequencies together
-            let wave: f32 = freqs.iter().map(|f| (2.0 * PI * f * t).sin()).sum::<f32>()
-                / freqs.len() as f32;
+            let wave: f32 =
+                freqs.iter().map(|f| (2.0 * PI * f * t).sin()).sum::<f32>() / freqs.len() as f32;
 
             // Smooth fade envelope (prevents clicks)
             let env = if i < fade {

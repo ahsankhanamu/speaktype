@@ -143,7 +143,10 @@ impl History {
         let path = Self::audio_abs_path(relative);
         if path.exists() {
             if let Err(e) = fs::remove_file(&path) {
-                log_message(&format!("[history] Failed to delete audio {:?}: {}", path, e));
+                log_message(&format!(
+                    "[history] Failed to delete audio {:?}: {}",
+                    path, e
+                ));
             }
         }
     }

@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>History details tab</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.hx{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.86);font-size:14px}
+.glass{background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14),inset 0 1px 0 rgba(255,255,255,.08)}
+.cap{font:inherit;font-size:13px;height:32px;padding:0 14px;border-radius:16px;border:0;color:rgba(255,255,255,.9);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+.seg{display:inline-flex;padding:3px;border-radius:17px;gap:2px}
+.seg button{font:inherit;font-size:13px;height:26px;padding:0 14px;border:0;border-radius:13px;background:transparent;color:rgba(255,255,255,.7);cursor:pointer}
+.seg a{font-size:13px;height:26px;padding:0 14px;border-radius:13px;color:rgba(255,255,255,.7);text-decoration:none;display:inline-flex;align-items:center}
+.seg a[aria-selected="true"],.seg button[aria-selected="true"],.seg button[aria-checked="true"]{background:rgba(255,255,255,.18);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.day{font-size:12px;font-weight:600;color:rgba(255,255,255,.45);margin:18px 14px 6px}
+.row{display:flex;gap:12px;padding:12px 14px;border-radius:14px;text-decoration:none;color:inherit}
+.row:hover{background:rgba(255,255,255,.05)}
+.ic{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none}
+.tt{font-weight:600;color:rgba(255,255,255,.92);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sn{font-size:13px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mt{font-size:12px;color:rgba(255,255,255,.42);white-space:nowrap}
+.card{background:rgba(255,255,255,.05);border-radius:18px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08)}
+.r{display:flex;align-items:center;gap:14px;min-height:36px;padding:4px 16px;position:relative;white-space:nowrap;font-size:13px}
+.r + .r::before{content:"";position:absolute;left:16px;right:16px;top:0;height:.5px;background:rgba(255,255,255,.08)}
+.k{width:132px;flex:none;color:rgba(255,255,255,.55)}
+.v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:rgba(255,255,255,.9);font-variant-numeric:tabular-nums}
+.sec{font-size:15px;font-weight:600;margin:0 0 10px 4px;color:#fff}
+.mono{font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
+.thumb{width:52px;height:34px;border-radius:6px;background:#f5f5f4;position:relative;overflow:hidden;box-shadow:0 0 0 .5px rgba(0,0,0,.4)}
+.lbl{font-size:12px;color:rgba(255,255,255,.5);margin:0 0 6px}
+.ev{display:grid;grid-template-columns:48px minmax(0,1fr);column-gap:14px;margin-bottom:14px}
+.tm{font-size:12px;color:rgba(255,255,255,.4);text-align:right;padding-top:18px;font-variant-numeric:tabular-nums}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+.nav{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:8px;color:rgba(255,255,255,.92);text-decoration:none;transition:background-color .12s ease-out;font-size:17px}
+.nav:hover{background:rgba(255,255,255,.07)}
+.nav[aria-current="page"]:hover{background:#0a84ff}
+.ngrp{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.tile{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:none}
+</style>
+</helmet>
+<div class="hx" style="width:1280px;height:860px;background:#1e1e1e;border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12);display:flex;position:relative">
+  <nav style="width:256px;flex:none;background:#262628;padding:44px 10px 12px;display:flex;flex-direction:column;box-shadow:inset -.5px 0 0 rgba(0,0,0,.6);position:relative" aria-label="SpeakType">
+    <div style="position:absolute;top:18px;left:18px;display:flex;gap:8px" aria-hidden="true"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+    <label style="display:flex;align-items:center;gap:5px;height:32px;padding:0 13px;margin:0 0 14px;border-radius:16px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input type="search" placeholder="Search" aria-label="Search SpeakType" style="all:unset;flex:1;font-size:15px;color:#fff">
+    </label>
+    <a class="nav" href="#" style="height:48px;gap:10px;margin-bottom:10px;border-radius:7px">
+      <span style="width:32px;height:32px;border-radius:8px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 1px 2px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+      <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:600;color:rgba(255,255,255,.92);font-size:15px">SpeakType</span><span style="font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap">Version 1.0 · Up to date</span></span>
+    </a>
+    <div class="ngrp">
+      <a class="nav" href="Prompt.dc.html" aria-current="page" style="background:#0a84ff;color:#fff"><span class="tile" style="background:#30b0c7;box-shadow:0 0 0 .5px rgba(255,255,255,.45)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></span>History</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="#"><span class="tile" style="background:#8e8e93"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></span>General</a>
+      <a class="nav" href="SettingsAppearance.dc.html"><span class="tile" style="background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.25)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 4a8 8 0 0 0 0 16z" fill="#fff"></path></svg></span>Appearance</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="SettingsDictation.dc.html"><span class="tile" style="background:#0a84ff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>Dictation</a>
+      <a class="nav" href="Settings.dc.html"><span class="tile" style="background:#ff6a3d"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg></span>Sessions</a>
+      <a class="nav" href="SettingsProviders.dc.html"><span class="tile" style="background:#bf5af2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg></span>Providers</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="SettingsPermissions.dc.html"><span class="tile" style="background:#5e5ce6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>Permissions</a>
+      <a class="nav" href="#"><span class="tile" style="background:#8e8e93"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"></ellipse><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"></path></svg></span>Storage</a>
+      <a class="nav" href="#"><span class="tile" style="background:#636366"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg></span>Advanced</a>
+    </div>
+  </nav>
+  <section style="width:340px;flex:none;display:flex;flex-direction:column;box-shadow:inset -.5px 0 0 rgba(0,0,0,.6);overflow:hidden" aria-label="Results">
+    <div style="padding:40px 14px 6px;display:flex;flex-direction:column;gap:12px">
+      <label class="glass" style="display:flex;align-items:center;gap:8px;height:34px;padding:0 12px;border-radius:17px;box-shadow:0 0 0 2px rgba(10,132,255,.9)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input type="search" value="checkout" aria-label="Search history" style="all:unset;flex:1;color:#fff;font-size:14px">
+        <span style="font-size:12px;color:rgba(255,255,255,.45)">3 found</span>
+      </label>
+      <span class="seg glass" role="tablist" aria-label="Show" style="align-self:flex-start"><button type="button" role="tab" aria-selected="true">All</button><button type="button" role="tab" aria-selected="false">Sessions</button><button type="button" role="tab" aria-selected="false">Dictations</button></span>
+    </div>
+    <div style="padding:0 8px 8px;overflow:hidden">
+      <p class="day">Today</p>
+      <a class="row" href="#" aria-current="true" style="background:#0a84ff">
+        <span class="ic" style="background:rgba(255,255,255,.22)"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg></span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span class="tt" style="color:#fff">Checkout overlaps total on mobile</span><span class="sn" style="color:rgba(255,255,255,.85)">…the Pay button sits on top of the total</span><span class="mt" style="color:rgba(255,255,255,.75)">10:41 · 2 min · sent to Claude Code</span></span>
+      </a>
+      <a class="row" href="#">
+        <span class="ic glass"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg></span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span class="tt">Dictation in Slack</span><span class="sn">Pushed the checkout fix, can you retest…</span><span class="mt">10:52 · 9 s · pasted</span></span>
+      </a>
+      <p class="day">Monday</p>
+      <a class="row" href="#">
+        <span class="ic glass"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.8)" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg></span>
+        <span style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px"><span class="tt">Checkout copy review</span><span class="sn">The checkout heading should say Review order…</span><span class="mt">16:05 · 6 min · 5 marks</span></span>
+      </a>
+    </div>
+  </section>
+
+  <main style="flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden">
+    <header style="padding:40px 24px 0 24px;display:flex;align-items:flex-start;gap:10px">
+      <div style="flex:1;min-width:0">
+        <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-.022em;color:#fff">Checkout overlaps total on mobile</h1>
+        <p style="margin:6px 0 0;color:rgba(255,255,255,.55)">Today at 10:41 · 2 min 14 s · copied as an agent prompt</p>
+      </div>
+      <span style="display:inline-flex;align-items:stretch;height:32px;border-radius:16px;background:#0a84ff;overflow:hidden"><button type="button" title="Copy as Agent prompt" style="font:inherit;font-size:13px;font-weight:600;border:0;background:transparent;color:#fff;padding:0 12px 0 16px;cursor:default">Copy</button><span style="width:.5px;background:rgba(255,255,255,.35);margin:7px 0"></span><button type="button" aria-label="Copy as…" aria-haspopup="menu" style="border:0;background:transparent;color:#fff;padding:0 10px 0 8px;display:inline-flex;align-items:center;cursor:default"><svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"></path></svg></button></span>
+      <button class="cap glass" type="button">Show in Finder</button>
+      <button class="cap glass" type="button" aria-label="More actions" style="width:32px;padding:0;justify-content:center">•••</button>
+    </header>
+    <div style="padding:18px 24px 16px"><span class="seg glass" role="tablist" aria-label="View"><a href="Timeline.dc.html" role="tab" aria-selected="false">Timeline</a><a href="#" role="tab" aria-selected="false">Result</a><a href="Prompt.dc.html" role="tab" aria-selected="true">Details</a></span></div>
+    <div style="flex:1;display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:24px;padding:0 20px 20px;min-height:0">
+      <section>
+        <p class="sec">Transcription</p>
+        <div class="card">
+          <div class="r"><span class="k">Speech model</span><span class="v">Balanced</span></div>
+          <div class="r"><span class="k">Language</span><span class="v">English, detected</span></div>
+          <div class="r"><span class="k">Speech segments</span><span class="v">4</span></div>
+          <div class="r"><span class="k">Slowest segment</span><span class="v">0.8 s for 11 s of audio</span></div>
+          <div class="r"><span class="k">Ready after Stop</span><span class="v">0.2 s</span></div>
+        </div>
+        <p class="sec" style="margin-top:24px">Capture</p>
+        <div class="card">
+          <div class="r" style="min-height:48px"><span class="k">Marks</span><span class="v" style="display:flex;gap:8px;align-items:center">
+            <span class="thumb"><span style="position:absolute;left:12px;top:16px;width:26px;height:7px;border-radius:2px;background:#1d1d1f"></span><span style="position:absolute;left:7px;top:10px;width:36px;height:17px;border:1.5px solid #ef643c;border-radius:50%"></span></span>
+            <span class="thumb"><span style="position:absolute;left:6px;top:14px;width:40px;height:4px;background:#ffd60a;opacity:.7"></span></span>
+            <span class="thumb"><span style="position:absolute;left:10px;top:7px;width:30px;height:19px;border:1.5px solid #ef643c;border-radius:3px"></span></span>
+          </span></div>
+          <div class="r"><span class="k">Screens</span><span class="v">Built-in Retina display</span></div>
+          <div class="r"><span class="k">Framed to</span><span class="v">Chrome window</span></div>
+          <div class="r"><span class="k">Copied text</span><span class="v">1 clip from Chrome</span></div>
+        </div>
+      </section>
+      <section>
+        <p class="sec">Sent</p>
+        <div class="card">
+          <div class="r"><span class="k">Output</span><span class="v">Agent prompt · Bug report</span></div>
+          <div class="r"><span class="k">Copied</span><span class="v">10:44 · 142 words · 3 images</span></div>
+          <div class="r"><span class="k">Folder</span><span class="v mono" style="font-size:12px" title="~/Documents/SpeakType/Sessions/2026-11-18-checkout-overlaps-total-on-mobile">~/Documents/SpeakType/Sessions/2026-11-18-checkout-overlaps-total-on-mobile</span></div>
+        </div>
+        <p class="sec" style="margin-top:24px">Problems</p>
+        <div class="card"><div class="r"><span style="width:8px;height:8px;border-radius:50%;background:#30d158;flex:none"></span><span class="v">None. Everything was heard and captured.</span></div></div>
+        <p style="margin:14px 4px 0;font-size:13px;line-height:1.5;color:rgba(255,255,255,.5);white-space:normal">Something look wrong? <a href="Report.dc.html">Report a problem…</a> It opens with this session's details attached, and you choose what to send.</p>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

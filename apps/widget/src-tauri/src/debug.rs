@@ -183,13 +183,39 @@ enum DebugEvent {
     /// A pipelined chunk whose speech was accepted for decode. A silence
     /// stretch that the monitor committed but skipped is recorded as
     /// `Silence`, so the panel can show that no audio was lost.
-    Pipelined { idx: u32, start_secs: f64, end_secs: f64 },
-    FinalTail { idx: u32, start_secs: f64, end_secs: f64 },
-    PostHoc { idx: u32, start_secs: f64, end_secs: f64 },
-    Silence { start_secs: f64, end_secs: f64 },
-    ChunkAccepted { idx: u32, chars: usize, clean: bool, seeded: bool },
-    ChunkRejected { idx: u32, reason: String },
-    ChunkFailed { idx: u32, error: String },
+    Pipelined {
+        idx: u32,
+        start_secs: f64,
+        end_secs: f64,
+    },
+    FinalTail {
+        idx: u32,
+        start_secs: f64,
+        end_secs: f64,
+    },
+    PostHoc {
+        idx: u32,
+        start_secs: f64,
+        end_secs: f64,
+    },
+    Silence {
+        start_secs: f64,
+        end_secs: f64,
+    },
+    ChunkAccepted {
+        idx: u32,
+        chars: usize,
+        clean: bool,
+        seeded: bool,
+    },
+    ChunkRejected {
+        idx: u32,
+        reason: String,
+    },
+    ChunkFailed {
+        idx: u32,
+        error: String,
+    },
     Pass(PassEvent),
 }
 
@@ -247,7 +273,11 @@ pub fn finish_session(final_text: &str) -> u64 {
     let mut passes = Vec::new();
     for event in cur.events {
         match event {
-            DebugEvent::Pipelined { idx, start_secs, end_secs } => chunks.push(ChunkEvent {
+            DebugEvent::Pipelined {
+                idx,
+                start_secs,
+                end_secs,
+            } => chunks.push(ChunkEvent {
                 idx,
                 source: "pipelined".into(),
                 duration_secs: end_secs - start_secs,
@@ -258,7 +288,11 @@ pub fn finish_session(final_text: &str) -> u64 {
                 reason: String::new(),
                 seeded_prompt: false,
             }),
-            DebugEvent::FinalTail { idx, start_secs, end_secs } => chunks.push(ChunkEvent {
+            DebugEvent::FinalTail {
+                idx,
+                start_secs,
+                end_secs,
+            } => chunks.push(ChunkEvent {
                 idx,
                 source: "final_tail".into(),
                 duration_secs: end_secs - start_secs,
@@ -269,7 +303,11 @@ pub fn finish_session(final_text: &str) -> u64 {
                 reason: String::new(),
                 seeded_prompt: false,
             }),
-            DebugEvent::PostHoc { idx, start_secs, end_secs } => chunks.push(ChunkEvent {
+            DebugEvent::PostHoc {
+                idx,
+                start_secs,
+                end_secs,
+            } => chunks.push(ChunkEvent {
                 idx,
                 source: "post_hoc".into(),
                 duration_secs: end_secs - start_secs,
@@ -280,7 +318,10 @@ pub fn finish_session(final_text: &str) -> u64 {
                 reason: String::new(),
                 seeded_prompt: false,
             }),
-            DebugEvent::Silence { start_secs, end_secs } => chunks.push(ChunkEvent {
+            DebugEvent::Silence {
+                start_secs,
+                end_secs,
+            } => chunks.push(ChunkEvent {
                 idx: u32::MAX,
                 source: "silence".into(),
                 duration_secs: end_secs - start_secs,
@@ -291,9 +332,19 @@ pub fn finish_session(final_text: &str) -> u64 {
                 reason: "complete silence (skipped by speech gate)".into(),
                 seeded_prompt: false,
             }),
-            DebugEvent::ChunkAccepted { idx, chars, clean, seeded } => {
+            DebugEvent::ChunkAccepted {
+                idx,
+                chars,
+                clean,
+                seeded,
+            } => {
                 if let Some(c) = chunks.iter_mut().find(|c| c.idx == idx) {
-                    c.status = if clean { "accepted" } else { "accepted_cleaned" }.into();
+                    c.status = if clean {
+                        "accepted"
+                    } else {
+                        "accepted_cleaned"
+                    }
+                    .into();
                     c.chars = chars;
                     c.reason = if clean {
                         String::new()
@@ -319,7 +370,11 @@ pub fn finish_session(final_text: &str) -> u64 {
         }
     }
 
-    chunks.sort_by(|a, b| a.start_secs.partial_cmp(&b.start_secs).unwrap_or(std::cmp::Ordering::Equal));
+    chunks.sort_by(|a, b| {
+        a.start_secs
+            .partial_cmp(&b.start_secs)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
     passes.sort_by_key(|p| p.chunk_idx.unwrap_or(0));
 
     let session = Session {
@@ -354,23 +409,43 @@ pub fn finish_session(final_text: &str) -> u64 {
 }
 
 pub fn record_pipelined(idx: u32, start_secs: f64, end_secs: f64) {
-    push(DebugEvent::Pipelined { idx, start_secs, end_secs });
+    push(DebugEvent::Pipelined {
+        idx,
+        start_secs,
+        end_secs,
+    });
 }
 
 pub fn record_final_tail(idx: u32, start_secs: f64, end_secs: f64) {
-    push(DebugEvent::FinalTail { idx, start_secs, end_secs });
+    push(DebugEvent::FinalTail {
+        idx,
+        start_secs,
+        end_secs,
+    });
 }
 
 pub fn record_post_hoc(idx: u32, start_secs: f64, end_secs: f64) {
-    push(DebugEvent::PostHoc { idx, start_secs, end_secs });
+    push(DebugEvent::PostHoc {
+        idx,
+        start_secs,
+        end_secs,
+    });
 }
 
 pub fn record_silence(start_secs: f64, end_secs: f64) {
-    push(DebugEvent::Silence { start_secs, end_secs });
+    push(DebugEvent::Silence {
+        start_secs,
+        end_secs,
+    });
 }
 
 pub fn record_chunk_accepted(idx: u32, chars: usize, clean: bool, seeded: bool) {
-    push(DebugEvent::ChunkAccepted { idx, chars, clean, seeded });
+    push(DebugEvent::ChunkAccepted {
+        idx,
+        chars,
+        clean,
+        seeded,
+    });
 }
 
 pub fn record_chunk_rejected(idx: u32, reason: String) {
@@ -443,9 +518,9 @@ pub fn delete_session(id: u64) -> bool {
 
 /* ---- Persistence ---- */
 
-/// The collector is kept on disk as `debug_sessions.json` plus one downsampled
-/// WAV per session under `debug_audio/`, so the panel survives app restarts.
-/// In-memory audio is not reloaded eagerly; slices read the WAV on demand.
+// The collector is kept on disk as `debug_sessions.json` plus one downsampled
+// WAV per session under `debug_audio/`, so the panel survives app restarts.
+// In-memory audio is not reloaded eagerly; slices read the WAV on demand.
 
 #[cfg(not(test))]
 fn persist_path() -> PathBuf {
@@ -482,7 +557,10 @@ pub fn load_persisted() {
                 }
             },
             Err(e) => {
-                log_message(&format!("[debug] Failed to read debug_sessions.json: {}", e));
+                log_message(&format!(
+                    "[debug] Failed to read debug_sessions.json: {}",
+                    e
+                ));
                 Vec::new()
             }
         }
@@ -501,7 +579,10 @@ pub fn load_persisted() {
         let max_id = guard.iter().map(|s| s.id).max().unwrap_or(0);
         SESSION_SEQ.store(max_id.saturating_add(1), Ordering::SeqCst);
     }
-    log_message(&format!("[debug] Loaded {} persisted debug session(s)", count));
+    log_message(&format!(
+        "[debug] Loaded {} persisted debug session(s)",
+        count
+    ));
 }
 
 #[cfg(not(test))]
@@ -531,19 +612,16 @@ fn persist_session(session: &Session) {
 /// Rewrite `debug_sessions.json` from the in-memory ring buffer.
 #[cfg(not(test))]
 fn persist_sessions_only() {
-    match SESSIONS.lock() {
-        Ok(guard) => {
-            let all: Vec<Session> = guard.iter().cloned().collect();
-            match serde_json::to_string_pretty(&all) {
-                Ok(json) => {
-                    if let Err(e) = fs::write(persist_path(), json) {
-                        log_message(&format!("[debug] Failed to persist sessions: {}", e));
-                    }
+    if let Ok(guard) = SESSIONS.lock() {
+        let all: Vec<Session> = guard.iter().cloned().collect();
+        match serde_json::to_string_pretty(&all) {
+            Ok(json) => {
+                if let Err(e) = fs::write(persist_path(), json) {
+                    log_message(&format!("[debug] Failed to persist sessions: {}", e));
                 }
-                Err(e) => log_message(&format!("[debug] Failed to serialize sessions: {}", e)),
             }
+            Err(e) => log_message(&format!("[debug] Failed to serialize sessions: {}", e)),
         }
-        Err(_) => {}
     }
 }
 
@@ -560,7 +638,7 @@ fn delete_audio(id: u64) {
 #[cfg(not(test))]
 fn clear_persisted() {
     let _ = fs::create_dir_all(paths::config_dir());
-    let _ = fs::write(persist_path(), "[]".to_string());
+    let _ = fs::write(persist_path(), "[]");
     if let Ok(entries) = fs::read_dir(audio_dir()) {
         for entry in entries.flatten() {
             let _ = fs::remove_file(entry.path());

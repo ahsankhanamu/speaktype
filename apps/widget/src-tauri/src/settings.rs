@@ -54,6 +54,41 @@ pub struct Settings {
     /// input (which jumps around as Bluetooth/iPhone/mic connect and disconnect).
     #[serde(default)]
     pub input_device: Option<String>,
+    /// Scribe: hotkey that triggers a screenshot capture into the active session.
+    #[serde(default = "default_scribe_screenshot_hotkey")]
+    pub scribe_screenshot_hotkey: String,
+    /// Scribe: master mode switch. When enabled, dictation, clipboard copies,
+    /// and screenshots are captured into an auto-started session. The toggle is
+    /// a mode switch — the mic stays the only recording control.
+    #[serde(default = "default_scribe_enabled")]
+    pub scribe_enabled: bool,
+    /// Scribe: whether clipboard monitoring captures copied text/images during a session.
+    #[serde(default = "default_scribe_clipboard_monitor")]
+    pub scribe_clipboard_monitor: bool,
+    /// Scribe: upper bound on screenshots stored per session (oldest deleted first).
+    #[serde(default = "default_scribe_max_screenshots")]
+    pub scribe_max_screenshots: usize,
+    /// Scribe: default document template used by session generation.
+    #[serde(default = "default_scribe_template")]
+    pub scribe_template: String,
+    /// Scribe: OpenAI-compatible LLM configuration. Empty base_url means the LLM
+    /// assembly layer is disabled (MVP runs locally without it).
+    #[serde(default = "default_scribe_llm_base_url")]
+    pub scribe_llm_base_url: String,
+    #[serde(default)]
+    pub scribe_llm_api_key: String,
+    #[serde(default = "default_scribe_llm_model")]
+    pub scribe_llm_model: String,
+    /// Scribe: use the local llama.cpp server (llama-server) instead of the
+    /// configured OpenAI-compatible base URL.
+    #[serde(default = "default_scribe_llm_use_local")]
+    pub scribe_llm_use_local: bool,
+    /// Scribe: absolute path to the GGUF model served by llama-server.
+    #[serde(default)]
+    pub scribe_llm_local_model: String,
+    /// Scribe: context size for the local llama-server.
+    #[serde(default = "default_scribe_llm_local_ctx")]
+    pub scribe_llm_local_ctx: usize,
 }
 
 fn default_paste_mode() -> String {
@@ -92,6 +127,42 @@ fn default_quality_compression_ratio() -> f32 {
     2.4
 }
 
+fn default_scribe_screenshot_hotkey() -> String {
+    "Super+Option+S".to_string()
+}
+
+fn default_scribe_enabled() -> bool {
+    false
+}
+
+fn default_scribe_clipboard_monitor() -> bool {
+    true
+}
+
+fn default_scribe_max_screenshots() -> usize {
+    50
+}
+
+fn default_scribe_template() -> String {
+    "auto".to_string()
+}
+
+fn default_scribe_llm_base_url() -> String {
+    String::new()
+}
+
+fn default_scribe_llm_model() -> String {
+    String::new()
+}
+
+fn default_scribe_llm_use_local() -> bool {
+    false
+}
+
+fn default_scribe_llm_local_ctx() -> usize {
+    4096
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -117,6 +188,17 @@ impl Default for Settings {
             quality_avg_logprob: default_quality_avg_logprob(),
             quality_compression_ratio: default_quality_compression_ratio(),
             input_device: None,
+            scribe_screenshot_hotkey: default_scribe_screenshot_hotkey(),
+            scribe_enabled: default_scribe_enabled(),
+            scribe_clipboard_monitor: default_scribe_clipboard_monitor(),
+            scribe_max_screenshots: default_scribe_max_screenshots(),
+            scribe_template: default_scribe_template(),
+            scribe_llm_base_url: default_scribe_llm_base_url(),
+            scribe_llm_api_key: String::new(),
+            scribe_llm_model: default_scribe_llm_model(),
+            scribe_llm_use_local: default_scribe_llm_use_local(),
+            scribe_llm_local_model: String::new(),
+            scribe_llm_local_ctx: default_scribe_llm_local_ctx(),
         }
     }
 }
@@ -233,11 +315,13 @@ mod tests {
 
     #[test]
     fn round_trips_settings_window_geometry() {
-        let mut settings = Settings::default();
-        settings.settings_x = Some(120.0);
-        settings.settings_y = Some(64.0);
-        settings.settings_w = Some(960.0);
-        settings.settings_h = Some(700.0);
+        let settings = Settings {
+            settings_x: Some(120.0),
+            settings_y: Some(64.0),
+            settings_w: Some(960.0),
+            settings_h: Some(700.0),
+            ..Settings::default()
+        };
 
         let json = serde_json::to_string(&settings).expect("serialize");
         let parsed: Settings = serde_json::from_str(&json).expect("deserialize");

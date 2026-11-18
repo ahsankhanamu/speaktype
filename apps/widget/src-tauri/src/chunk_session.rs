@@ -30,11 +30,7 @@ pub struct ChunkSession {
 }
 
 impl ChunkSession {
-    pub fn start(
-        settings: Settings,
-        sample_rate: u32,
-        buffer: Arc<Mutex<Vec<f32>>>,
-    ) -> Self {
+    pub fn start(settings: Settings, sample_rate: u32, buffer: Arc<Mutex<Vec<f32>>>) -> Self {
         let committed_samples = Arc::new(AtomicUsize::new(0));
         let stop_monitor = Arc::new(AtomicBool::new(false));
         let chunk_results = Arc::new(Mutex::new(BTreeMap::new()));
@@ -196,10 +192,7 @@ impl ChunkSession {
             }
             log_message("[chunk] Short recording — single-shot transcription");
             debug::capture_audio(&samples, sample_rate);
-            debug::update_meta(
-                samples.len() as f64 / sample_rate as f64,
-                "single_shot",
-            );
+            debug::update_meta(samples.len() as f64 / sample_rate as f64, "single_shot");
             return transcribe_samples(&samples, sample_rate, &self.settings, None, None)
                 .await
                 .ok()
@@ -268,10 +261,7 @@ impl ChunkSession {
             combined.len()
         ));
         debug::capture_audio(&samples, sample_rate);
-        debug::update_meta(
-            samples.len() as f64 / sample_rate as f64,
-            "live_pipelined",
-        );
+        debug::update_meta(samples.len() as f64 / sample_rate as f64, "live_pipelined");
         debug::finish_session(&combined);
         Some(combined)
     }
@@ -286,6 +276,7 @@ impl Drop for ChunkSession {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn spawn_chunk_task(
     settings: Settings,
     sample_rate: u32,
@@ -313,7 +304,11 @@ fn spawn_chunk_task(
             }
         }
 
-        let prompt = prompt_tail.lock().ok().map(|p| p.clone()).unwrap_or_default();
+        let prompt = prompt_tail
+            .lock()
+            .ok()
+            .map(|p| p.clone())
+            .unwrap_or_default();
         let prompt_ref = if prompt.is_empty() {
             None
         } else {
@@ -324,13 +319,13 @@ fn spawn_chunk_task(
             Ok(report) if !report.is_empty() => {
                 let text = report.clean_text.clone();
                 if let Ok(mut results) = chunk_results.lock() {
-                    if results.contains_key(&idx) {
+                    if let std::collections::btree_map::Entry::Vacant(e) = results.entry(idx) {
+                        e.insert(text.clone());
+                    } else {
                         log_message(&format!(
                             "[chunk] Chunk {} result already stored — ignoring duplicate",
                             idx
                         ));
-                    } else {
-                        results.insert(idx, text.clone());
                     }
                 }
                 // Only fully clean chunks seed the next prompt: feeding salvaged

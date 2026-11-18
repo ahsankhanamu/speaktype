@@ -15,12 +15,7 @@ fn monitor_for_window(window: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
         .or_else(|| window.current_monitor().ok().flatten())?;
     let pos = monitor.position();
     let size = monitor.size();
-    Some((
-        pos.x,
-        pos.y,
-        size.width as i32,
-        size.height as i32,
-    ))
+    Some((pos.x, pos.y, size.width as i32, size.height as i32))
 }
 
 fn window_outer_size(window: &WebviewWindow) -> (i32, i32) {

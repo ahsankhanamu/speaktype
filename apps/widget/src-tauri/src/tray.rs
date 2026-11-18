@@ -34,8 +34,18 @@ pub fn set_tray_state(app: &tauri::AppHandle, state: TrayState) {
 
     let (icon_bytes, tooltip, record_label, as_template) = match state {
         TrayState::Idle => (ICON_IDLE, "SpeakType", "Start Recording", true),
-        TrayState::Recording => (ICON_RECORDING, "SpeakType — Recording...", "Stop Recording", false),
-        TrayState::Transcribing => (ICON_TRANSCRIBING, "SpeakType — Transcribing...", "Stop Recording", true),
+        TrayState::Recording => (
+            ICON_RECORDING,
+            "SpeakType — Recording...",
+            "Stop Recording",
+            false,
+        ),
+        TrayState::Transcribing => (
+            ICON_TRANSCRIBING,
+            "SpeakType — Transcribing...",
+            "Stop Recording",
+            true,
+        ),
         TrayState::Error => (ICON_ERROR, "SpeakType — Error", "Start Recording", false),
     };
 
@@ -67,4 +77,3 @@ pub fn flash_error(app: &tauri::AppHandle) {
         set_tray_state(&app, TrayState::Idle);
     });
 }
-

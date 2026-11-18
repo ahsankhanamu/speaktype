@@ -1,20 +1,28 @@
 mod audio;
+mod capture;
 mod chunk_session;
+mod clipboard;
 mod commands;
 mod debug;
+mod docx_export;
 mod download_queue;
 mod downloader;
 mod format;
 mod history;
 mod hotkey;
+mod llm;
+mod llm_server;
 mod logging;
+mod ocr;
 mod paste;
 mod paths;
 mod permissions;
 mod quality;
+mod scribe;
 mod segmented_download;
 mod server;
 mod settings;
+mod templates;
 mod tones;
 mod transcribe;
 mod tray;
@@ -67,6 +75,7 @@ pub fn run() {
             commands::get_audio_input_info,
             commands::get_input_devices,
             commands::log_frontend,
+            commands::copy_to_clipboard,
             commands::request_accessibility,
             commands::request_microphone_access,
             commands::get_onboarding_status,
@@ -106,6 +115,27 @@ pub fn run() {
             commands::clear_debug_sessions,
             commands::delete_debug_session,
             commands::get_debug_audio_slice,
+            commands::scribe_permissions,
+            commands::scribe_request_screen_access,
+            commands::start_scribe_session,
+            commands::stop_scribe_session,
+            commands::set_scribe_enabled,
+            commands::get_scribe_sessions,
+            commands::get_scribe_active_session,
+            commands::get_scribe_session_events,
+            commands::delete_scribe_session,
+            commands::capture_scribe_screenshot,
+            commands::scribe_session_image_path,
+            commands::export_scribe_session,
+            commands::export_scribe_session_all,
+            commands::export_scribe_session_docx,
+            commands::reveal_path,
+            commands::search_scribe_sessions,
+            commands::generate_scribe_document,
+            commands::validate_scribe_llm_settings,
+            commands::start_scribe_llm_local,
+            commands::stop_scribe_llm_local,
+            commands::get_scribe_llm_local_status,
         ])
         .setup(|app| {
             logging::init_logging();
@@ -290,6 +320,8 @@ pub fn run() {
                 target_window: Arc::new(Mutex::new(None)),
                 last_active_window,
                 chunk_session: Arc::new(Mutex::new(None)),
+                scribe: scribe::ScribeStore::init()?,
+                is_pasting: Arc::new(AtomicBool::new(false)),
             };
 
             app.manage(app_state);
@@ -384,6 +416,12 @@ pub fn run() {
             let is_rec_for_shortcut = is_recording.clone();
 
             hotkey::register_app_hotkey(app.handle(), &hotkey_str, is_rec_for_shortcut);
+
+            clipboard::spawn_clipboard_monitor(app.handle().clone());
+            let _ = clipboard::register_scribe_screenshot_hotkey(
+                app.handle(),
+                &settings.scribe_screenshot_hotkey,
+            );
 
             let record_item =
                 MenuItemBuilder::with_id("record", "Start Recording").build(app)?;
@@ -480,6 +518,7 @@ pub fn run() {
                 tauri::RunEvent::Exit => {
                     commands::stop_mic_test_for_app(app, "app_exit");
                     server::stop_server();
+                    llm_server::stop_llm_server();
                 }
                 // Clicking the dock icon: reveal the floating widget and open
                 // the settings window so the user always has a way back in.
@@ -509,7 +548,6 @@ pub fn run() {
 // the single biggest "don't break the UI" risk.
 #[cfg(test)]
 mod ipc_surface {
-    use super::*;
 
     // Exactly the set registered in `invoke_handler(generate_handler![...])`.
     // Keeping the two in sync is intentional and enforced by this test.
@@ -522,6 +560,7 @@ mod ipc_surface {
         "get_audio_input_info",
         "get_input_devices",
         "log_frontend",
+        "copy_to_clipboard",
         "request_accessibility",
         "request_microphone_access",
         "get_onboarding_status",
@@ -561,12 +600,34 @@ mod ipc_surface {
         "clear_debug_sessions",
         "delete_debug_session",
         "get_debug_audio_slice",
+        "scribe_permissions",
+        "scribe_request_screen_access",
+        "start_scribe_session",
+        "stop_scribe_session",
+        "set_scribe_enabled",
+        "get_scribe_sessions",
+        "get_scribe_active_session",
+        "get_scribe_session_events",
+        "delete_scribe_session",
+        "capture_scribe_screenshot",
+        "scribe_session_image_path",
+        "export_scribe_session",
+        "export_scribe_session_all",
+        "export_scribe_session_docx",
+        "reveal_path",
+        "search_scribe_sessions",
+        "generate_scribe_document",
+        "validate_scribe_llm_settings",
+        "start_scribe_llm_local",
+        "stop_scribe_llm_local",
+        "get_scribe_llm_local_status",
     ];
 
     // The frontend `ipc.ts` surface (mirrors src/settings/../lib/ipc.ts).
     // Every command the UI calls must exist in REGISTERED.
     const FRONTEND_USED: &[&str] = &[
         "log_frontend",
+        "copy_to_clipboard",
         "toggle_recording",
         "cancel_recording",
         "hide_widget",
@@ -613,6 +674,27 @@ mod ipc_surface {
         "get_model_progress",
         "cancel_model_download",
         "pause_model_download",
+        "scribe_permissions",
+        "scribe_request_screen_access",
+        "start_scribe_session",
+        "stop_scribe_session",
+        "set_scribe_enabled",
+        "get_scribe_sessions",
+        "get_scribe_active_session",
+        "get_scribe_session_events",
+        "delete_scribe_session",
+        "capture_scribe_screenshot",
+        "scribe_session_image_path",
+        "export_scribe_session",
+        "export_scribe_session_all",
+        "export_scribe_session_docx",
+        "reveal_path",
+        "search_scribe_sessions",
+        "generate_scribe_document",
+        "validate_scribe_llm_settings",
+        "start_scribe_llm_local",
+        "stop_scribe_llm_local",
+        "get_scribe_llm_local_status",
     ];
 
     #[test]
@@ -634,6 +716,10 @@ mod ipc_surface {
         let mut sorted = REGISTERED.to_vec();
         sorted.sort_unstable();
         sorted.dedup();
-        assert_eq!(sorted.len(), REGISTERED.len(), "duplicate command registration");
+        assert_eq!(
+            sorted.len(),
+            REGISTERED.len(),
+            "duplicate command registration"
+        );
     }
 }

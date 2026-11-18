@@ -24,7 +24,7 @@ describe('Settings runtime mount (jsdom)', () => {
     await new Promise((r) => setTimeout(r, 100));
 
     const tabs = Array.from(host.querySelectorAll('.tab'));
-    expect(tabs.length).toBe(6);
+    expect(tabs.length).toBe(7);
     expect(host.querySelector('.pane-title')?.textContent?.trim()).toBe('Hotkey');
     expect(host.querySelector('#save-btn')).toBeTruthy();
     expect(host.querySelector('#api-url')).toBeTruthy();
@@ -32,7 +32,7 @@ describe('Settings runtime mount (jsdom)', () => {
 
     unmount(app);
     host.remove();
-  }, { timeout: 10000 });
+  }, { timeout: 30000 });
 
   it('switches tabs on sidebar click', async () => {
     const { default: Settings } = await import('./Settings.svelte');

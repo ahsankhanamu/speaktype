@@ -15,6 +15,7 @@ SpeakType is push-to-talk voice typing with local Whisper transcription. Pick th
 | New Mac developer setup (CLI + signing) | [Setup on a new Mac](setup-new-mac.md) |
 | macOS permissions (mic + accessibility) | [Permissions](permissions.md) |
 | Privacy and data handling | [Privacy](privacy.md) |
+| Scribe — session-based voice + screenshot capture | [Scribe](scribe.md) |
 | CLI deep dive (flags, options) | [Client setup](client-setup.md) |
 | Security hardening notes | [Security](security.md) |
 

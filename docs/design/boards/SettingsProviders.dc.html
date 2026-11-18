@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Settings providers</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.st{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.85);font-size:13px}
+.nav{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border-radius:8px;color:rgba(255,255,255,.92);text-decoration:none;transition:background-color .12s ease-out;font-size:17px}
+.nav:hover{background:rgba(255,255,255,.07)}
+.nav[aria-current="page"]:hover{background:#0a84ff}
+.ngrp{display:flex;flex-direction:column;gap:2px;margin-bottom:14px}
+.tile{width:24px;height:24px;border-radius:6px;display:flex;align-items:center;justify-content:center;flex:none}
+.grp{background:#2a2a2c;border-radius:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.06)}
+.r{display:flex;align-items:center;gap:12px;min-height:50px;padding:8px 14px 8px 16px;position:relative}
+.r + .r::before{content:"";position:absolute;left:14px;right:0;top:0;height:.5px;background:rgba(255,255,255,.09)}
+.lab{flex:1;display:flex;flex-direction:column;gap:1px;min-width:0}
+.lab b{font-weight:400;font-size:14px;color:rgba(255,255,255,.9)}
+.lab span{font-size:12px;color:rgba(255,255,255,.45)}
+.sec{font-size:15px;font-weight:600;color:rgba(255,255,255,.85);margin:0 0 8px 2px}
+.kc{font-size:12px;min-width:22px;height:22px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:linear-gradient(180deg,#48484b,#3c3c3f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.5);color:rgba(255,255,255,.9);display:inline-flex;align-items:center;justify-content:center}
+.rec{display:inline-flex;align-items:center;gap:3px;height:28px;padding:0 4px;border-radius:15px;padding:0 6px;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12);cursor:pointer}
+.trig{font:inherit;display:inline-flex;align-items:center;gap:8px;height:28px;padding:0 10px 0 14px;border-radius:14px;border:0;background:#3a3a3c;box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4);color:rgba(255,255,255,.9);cursor:pointer;min-width:190px;white-space:nowrap}
+.btn{font:inherit;font-size:13px;height:28px;padding:0 14px;border-radius:14px;border:0;background:#3a3a3c;box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4);color:rgba(255,255,255,.9);cursor:pointer;white-space:nowrap}
+.ib{width:24px;height:24px;border-radius:12px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.radio{width:16px;height:16px;border-radius:50%;flex:none;box-sizing:border-box}
+.meta{font-size:12px;color:rgba(255,255,255,.45);white-space:nowrap;font-variant-numeric:tabular-nums}
+.r[role="radio"] .lab b{line-height:20px}
+.r[role="radio"] .lab > span{line-height:16px}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="st" style="width:1040px;height:900px;background:#1e1e1e;border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12);display:flex;position:relative">
+  <nav style="width:256px;flex:none;background:#262628;padding:44px 10px 12px;display:flex;flex-direction:column;box-shadow:inset -.5px 0 0 rgba(0,0,0,.6);position:relative" aria-label="SpeakType">
+    <div style="position:absolute;top:18px;left:18px;display:flex;gap:8px" aria-hidden="true"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+    <label style="display:flex;align-items:center;gap:5px;height:32px;padding:0 13px;margin:0 0 14px;border-radius:16px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.08)">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <input type="search" placeholder="Search" aria-label="Search SpeakType" style="all:unset;flex:1;font-size:15px;color:#fff">
+    </label>
+    <a class="nav" href="#" style="height:48px;gap:10px;margin-bottom:10px;border-radius:7px">
+      <span style="width:32px;height:32px;border-radius:8px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 1px 2px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+      <span style="display:flex;flex-direction:column;gap:1px;min-width:0"><span style="font-weight:600;color:rgba(255,255,255,.92);font-size:15px">SpeakType</span><span style="font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap">Version 1.0 · Up to date</span></span>
+    </a>
+    <div class="ngrp">
+      <a class="nav" href="Prompt.dc.html"><span class="tile" style="background:#30b0c7"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 8v4l3 2"></path></svg></span>History</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="#"><span class="tile" style="background:#8e8e93"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"></path></svg></span>General</a>
+      <a class="nav" href="SettingsAppearance.dc.html"><span class="tile" style="background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.25)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8"></circle><path d="M12 4a8 8 0 0 0 0 16z" fill="#fff"></path></svg></span>Appearance</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="SettingsDictation.dc.html"><span class="tile" style="background:#0a84ff"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>Dictation</a>
+      <a class="nav" href="Settings.dc.html"><span class="tile" style="background:#ff6a3d"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg></span>Sessions</a>
+      <a class="nav" href="SettingsProviders.dc.html" aria-current="page" style="background:#0a84ff;color:#fff"><span class="tile" style="background:#bf5af2;box-shadow:0 0 0 .5px rgba(255,255,255,.45)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg></span>Providers</a>
+    </div>
+    <div class="ngrp">
+      <a class="nav" href="SettingsPermissions.dc.html"><span class="tile" style="background:#5e5ce6"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></span>Permissions</a>
+      <a class="nav" href="#"><span class="tile" style="background:#8e8e93"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="6" rx="7" ry="3"></ellipse><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"></path></svg></span>Storage</a>
+      <a class="nav" href="#"><span class="tile" style="background:#636366"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"></path><circle cx="16" cy="6" r="2"></circle><circle cx="10" cy="12" r="2"></circle><circle cx="18" cy="18" r="2"></circle></svg></span>Advanced</a>
+    </div>
+  </nav>
+
+  <main style="flex:1;min-width:0;padding:44px 28px 24px;display:flex;flex-direction:column;gap:20px;overflow:hidden">
+    <div>
+      <h1 style="margin:0 0 4px 2px;font-size:20px;font-weight:600;letter-spacing:-.015em;color:#fff">Providers</h1>
+      <p style="margin:0 2px;color:rgba(255,255,255,.5)">Choose who turns your voice into text. On this Mac is private and works offline; a service can be faster on older Macs.</p>
+    </div>
+    <div>
+      <p class="sec">Speech to text</p>
+      <div style="display:flex;gap:12px" role="radiogroup" aria-label="Speech to text provider">
+        <div role="radio" aria-checked="false" tabindex="0" style="position:relative;flex:1;min-width:0;border-radius:16px;padding:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1);background:#2a2a2c;display:flex;flex-direction:column;gap:12px;cursor:default">
+          <span style="width:40px;height:40px;border-radius:10px;background:linear-gradient(180deg,#8e8e93,#636366);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 .5px 0 rgba(255,255,255,.25)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="5" width="16" height="11" rx="2"></rect><path d="M2 19h20"></path></svg></span>
+          <span style="display:flex;flex-direction:column;gap:3px"><b style="font-size:14px;font-weight:600;color:#fff;display:flex;align-items:center;gap:6px">On this Mac<span style="font-size:10px;font-weight:600;letter-spacing:.02em;padding:1px 6px;border-radius:6px;color:rgba(255,255,255,.75);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.3)">RECOMMENDED</span></b><span style="font-size:12px;line-height:1.4;color:rgba(255,255,255,.55)">Private and offline. Uses your Dictation speech model.</span></span>
+          
+        </div>
+        <div role="radio" aria-checked="false" tabindex="0" style="position:relative;flex:1;min-width:0;border-radius:16px;padding:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1);background:#2a2a2c;display:flex;flex-direction:column;gap:12px;cursor:default">
+          <span style="width:40px;height:40px;border-radius:10px;background:linear-gradient(180deg,#64d2ff,#0a84ff);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 .5px 0 rgba(255,255,255,.25)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="7" rx="2"></rect><rect x="4" y="13" width="16" height="7" rx="2"></rect><path d="M8 7.5h.01M8 16.5h.01"></path></svg></span>
+          <span style="display:flex;flex-direction:column;gap:3px"><b style="font-size:14px;font-weight:600;color:#fff;display:flex;align-items:center;gap:6px">Your own server</b><span style="font-size:12px;line-height:1.4;color:rgba(255,255,255,.55)">A whisper.cpp server on your network.</span></span>
+          
+        </div>
+        <div role="radio" aria-checked="true" tabindex="0" style="position:relative;flex:1;min-width:0;border-radius:16px;padding:16px;box-shadow:0 0 0 2px #0a84ff;background:rgba(10,132,255,.08);display:flex;flex-direction:column;gap:12px;cursor:default">
+          <span style="width:40px;height:40px;border-radius:10px;background:linear-gradient(180deg,#da8fff,#bf5af2);display:flex;align-items:center;justify-content:center;box-shadow:inset 0 .5px 0 rgba(255,255,255,.25)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4 4 0 0 1-.6-7.96A6 6 0 0 1 18 9a4.5 4.5 0 0 1-.5 9z"></path></svg></span>
+          <span style="display:flex;flex-direction:column;gap:3px"><b style="font-size:14px;font-weight:600;color:#fff;display:flex;align-items:center;gap:6px">Cloud service</b><span style="font-size:12px;line-height:1.4;color:rgba(255,255,255,.55)">OpenAI, Groq, Deepgram or any OpenAI-compatible API.</span></span>
+          <span style="position:absolute;right:12px;top:12px;width:20px;height:20px;border-radius:10px;background:#0a84ff;display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg></span>
+        </div>
+      </div>
+    </div>
+    <div>
+      <p class="sec">Cloud service</p>
+      <div class="grp">
+        <div class="r"><span style="width:18px;height:18px;border-radius:9px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)">1</span><div class="lab"><b>Service</b><span>Known services fill in the address for you</span></div><button class="trig" type="button" aria-haspopup="listbox"><span style="flex:1;text-align:left">Groq</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button></div>
+        <div class="r"><span style="width:18px;height:18px;border-radius:9px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)">2</span><div class="lab"><b>Address</b><span>Only needs editing for a custom service</span></div><span style="font:inherit;font-size:13px;height:28px;padding:0 12px;border-radius:14px;border:0;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff;box-sizing:border-box;display:inline-flex;align-items:center;width:300px;color:rgba(255,255,255,.6);font:12px ui-monospace,SFMono-Regular,Menlo,monospace">https://api.groq.com/openai/v1</span></div>
+        <div class="r"><span style="width:18px;height:18px;border-radius:9px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)">3</span><div class="lab"><b>API key</b><span>Saved in your Keychain. Showing it asks for Touch ID.</span></div><span style="font:inherit;font-size:13px;height:28px;padding:0 12px;border-radius:14px;border:0;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff;box-sizing:border-box;display:inline-flex;align-items:center;width:250px;padding-right:4px;gap:6px"><sc-if value="{{ hidden }}" hint-placeholder-val="{{ true }}"><span style="flex:1;letter-spacing:.15em">••••••••••3f9a</span><button type="button" onClick="{ toggleKey }" aria-label="Show API key" title="Show API key" style="width:24px;height:24px;border-radius:12px;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:default;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></sc-if><sc-if value="{{ shown }}" hint-placeholder-val="{{ false }}"><span style="flex:1;font:12px ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">gsk_8Fq2…Lw7d3f9a</span><button type="button" onClick="{ toggleKey }" aria-label="Hide API key" title="Hide API key" style="width:24px;height:24px;border-radius:12px;border:0;background:transparent;display:inline-flex;align-items:center;justify-content:center;cursor:default;flex:none"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18"></path><path d="M10.6 5.1A10 10 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.2M6.6 6.6C3.9 8.4 2 12 2 12s3.5 7 10 7a9.7 9.7 0 0 0 5.4-1.6"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg></button></sc-if></span><button class="btn" type="button">Connect</button></div>
+        <div class="r"><span style="width:18px;height:18px;border-radius:9px;flex:none;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;background:rgba(255,255,255,.1);color:rgba(255,255,255,.7)">4</span><div class="lab"><b>Model</b><span style="color:#30d158">Connected · 6 speech models found</span></div><span style="font:inherit;font-size:13px;height:28px;padding:0 12px;border-radius:14px;border:0;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff;box-sizing:border-box;display:inline-flex;align-items:center;width:260px;gap:8px;padding-right:10px" role="combobox" aria-expanded="false"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span style="flex:1">whisper-large-v3-turbo</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></span></div>
+        <div class="r"><span style="width:18px"></span><div class="lab"><b>Test</b><span style="color:#30d158">Works · 0.4 s for a 3 s test clip</span></div><button class="btn" type="button">Test again</button></div>
+      </div>
+    </div>
+    <div class="grp">
+      <div class="r" style="align-items:flex-start"><span style="width:8px;height:8px;border-radius:50%;background:#ff9f0a;margin-top:6px;flex:none"></span><div class="lab"><b>Your voice will be sent to Groq</b><span>Only the audio of each dictation and session narration. History, screenshots and sessions stay on this Mac. The widget shows a small cloud while this is on.</span></div></div>
+      <div class="r"><div class="lab"><b>If the service can't be reached, use On this Mac</b><span>Needs a downloaded speech model</span></div><span class="sw" style="background:#0a84ff" role="switch" aria-checked="true" aria-label="Fall back to on-device"><i style="right:2px"></i></span></div>
+    </div>
+    <div>
+      <p class="sec" style="display:flex;align-items:center;gap:8px">AI writing <span style="font-size:10px;font-weight:600;letter-spacing:.03em;padding:2px 6px;border-radius:5px;color:rgba(255,255,255,.75);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.3)">PRO · LATER</span></p>
+      <div class="grp">
+        <div class="r"><div class="lab"><b>Cleanup and notes</b><span>On this Mac (llama.cpp) or any OpenAI-compatible service. Used by cleanup modes and Notes output.</span></div><button class="trig" type="button" aria-haspopup="listbox"><span style="flex:1;text-align:left">Off</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button></div>
+      </div>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1040,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { show: false }; }
+  renderVals() {
+    const show = !!this.state.show;
+    return { shown: show, hidden: !show, toggleKey: () => this.setState({ show: !show }) };
+  }
+}
+</script>
+</body>
+</html>

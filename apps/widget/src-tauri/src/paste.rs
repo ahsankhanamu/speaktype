@@ -1,4 +1,5 @@
 use crate::logging::log_message;
+use std::time::{Duration, Instant};
 
 #[derive(Debug, Clone)]
 pub struct WindowInfo {
@@ -46,7 +47,10 @@ pub fn get_frontmost_window() -> Option<WindowInfo> {
         if pid == std::process::id() as i32 {
             return None;
         }
-        let name = front.localizedName().map(|s| s.to_string()).unwrap_or_default();
+        let name = front
+            .localizedName()
+            .map(|s| s.to_string())
+            .unwrap_or_default();
         #[cfg(target_os = "macos")]
         let bundle_id = front.bundleIdentifier().map(|s| s.to_string());
         Some(WindowInfo {
@@ -73,13 +77,71 @@ fn run_osascript(script: &str) -> bool {
     }
 }
 
-/// Focus a previously captured window. Tries, in order:
-///   1. `tell application id "<bundle_id>" to activate` (no Accessibility needed)
-///   2. System Events `set frontmost …` for the captured PID (needs Accessibility,
-///      but works even when LaunchServices can't resolve the app)
-///   3. System Events by process name (last resort)
+/// Focus a previously captured window and wait until it is actually frontmost.
+///
+/// Native `NSRunningApplication` activation is preferred: it needs neither the
+/// Automation (Apple Events) grant nor a syscall round-trip through `osascript`,
+/// and the poll makes the following synthetic keystroke deterministic instead
+/// of racing a fixed 50 ms sleep.
 pub fn focus_window(window: &WindowInfo) -> bool {
-    // 1) Bundle id activation (works without Accessibility permission).
+    if let Some(pid) = window.pid {
+        if activate_by_pid(pid) {
+            log_message(&format!(
+                "[window] Focus {:?}: ok (by pid {})",
+                window.name, pid
+            ));
+            return true;
+        }
+    }
+
+    if focus_by_name(window) {
+        return true;
+    }
+
+    log_message(&format!(
+        "[window] Focus {:?} failed: could not activate",
+        window.name
+    ));
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn activate_by_pid(pid: u32) -> bool {
+    use objc2_app_kit::{NSApplicationActivationOptions, NSRunningApplication, NSWorkspace};
+
+    let Some(app) = NSRunningApplication::runningApplicationWithProcessIdentifier(pid as i32)
+    else {
+        return false;
+    };
+    if !app.activateWithOptions(NSApplicationActivationOptions::ActivateAllWindows) {
+        return false;
+    }
+
+    let deadline = Instant::now() + Duration::from_millis(600);
+    loop {
+        let is_front = NSWorkspace::sharedWorkspace()
+            .frontmostApplication()
+            .map(|front| front.processIdentifier() == pid as i32)
+            .unwrap_or(false);
+        if is_front {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn activate_by_pid(_pid: u32) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn focus_by_name(window: &WindowInfo) -> bool {
+    // Bundle-id activation via LaunchServices. Kept as a fallback for processes
+    // NSRunningApplication cannot resolve (e.g. a moved .app).
     if let Some(id) = window
         .bundle_id
         .as_deref()
@@ -87,39 +149,28 @@ pub fn focus_window(window: &WindowInfo) -> bool {
     {
         let script = format!("tell application id \"{}\" to activate", id);
         if run_osascript(&script) {
-            log_message(&format!("[window] Focus {:?}: ok (by bundle id)", window.name));
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(150));
             return true;
         }
     }
 
-    // 2) PID-based activation via the Accessibility API.
-    if let Some(pid) = window.pid {
-        let script = format!(
-            "tell application \"System Events\" to set frontmost of \
-             (first application process whose unix id is {}) to true",
-            pid
-        );
-        if run_osascript(&script) {
-            log_message(&format!("[window] Focus {:?}: ok (by pid {})", window.name, pid));
-            std::thread::sleep(std::time::Duration::from_millis(50));
-            return true;
-        }
-    } else if !window.name.is_empty() {
-        // 3) No pid captured — fall back to process name.
+    if !window.name.is_empty() {
         let script = format!(
             "tell application \"System Events\" to set frontmost of \
              application process \"{}\" to true",
             window.name
         );
         if run_osascript(&script) {
-            log_message(&format!("[window] Focus {:?}: ok (by process name)", window.name));
-            std::thread::sleep(std::time::Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(150));
             return true;
         }
     }
 
-    log_message(&format!("[window] Focus {:?} failed: could not activate", window.name));
+    false
+}
+
+#[cfg(not(target_os = "macos"))]
+fn focus_by_name(_window: &WindowInfo) -> bool {
     false
 }
 
@@ -141,149 +192,192 @@ pub fn is_terminal(window: &WindowInfo) -> bool {
     false
 }
 
-/// Simulate Cmd+V (or Cmd+Shift+V for terminals) via osascript.
-/// This avoids enigo's requirement to run on the main thread on macOS.
-fn simulate_paste(use_shift: bool) {
-    let script = if use_shift {
-        r#"tell application "System Events" to keystroke "v" using {command down, shift down}"#
-    } else {
-        r#"tell application "System Events" to keystroke "v" using command down"#
+/// Send Cmd+V (or Cmd+Shift+V for terminals) as a synthetic keyboard event.
+///
+/// `CGEventPost` requires only the Accessibility grant. The previous
+/// `osascript` approach also required the user to allow SpeakType to control
+/// System Events (Automation), so a granted Accessibility toggle alone was not
+/// enough for pasting to work.
+#[cfg(target_os = "macos")]
+fn simulate_paste(use_shift: bool) -> bool {
+    use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    const KEY_V: u16 = 0x09;
+
+    let source = match CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
+        Ok(source) => source,
+        Err(_) => {
+            log_message("[paste] Failed to create CGEventSource");
+            return false;
+        }
     };
 
-    match std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(script)
-        .output()
-    {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                log_message(&format!("[paste] osascript failed: {}", stderr));
-            }
-        }
-        Err(e) => {
-            log_message(&format!("[paste] Failed to run osascript: {}", e));
-        }
+    let mut flags = CGEventFlags::CGEventFlagCommand;
+    if use_shift {
+        flags |= CGEventFlags::CGEventFlagShift;
     }
+
+    let (Ok(down), Ok(up)) = (
+        CGEvent::new_keyboard_event(source.clone(), KEY_V, true),
+        CGEvent::new_keyboard_event(source, KEY_V, false),
+    ) else {
+        log_message("[paste] Failed to create CGEvent for the paste keystroke");
+        return false;
+    };
+
+    down.set_flags(flags);
+    down.post(CGEventTapLocation::HID);
+    std::thread::sleep(Duration::from_millis(12));
+    up.set_flags(flags);
+    up.post(CGEventTapLocation::HID);
+    true
 }
 
-/// Simulate a single key press via osascript
-fn simulate_keypress(key_name: &str) {
-    let script = match key_name {
-        "enter" | "return" => {
-            r#"tell application "System Events" to key code 36"#.to_string()
+#[cfg(not(target_os = "macos"))]
+fn simulate_paste(_use_shift: bool) -> bool {
+    false
+}
+
+#[cfg(target_os = "macos")]
+fn simulate_keypress(key_name: &str) -> bool {
+    use core_graphics::event::{CGEvent, CGEventTapLocation, KeyCode};
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    let source = match CGEventSource::new(CGEventSourceStateID::CombinedSessionState) {
+        Ok(source) => source,
+        Err(_) => {
+            log_message("[post-paste] Failed to create CGEventSource");
+            return false;
         }
-        "tab" => {
-            r#"tell application "System Events" to key code 48"#.to_string()
+    };
+
+    if key_name.chars().count() == 1 {
+        let Ok(down) = CGEvent::new_keyboard_event(source.clone(), 0, true) else {
+            return false;
+        };
+        down.set_string(key_name);
+        down.post(CGEventTapLocation::HID);
+        if let Ok(up) = CGEvent::new_keyboard_event(source, 0, false) {
+            up.post(CGEventTapLocation::HID);
         }
-        "space" => {
-            r#"tell application "System Events" to key code 49"#.to_string()
-        }
-        "escape" | "esc" => {
-            r#"tell application "System Events" to key code 53"#.to_string()
-        }
-        "backspace" => {
-            r#"tell application "System Events" to key code 51"#.to_string()
-        }
-        "delete" => {
-            r#"tell application "System Events" to key code 117"#.to_string()
-        }
-        "up" => {
-            r#"tell application "System Events" to key code 126"#.to_string()
-        }
-        "down" => {
-            r#"tell application "System Events" to key code 125"#.to_string()
-        }
-        "left" => {
-            r#"tell application "System Events" to key code 123"#.to_string()
-        }
-        "right" => {
-            r#"tell application "System Events" to key code 124"#.to_string()
-        }
+        return true;
+    }
+
+    let keycode = match key_name {
+        "enter" | "return" => KeyCode::RETURN,
+        "tab" => KeyCode::TAB,
+        "space" => KeyCode::SPACE,
+        "escape" | "esc" => KeyCode::ESCAPE,
+        "backspace" => KeyCode::DELETE,
+        "delete" => KeyCode::FORWARD_DELETE,
+        "up" => KeyCode::UP_ARROW,
+        "down" => KeyCode::DOWN_ARROW,
+        "left" => KeyCode::LEFT_ARROW,
+        "right" => KeyCode::RIGHT_ARROW,
         other => {
-            // For single characters, use keystroke
-            format!(
-                r#"tell application "System Events" to keystroke "{}""#,
-                other
-            )
+            log_message(&format!("[post-paste] Unsupported key '{}'", other));
+            return false;
         }
     };
 
-    match std::process::Command::new("osascript")
-        .arg("-e")
-        .arg(&script)
-        .output()
-    {
-        Ok(output) => {
-            if !output.status.success() {
-                let stderr = String::from_utf8_lossy(&output.stderr);
-                log_message(&format!("[post-paste] keypress '{}' failed: {}", key_name, stderr.trim()));
-            }
-        }
-        Err(e) => {
-            log_message(&format!("[post-paste] osascript failed for '{}': {}", key_name, e));
-        }
-    }
+    let (Ok(down), Ok(up)) = (
+        CGEvent::new_keyboard_event(source.clone(), keycode, true),
+        CGEvent::new_keyboard_event(source, keycode, false),
+    ) else {
+        return false;
+    };
+    down.post(CGEventTapLocation::HID);
+    std::thread::sleep(Duration::from_millis(12));
+    up.post(CGEventTapLocation::HID);
+    true
 }
 
-/// Press configured keys after pasting, if any
-pub fn press_post_paste_keys(post_paste_keys: Option<&str>) {
+#[cfg(not(target_os = "macos"))]
+fn simulate_keypress(_key_name: &str) -> bool {
+    false
+}
+
+/// Press configured keys after pasting, if any.
+fn press_post_paste_keys(post_paste_keys: Option<&str>) {
     let keys_str = match post_paste_keys {
         Some(k) if !k.is_empty() => k,
         _ => return,
     };
 
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    std::thread::sleep(Duration::from_millis(100));
 
     for key_name in keys_str.split('+') {
         let key = key_name.trim().to_lowercase();
-        simulate_keypress(&key);
-        std::thread::sleep(std::time::Duration::from_millis(50));
+        if !simulate_keypress(&key) {
+            log_message(&format!("[post-paste] Could not send key '{}'", key));
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 
-/// Paste text into the target window
-pub fn paste_text(text: &str, target_window: Option<&WindowInfo>) {
-    // Save old clipboard
+/// Paste text into the target window and report whether the keystroke was
+/// delivered. On failure the transcript is deliberately left on the clipboard
+/// so it can still be pasted manually.
+pub fn paste_text(
+    text: &str,
+    target_window: Option<&WindowInfo>,
+    post_paste_keys: Option<&str>,
+) -> bool {
     let old_clipboard = arboard::Clipboard::new()
         .ok()
         .and_then(|mut cb| cb.get_text().ok());
 
-    // Set new clipboard
-    if let Ok(mut clipboard) = arboard::Clipboard::new() {
-        if let Err(e) = clipboard.set_text(text) {
-            log_message(&format!("[paste] Failed to set clipboard: {}", e));
-            return;
-        }
-    } else {
-        log_message("[paste] Failed to open clipboard");
-        return;
-    }
-
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    // Focus target window
-    if let Some(window) = target_window {
-        if !focus_window(window) {
-            log_message("[paste] Could not focus window — text kept on clipboard");
-            return;
-        }
-    } else {
-        log_message("[paste] No target window — text kept on clipboard");
-        return;
-    }
-
-    // Simulate paste keystroke via osascript (must use main thread-safe API on macOS)
-    let use_shift = target_window.map_or(false, |w| is_terminal(w));
-    simulate_paste(use_shift);
-
-    // Restore old clipboard after 500ms
-    if let Some(old) = old_clipboard {
-        std::thread::spawn(move || {
-            std::thread::sleep(std::time::Duration::from_millis(500));
-            if let Ok(mut clipboard) = arboard::Clipboard::new() {
-                let _ = clipboard.set_text(old);
+    match arboard::Clipboard::new() {
+        Ok(mut clipboard) => {
+            if let Err(e) = clipboard.set_text(text) {
+                log_message(&format!("[paste] Failed to set clipboard: {}", e));
+                return false;
             }
-        });
+        }
+        Err(e) => {
+            log_message(&format!("[paste] Failed to open clipboard: {}", e));
+            return false;
+        }
     }
+
+    if !crate::permissions::check_accessibility(false) {
+        log_message(
+            "[paste] Accessibility permission missing — text left on clipboard; enable SpeakType \
+             under Privacy & Security → Accessibility",
+        );
+        return false;
+    }
+
+    let Some(window) = target_window else {
+        log_message("[paste] No target window — text kept on clipboard");
+        return false;
+    };
+    if !focus_window(window) {
+        log_message("[paste] Could not focus window — text kept on clipboard");
+        return false;
+    }
+
+    // A non-activating panel can hand off focus a beat after activation, so
+    // give the target one more moment before posting the keystroke.
+    std::thread::sleep(Duration::from_millis(80));
+
+    if !simulate_paste(is_terminal(window)) {
+        log_message("[paste] Failed to send paste keystroke — text kept on clipboard");
+        return false;
+    }
+
+    press_post_paste_keys(post_paste_keys);
+
+    // Keep the transcript on the clipboard long enough for the target app to
+    // read it, then restore the user's previous clipboard. Done synchronously
+    // so the clipboard monitor sees `is_pasting` for the whole window.
+    if let Some(old) = old_clipboard {
+        std::thread::sleep(Duration::from_millis(600));
+        if let Ok(mut clipboard) = arboard::Clipboard::new() {
+            let _ = clipboard.set_text(old);
+        }
+    }
+
+    true
 }

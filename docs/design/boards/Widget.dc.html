@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Widget, session bar and quick review</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.w{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;font-size:13px;color:rgba(255,255,255,.88)}
+.cap{font-size:12px;font-weight:600;color:#1d1d1f;margin:0}
+.sub{font-size:12px;line-height:1.45;color:#6e6e73;margin:0;max-width:220px}
+.cell{display:flex;flex-direction:column;align-items:flex-start;gap:10px;flex:none;max-width:300px}
+.mi{display:flex;align-items:center;gap:10px;min-height:36px;padding:4px 9px;border-radius:6px}
+.lv{display:flex;align-items:flex-end;gap:2px;height:12px;flex:none}
+.lv span{width:3px;border-radius:1px}
+.stage{height:64px;display:flex;align-items:center}
+.pill{background:rgba(40,40,42,.96);border-radius:999px;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.25),0 6px 18px rgba(0,0,0,.25);display:flex;align-items:center;white-space:nowrap}
+.ib{width:26px;height:26px;border-radius:13px;border:0;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;flex:none}
+.hb{font:inherit;font-size:12px;height:26px;padding:0 10px;border-radius:13px;border:0;background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;flex:none}
+.bar{width:2px;border-radius:1px;background:rgba(255,255,255,.85)}
+.n{font-size:12px;color:rgba(255,255,255,.6);font-variant-numeric:tabular-nums}
+.kc{font-size:11px;min-width:18px;height:18px;padding:0 4px;box-sizing:border-box;border-radius:4px;background:linear-gradient(180deg,#48484b,#3c3c3f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.12),0 1px 0 rgba(0,0,0,.5);color:rgba(255,255,255,.9);display:inline-flex;align-items:center;justify-content:center}
+.thumb{width:104px;height:66px;border-radius:6px;background:#fbfbfa;position:relative;overflow:hidden;box-shadow:0 0 0 .5px rgba(0,0,0,.5);flex:none}
+.btn{font:inherit;height:24px;padding:0 10px;border-radius:6px;border:0;background:#3a3a3c;box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4);color:rgba(255,255,255,.9);cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:6px}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="w" style="width:1280px;height:1200px;box-sizing:border-box;background:#e8e8ea;padding:40px 48px;display:grid;grid-template-columns:minmax(0,1fr) 460px;column-gap:48px">
+  <div style="display:flex;flex-direction:column;gap:30px;min-width:0">
+    <div>
+      <h2 style="margin:0;font-size:20px;font-weight:600;letter-spacing:-.015em;color:#1d1d1f">Widget and session bar</h2>
+      <p class="sub" style="margin-top:4px">One floating object that changes shape. It never takes focus from the app you're in.</p>
+    </div>
+
+    <div style="display:flex;flex-wrap:wrap;row-gap:26px;column-gap:40px">
+      <div class="cell">
+        <div class="stage"><div class="pill" style="width:44px;height:44px;justify-content:center">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+        </div></div>
+        <p class="cap">Idle</p><p class="sub">Hover shows the shortcut. Drag to move.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:40px;padding:0 7px 0 8px;gap:10px;box-shadow:0 0 28px rgba(255,69,58,.34),0 10px 26px rgba(0,0,0,.16)">
+          <button class="ib" type="button" aria-label="Cancel"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+          <span style="display:flex;align-items:center;gap:2px;height:18px" aria-hidden="true"><span class="bar" style="height:5px"></span><span class="bar" style="height:10px"></span><span class="bar" style="height:16px"></span><span class="bar" style="height:8px"></span><span class="bar" style="height:13px"></span><span class="bar" style="height:18px"></span><span class="bar" style="height:9px"></span><span class="bar" style="height:6px"></span><span class="bar" style="height:11px"></span></span>
+          <span class="n">0:07</span>
+          <button class="ib" type="button" aria-label="Stop" style="background:rgba(255,69,58,.2)"><span style="width:8px;height:8px;border-radius:2px;background:#ff453a"></span></button>
+        </div></div>
+        <p class="cap">Recording</p><p class="sub">Shows within 100 ms. Esc cancels.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:40px;padding:0 18px;gap:6px" aria-label="Transcribing">
+          <span style="width:6px;height:6px;border-radius:50%;background:#fff"></span><span style="width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.55)"></span><span style="width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.25)"></span>
+        </div></div>
+        <p class="cap">Transcribing</p><p class="sub">A quiet pulse. No percentages.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:40px;padding:0 16px;gap:8px;box-shadow:0 0 28px rgba(10,132,255,.34),0 10px 26px rgba(0,0,0,.16)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#64b5ff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"></path></svg>
+          <span style="font-size:12px">Getting ready…</span>
+        </div></div>
+        <p class="cap">Starting up</p><p class="sub">Shown instantly if the speech model is still loading. Recording starts by itself when it's ready.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:40px;padding:0 16px;gap:8px;box-shadow:0 0 28px rgba(176,104,36,.5),0 10px 26px rgba(0,0,0,.16)">
+          <span style="width:7px;height:7px;border-radius:50%;background:#ff9f0a"></span>
+          <span style="font-size:12px;color:rgba(255,255,255,.85)">Didn't catch that</span>
+        </div></div>
+        <p class="cap">No speech</p><p class="sub">Nothing is pasted. Fades after 2 s.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="width:44px;height:44px;justify-content:center;box-shadow:0 0 28px rgba(48,209,88,.34),0 10px 26px rgba(0,0,0,.16)">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="#30d158" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg>
+        </div></div>
+        <p class="cap">Pasted</p><p class="sub">Half a second, then back to idle.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:40px;padding:0 7px 0 14px;gap:10px">
+          <span style="font-size:12px">Copied. Press <span class="kc">⌘</span><span class="kc" style="margin-left:2px">V</span> to paste</span>
+          <button class="hb" type="button">Paste again</button>
+        </div></div>
+        <p class="cap">Couldn't paste</p><p class="sub">No text field had focus. Nothing is lost.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:40px;padding:0 7px 0 14px;gap:10px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#ff9f0a"></span>
+          <span style="font-size:12px">Microphone unavailable</span>
+          <button class="hb" type="button" aria-haspopup="menu">Choose mic</button>
+        </div></div>
+        <p class="cap">Problem</p><p class="sub">Plain words and one way out.</p>
+      </div>
+    </div>
+
+    <div style="height:.5px;background:rgba(0,0,0,.12)"></div>
+
+    <div style="display:flex;flex-direction:column;gap:26px">
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:42px;padding:0 7px 0 14px;gap:12px">
+          <span style="width:7px;height:7px;border-radius:50%;background:#ef643c"></span>
+          <span class="n" style="color:#fff">02:14</span>
+          <button class="hb" type="button" aria-label="Mute microphone" title="Mute (⌃⌘)" style="background:transparent;padding:0 6px;gap:2px;height:26px"><span style="display:flex;align-items:center;gap:2px;height:16px" aria-hidden="true"><span class="bar" style="height:5px;background:rgba(255,255,255,.75)"></span><span class="bar" style="height:10px;background:rgba(255,255,255,.75)"></span><span class="bar" style="height:15px;background:rgba(255,255,255,.75)"></span><span class="bar" style="height:8px;background:rgba(255,255,255,.75)"></span><span class="bar" style="height:5px;background:rgba(255,255,255,.75)"></span></span></button>
+          <span style="width:.5px;height:18px;background:rgba(255,255,255,.2)"></span>
+          <span class="n" role="img" aria-label="3 marks" title="3 marks" style="display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.85)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ef643c" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>3</span>
+          <span class="n" role="img" aria-label="1 copied clip" title="1 copied clip" style="display:flex;align-items:center;gap:5px;color:rgba(255,255,255,.85)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.75)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1"></rect><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path></svg>1</span>
+          <span style="width:.5px;height:18px;background:rgba(255,255,255,.2)"></span>
+          <button class="hb" type="button" aria-pressed="false" title="Draw without holding a key"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.85)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"></path><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"></path></svg>Pen</button>
+          <button class="hb" type="button" style="background:#fff;color:#1d1d1f;font-weight:500">Stop</button>
+        </div></div>
+        <p class="cap">Session — live</p><p class="sub" style="max-width:520px">The moving level is the mic: click it to mute (it turns into a crossed-out mic). Real 16 pt icons count marks and copied clips; hover for labels. Hold <span style="font-weight:600;color:#1d1d1f">Right ⌥</span> anywhere to draw, or use Pen.</p>
+      </div>
+      <div class="cell">
+        <div class="stage"><div class="pill" style="height:42px;padding:0 7px 0 14px;gap:10px">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#30d158" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg>
+          <span>Session saved</span>
+          <span class="n">3 marks · 1 clip</span>
+          <button class="hb" type="button" aria-expanded="true" style="background:rgba(255,255,255,.16)">Review</button>
+          <button class="hb" type="button" style="background:#0a84ff;color:#fff;font-weight:500">Copy</button>
+        </div></div>
+        <p class="cap">Session — stopped</p><p class="sub">Copy is ready instantly. Review opens the panel on the right, attached to the bar.</p>
+      </div>
+    </div>
+    <div style="height:.5px;background:rgba(0,0,0,.12)"></div>
+
+    <div class="cell" style="max-width:none">
+      <div style="display:flex;align-items:flex-start;gap:24px">
+        <div style="display:flex;flex-direction:column;align-items:flex-start;gap:6px">
+          <div class="pill" style="width:44px;height:44px;justify-content:center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></div>
+          <div role="menu" aria-label="Microphone" style="width:320px;padding:5px;box-sizing:border-box;border-radius:10px;background:rgba(44,44,46,.97);box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28)">
+            <p style="margin:4px 9px 6px;font-size:11px;font-weight:600;color:rgba(255,255,255,.5)">Microphone</p>
+            <div class="mi" role="menuitemradio" aria-checked="true">
+              <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg>
+              <span style="flex:1;display:flex;flex-direction:column"><span>AirPods Pro</span><span style="font-size:11px;color:rgba(255,255,255,.5)">Bluetooth · lower quality while in use</span></span>
+              <span class="lv" aria-label="Quiet" role="img"><span style="height:3px;background:rgba(255,255,255,.3)"></span><span style="height:3px;background:rgba(255,255,255,.3)"></span><span style="height:3px;background:rgba(255,255,255,.3)"></span><span style="height:3px;background:rgba(255,255,255,.3)"></span></span>
+            </div>
+            <div class="mi" role="menuitemradio" aria-checked="false" style="background:#0a84ff">
+              <span style="width:12px"></span>
+              <span style="flex:1;display:flex;flex-direction:column"><span style="color:#fff">MacBook Pro Microphone</span><span style="font-size:11px;color:rgba(255,255,255,.8)">Hearing you now</span></span>
+              <span class="lv" aria-label="Hearing you" role="img"><span style="height:5px;background:#fff"></span><span style="height:9px;background:#fff"></span><span style="height:12px;background:#fff"></span><span style="height:7px;background:rgba(255,255,255,.5)"></span></span>
+            </div>
+            <div class="mi" role="menuitemradio" aria-checked="false">
+              <span style="width:12px"></span>
+              <span style="flex:1;display:flex;flex-direction:column"><span>Studio Display Microphone</span><span style="font-size:11px;color:rgba(255,255,255,.5)">Not connected</span></span>
+              <span style="font-size:11px;color:rgba(255,255,255,.35)">—</span>
+            </div>
+            <div style="height:.5px;background:rgba(255,255,255,.12);margin:5px 9px"></div>
+            <div class="mi" style="min-height:24px">Microphone settings…</div>
+          </div>
+        </div>
+        <div style="padding-top:60px;max-width:300px">
+          <p class="cap">Choose a microphone</p>
+          <p class="sub" style="margin-top:4px">Opens from "Choose mic", or right-click the widget → Microphone (right-click menu: Microphone ▸, History, Settings, Hide widget). "System default" stays as the first choice. Each microphone shows its own live level, so you find the right one just by talking: the one whose bars move is the one hearing you.</p>
+          <p class="sub" style="margin-top:10px">If the chosen mic disconnects mid-dictation, SpeakType switches to the built-in mic, keeps recording, and says so in the pill.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <aside aria-label="Quick review" style="align-self:center;width:460px;border-radius:20px;background:rgba(36,36,38,.98);box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.35),0 18px 44px rgba(0,0,0,.28);display:flex;flex-direction:column;overflow:hidden;font-size:14px">
+    <header style="padding:20px 20px 14px">
+      <input type="text" value="Checkout overlaps total on mobile" aria-label="Session name" style="all:unset;display:block;width:100%;font-size:17px;font-weight:600;letter-spacing:-.01em;color:#fff">
+      <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,.5)">2 min 14 s · 3 marks · 1 clip</p>
+    </header>
+    <div style="display:flex;gap:10px;padding:0 20px 16px;overflow:hidden">
+      <span class="thumb" style="width:120px;height:76px;border-radius:10px"><span style="position:absolute;left:14px;top:12px;width:50px;height:7px;border-radius:2px;background:#1d1d1f"></span><span style="position:absolute;left:14px;top:34px;width:92px;height:.5px;background:#d2d2d7"></span><span style="position:absolute;left:46px;top:42px;width:56px;height:14px;border-radius:3px;background:#1d1d1f"></span><span style="position:absolute;left:34px;top:32px;width:76px;height:32px;border:2px solid #ef643c;border-radius:50%"></span><button type="button" aria-label="Remove mark" style="position:absolute;right:6px;top:6px;width:22px;height:22px;border-radius:11px;border:0;background:rgba(0,0,0,.55);color:#fff;font-size:12px;line-height:22px;padding:0;cursor:pointer">✕</button></span>
+      <span class="thumb" style="width:120px;height:76px;border-radius:10px"><span style="position:absolute;left:12px;top:30px;width:92px;height:6px;background:#ffd60a;opacity:.7;border-radius:2px"></span><span style="position:absolute;left:12px;top:14px;width:70px;height:6px;border-radius:2px;background:#c7c7cc"></span></span>
+      <span class="thumb" style="width:120px;height:76px;border-radius:10px"><span style="position:absolute;left:20px;top:14px;width:76px;height:46px;border:2px solid #ef643c;border-radius:5px"></span></span>
+    </div>
+    <div style="margin:0 20px;padding:12px 14px;border-radius:14px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1);font-size:14px;line-height:1.55;color:rgba(255,255,255,.9);height:120px;overflow:hidden" role="textbox" aria-multiline="true" aria-label="What you said">
+      On the checkout page at mobile widths, the Pay button sits on top of the total. It should drop below the total and go full width.<br><br>And this spacing should match the cart page — compare with this one.
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;padding:18px 20px 0">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="width:64px;font-size:13px;color:rgba(255,255,255,.55)">Send as</span>
+        <span style="display:inline-flex;padding:3px;border-radius:17px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)" role="radiogroup" aria-label="Send as">
+          <button type="button" role="radio" aria-checked="true" style="font:inherit;font-size:13px;height:26px;padding:0 14px;border:0;border-radius:13px;background:rgba(255,255,255,.18);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)">Agent prompt</button>
+          <button type="button" role="radio" aria-checked="false" style="font:inherit;font-size:13px;height:26px;padding:0 14px;border:0;border-radius:13px;background:transparent;color:rgba(255,255,255,.7)">Chat</button>
+          <button type="button" role="radio" aria-checked="false" style="font:inherit;font-size:13px;height:26px;padding:0 14px;border:0;border-radius:13px;background:transparent;color:rgba(255,255,255,.7)">Notes</button>
+        </span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="width:64px;font-size:13px;color:rgba(255,255,255,.55)">Template</span>
+        <button type="button" aria-haspopup="listbox" style="font:inherit;font-size:13px;display:inline-flex;align-items:center;gap:10px;height:32px;padding:0 12px 0 14px;border-radius:16px;border:0;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff;cursor:pointer;min-width:180px"><span style="flex:1;text-align:left">Bug report</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+      </div>
+    </div>
+    <footer style="display:flex;align-items:center;gap:12px;padding:20px">
+      <a href="Timeline.dc.html" style="font-size:13px">Open in History</a>
+      <span style="flex:1"></span>
+      <button type="button" style="font:inherit;font-size:13px;height:32px;padding:0 16px;border-radius:16px;border:0;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:rgba(255,255,255,.85);cursor:pointer">Close</button>
+      <button type="button" style="font:inherit;font-size:13px;font-weight:600;height:32px;padding:0 18px;border-radius:16px;border:0;background:#0a84ff;color:#fff;cursor:pointer;display:inline-flex;align-items:center;gap:8px">Copy <span style="display:inline-flex;align-items:center;gap:2px" aria-label="Command Return"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:18px;padding:0 3px;box-sizing:border-box;border-radius:5px;background:rgba(255,255,255,.18);font-size:11px;font-weight:500;line-height:1;color:#fff">⌘</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:16px;height:18px;padding:0 3px;box-sizing:border-box;border-radius:5px;background:rgba(255,255,255,.18);font-size:11px;font-weight:500;line-height:1;color:#fff"><svg width="10" height="10" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block"><path d="M13 3v5a2 2 0 0 1-2 2H3"></path><path d="M6 7l-3 3 3 3"></path></svg></span></span></button>
+    </footer>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

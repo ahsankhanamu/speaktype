@@ -236,7 +236,9 @@ impl LevelMonitor {
         let sample_rate = config.sample_rate().0;
         let channels = config.channels();
         let frame_channels = channels.max(1) as usize;
-        let device_name = device.name().unwrap_or_else(|_| "Unknown input".to_string());
+        let device_name = device
+            .name()
+            .unwrap_or_else(|_| "Unknown input".to_string());
 
         let app = app_handle.clone();
         let stream_config: cpal::StreamConfig = config.into();
@@ -454,8 +456,7 @@ pub fn find_phrase_flush_point(audio: &[f32], sample_rate: u32) -> Option<usize>
                 let split = split.max(min_chunk_samples);
                 crate::logging::log_message(&format!(
                     "[chunk] Split at {:.1}s speech (silence threshold {}ms)",
-                    speech_secs,
-                    required_ms
+                    speech_secs, required_ms
                 ));
                 return Some(split);
             }
@@ -501,8 +502,7 @@ pub fn normalize_audio(audio: &[f32]) -> Vec<f32> {
 
 pub fn get_default_input_device_name() -> Option<String> {
     let host = cpal::default_host();
-    host.default_input_device()
-        .and_then(|d| d.name().ok())
+    host.default_input_device().and_then(|d| d.name().ok())
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -550,10 +550,7 @@ pub fn list_input_devices() -> Vec<InputDeviceInfo> {
 
 /// Resolve the device to open for capture. `selected` is a stored name (empty =
 /// macOS default). If the selected device no longer exists, falls back to default.
-fn resolve_input_device(
-    host: &cpal::Host,
-    selected: Option<&str>,
-) -> Result<cpal::Device, String> {
+fn resolve_input_device(host: &cpal::Host, selected: Option<&str>) -> Result<cpal::Device, String> {
     if let Some(selected) = selected {
         if !selected.is_empty() {
             if let Ok(devices) = host.input_devices() {
@@ -574,18 +571,6 @@ fn resolve_input_device(
 pub fn count_input_devices() -> usize {
     let host = cpal::default_host();
     host.input_devices().map(|d| d.count()).unwrap_or(0)
-}
-
-#[cfg(test)]
-mod monitor_tests {
-    use super::LevelMonitor;
-
-    #[test]
-    fn idle_monitor_reports_nothing_to_stop() {
-        let mut monitor = LevelMonitor::new();
-        assert!(!monitor.is_active());
-        assert!(!monitor.stop(), "a monitor that never ran must not report a stop");
-    }
 }
 
 pub fn to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
@@ -624,7 +609,9 @@ pub fn to_wav(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
 
     let mut i16_buf = Vec::with_capacity(samples.len());
     i16_buf.extend(
-        samples.iter().map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i16),
+        samples
+            .iter()
+            .map(|&s| (s * 32767.0).clamp(-32768.0, 32767.0) as i16),
     );
     for &s in &i16_buf {
         buf.extend_from_slice(&s.to_le_bytes());
@@ -676,4 +663,19 @@ pub fn from_wav(data: &[u8]) -> Result<(Vec<f32>, u32), String> {
         .collect();
 
     Ok((samples, sample_rate))
+}
+
+#[cfg(test)]
+mod monitor_tests {
+    use super::LevelMonitor;
+
+    #[test]
+    fn idle_monitor_reports_nothing_to_stop() {
+        let mut monitor = LevelMonitor::new();
+        assert!(!monitor.is_active());
+        assert!(
+            !monitor.stop(),
+            "a monitor that never ran must not report a stop"
+        );
+    }
 }

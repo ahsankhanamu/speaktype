@@ -32,12 +32,8 @@ fn find_available_port() -> Option<u16> {
         return Some(DEFAULT_PORT);
     }
     // Still stuck, fall back to next ports
-    for port in (DEFAULT_PORT + 1)..=PORT_RANGE_END {
-        if TcpListener::bind(("127.0.0.1", port)).is_ok() {
-            return Some(port);
-        }
-    }
-    None
+    ((DEFAULT_PORT + 1)..=PORT_RANGE_END)
+        .find(|&port| TcpListener::bind(("127.0.0.1", port)).is_ok())
 }
 
 pub struct ServerInfo {
@@ -67,16 +63,23 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
         None => {
             let data_dir = crate::paths::config_dir_opt()?;
             let model_path = data_dir.join("models").join(format!("ggml-{}.bin", model));
-            let reason = if model_path.exists() { "incomplete" } else { "missing" };
+            let reason = if model_path.exists() {
+                "incomplete"
+            } else {
+                "missing"
+            };
             logging::log_message(&format!(
                 "[server] No complete model available for '{}', not starting server",
                 model
             ));
-            let _ = app.emit("server:model_needed", serde_json::json!({
-                "model": model,
-                "path": model_path.to_string_lossy(),
-                "reason": reason,
-            }));
+            let _ = app.emit(
+                "server:model_needed",
+                serde_json::json!({
+                    "model": model,
+                    "path": model_path.to_string_lossy(),
+                    "reason": reason,
+                }),
+            );
             return None;
         }
     };
@@ -119,7 +122,7 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
 
     let mut sidecar_cmd = sidecar_cmd
         .arg("-m")
-        .arg(&model_path.to_string_lossy().to_string())
+        .arg(model_path.to_string_lossy().to_string())
         .arg("--port")
         .arg(port.to_string());
 
@@ -153,25 +156,28 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
 
     match sidecar_cmd.spawn() {
         Ok((mut rx, child)) => {
-            logging::log_message(&format!("[server] Spawned server (pid={}, port={}, model={})", child.pid(), port, model));
-            
+            logging::log_message(&format!(
+                "[server] Spawned server (pid={}, port={}, model={})",
+                child.pid(),
+                port,
+                model
+            ));
+
             // Log sidecar output and monitor for unexpected termination
             let app_handle_for_monitor = app.clone();
             tauri::async_runtime::spawn(async move {
-                use tokio::io::AsyncWriteExt;
                 use tauri_plugin_shell::process::CommandEvent;
+                use tokio::io::AsyncWriteExt;
 
                 let log_dir = crate::paths::config_dir_opt();
                 let mut log_file = if let Some(dir) = log_dir {
                     tokio::fs::create_dir_all(&dir).await.ok();
-                    match tokio::fs::OpenOptions::new()
+                    tokio::fs::OpenOptions::new()
                         .create(true)
                         .append(true)
                         .open(dir.join("server.log"))
-                        .await {
-                            Ok(f) => Some(f),
-                            Err(_) => None,
-                    }
+                        .await
+                        .ok()
                 } else {
                     None
                 };
@@ -217,7 +223,10 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
                 *port_lock = Some(port);
             }
             SERVER_INTENTIONAL_STOP.store(false, Ordering::SeqCst);
-            Some(ServerInfo { port, model: model.to_string() })
+            Some(ServerInfo {
+                port,
+                model: model.to_string(),
+            })
         }
         Err(e) => {
             logging::log_message(&format!("[server] Failed to start sidecar: {}", e));
@@ -236,12 +245,13 @@ pub async fn wait_for_server(port: u16) -> bool {
 
     let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(2))
-        .build() {
-            Ok(c) => c,
-            Err(e) => {
-                logging::log_message(&format!("[server] Failed to create HTTP client: {}", e));
-                return false;
-            }
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            logging::log_message(&format!("[server] Failed to create HTTP client: {}", e));
+            return false;
+        }
     };
 
     loop {
@@ -283,7 +293,8 @@ pub async fn ensure_running(app: &AppHandle, model: &str) -> Result<Option<Serve
     }
 
     if is_running() {
-        let port = current_port().ok_or_else(|| "Server is running but port is unknown".to_string())?;
+        let port =
+            current_port().ok_or_else(|| "Server is running but port is unknown".to_string())?;
         return Ok(Some(ServerInfo {
             port,
             model: model.to_string(),
