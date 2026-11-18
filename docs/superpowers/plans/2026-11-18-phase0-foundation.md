@@ -361,7 +361,7 @@ Test: `containers.test.ts`.
   - `npm run -ws --if-present lint`
   - `npm run -ws --if-present test`
   - `npm -w @speaktype/ui run visual`
-- Create: `.github/workflows/verify.yml` running `make verify` on `macos-14`.
+- Create: `.github/workflows/verify.yml` running `make verify` on `macos-14`. The workflow runs `npx -w @speaktype/ui playwright install chromium` before `make verify` (the visual suite needs it); `make verify` itself assumes it is installed.
 
 - [ ] **Step 1:** Run `cargo test --workspace` from the root. Expected before the change: error, no workspace.
 - [ ] **Step 2:** Create the workspace and move the toolchain file.
