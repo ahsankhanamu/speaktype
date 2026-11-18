@@ -122,7 +122,7 @@ ensure_system_xattr() {
 
 ensure_rust() {
     speaktype_load_rust_env
-    local toolchain_file="$PROJECT_ROOT/apps/widget/rust-toolchain.toml"
+    local toolchain_file="$PROJECT_ROOT/rust-toolchain.toml"
     local channel="1.93.1"
     if [ -f "$toolchain_file" ]; then
         channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$toolchain_file" | head -1)"

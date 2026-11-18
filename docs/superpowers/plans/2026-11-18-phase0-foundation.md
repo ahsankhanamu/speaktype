@@ -347,7 +347,9 @@ Test: `containers.test.ts`.
 
 ---
 
-### Task 8: Root Cargo workspace and `make verify` (F3)
+### Task 8: Root Cargo workspace and `make verify` (done by Claude, 2026-11-19)
+
+> As built: `members` lists paths explicitly (an empty `crates/*` glob is an error) — **each new crate adds its own line**; `.cargo/config.toml` keeps `target-dir = apps/widget/src-tauri/target` so build/DMG/release scripts are unchanged; `Cargo.lock` moved to the root; CI reuses `.github/workflows/build.yml` (adds `npm ci`, Playwright chromium, `make verify`) instead of a new workflow.
 
 **Files:**
 - Create: `Cargo.toml` (root): `[workspace] members = ["apps/widget/src-tauri", "crates/*"]`, `resolver = "2"`, plus `[workspace.dependencies]` for serde, serde_json, tokio, rusqlite, thiserror, chrono.
