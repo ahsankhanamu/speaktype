@@ -1,0 +1,142 @@
+use tauri_specta::{collect_commands, collect_events, Builder};
+
+/// The one typed-IPC builder: every command and event the frontend can reach,
+/// in one place, so `bindings.ts` covers the whole app.
+pub fn builder() -> Builder<tauri::Wry> {
+    Builder::<tauri::Wry>::new()
+        // The app's types have identical serialize/deserialize shapes; a
+        // single phase keeps the generated types plain objects.
+        .disable_serde_phases()
+        // Safe here: the only wide integers on the IPC surface are SQLite ids,
+        // epoch-milliseconds and byte counts — every real value sits far below
+        // Number.MAX_SAFE_INTEGER (2^53). The plan fixes these as i64/u64.
+        .dangerously_cast_bigints_to_number()
+        .commands(collect_commands![
+            crate::commands::toggle_recording,
+            crate::commands::cancel_recording,
+            crate::commands::check_permissions,
+            crate::commands::start_mic_test,
+            crate::commands::stop_mic_test,
+            crate::commands::get_audio_input_info,
+            crate::commands::get_input_devices,
+            crate::commands::log_frontend,
+            crate::commands::copy_to_clipboard,
+            crate::commands::request_accessibility,
+            crate::commands::request_microphone_access,
+            crate::commands::get_onboarding_status,
+            crate::commands::open_onboarding,
+            crate::commands::finish_onboarding,
+            crate::commands::open_system_pane,
+            crate::commands::open_models_folder,
+            crate::commands::open_recordings_folder,
+            crate::commands::get_settings,
+            crate::commands::save_settings,
+            crate::commands::update_hotkey,
+            crate::commands::check_server,
+            crate::commands::get_server_status,
+            crate::commands::stop_whisper_server,
+            crate::commands::restart_whisper_server,
+            crate::commands::load_model,
+            crate::commands::queue_model_download,
+            crate::commands::restart_model_download,
+            crate::commands::cancel_model_download,
+            crate::commands::pause_model_download,
+            crate::commands::get_models,
+            crate::commands::get_model_progress,
+            crate::commands::open_about,
+            crate::commands::open_settings,
+            crate::commands::hide_widget,
+            crate::commands::minimize_widget,
+            crate::commands::quit_app,
+            crate::commands::save_window_position,
+            crate::commands::reset_widget_position,
+            crate::commands::get_history,
+            crate::commands::delete_history_entry,
+            crate::commands::delete_history_audio,
+            crate::commands::clear_history,
+            crate::commands::get_history_audio,
+            crate::commands::reprocess_history_entry,
+            crate::commands::get_debug_sessions,
+            crate::commands::clear_debug_sessions,
+            crate::commands::delete_debug_session,
+            crate::commands::get_debug_audio_slice,
+            crate::commands::reveal_path,
+            crate::session_cmds::session_start,
+            crate::session_cmds::session_stop,
+            crate::session_cmds::session_active,
+            crate::session_cmds::session_set_mute,
+            crate::session_cmds::session_list,
+            crate::session_cmds::session_get,
+            crate::session_cmds::session_rename,
+            crate::session_cmds::session_delete,
+            crate::session_cmds::item_update,
+            crate::session_cmds::item_delete,
+            crate::session_cmds::item_restore,
+            crate::session_cmds::item_move,
+            crate::session_cmds::item_split,
+            crate::session_cmds::prompt_render,
+            crate::session_cmds::prompt_copy,
+            crate::session_cmds::bundle_reveal,
+            crate::session_cmds::overlay_pen,
+            crate::session_cmds::overlay_mark_complete,
+        ])
+        .events(collect_events![
+            crate::session_cmds::SessionState,
+            crate::session_cmds::SessionItemAdded,
+            crate::session_cmds::SessionItemUpdated,
+            crate::session_cmds::SessionItemsDeleted,
+            crate::session_cmds::SessionsChanged,
+        ])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use specta_typescript::Typescript;
+
+    /// The committed bindings the webui imports.
+    const BINDINGS_PATH: &str =
+        concat!(env!("CARGO_MANIFEST_DIR"), "/../webui/src/lib/bindings.ts");
+
+    #[test]
+    fn export_bindings() {
+        let dir =
+            std::env::temp_dir().join(format!("speaktype_bindings_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("tempdir");
+        let out = dir.join("bindings.ts");
+        builder()
+            .export(Typescript::default(), &out)
+            .expect("export bindings");
+        let generated = std::fs::read_to_string(&out).expect("read generated");
+        let committed =
+            std::fs::read_to_string(BINDINGS_PATH).expect("committed bindings.ts is missing");
+        assert_eq!(
+            generated, committed,
+            "apps/widget/webui/src/lib/bindings.ts is stale — regenerate with \
+             `cargo test -p speaktype export_bindings -- --ignored --nocapture`"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn session_events_are_registered_in_bindings() {
+        let bindings = std::fs::read_to_string(BINDINGS_PATH).expect("bindings");
+        for name in [
+            "\"session-state\"",
+            "\"session-item-added\"",
+            "\"session-item-updated\"",
+            "\"session-items-deleted\"",
+            "\"sessions-changed\"",
+        ] {
+            assert!(bindings.contains(name), "bindings.ts must register {name}");
+        }
+    }
+
+    #[test]
+    #[ignore = "writer variant: regenerate apps/widget/webui/src/lib/bindings.ts"]
+    fn export_bindings_write() {
+        builder()
+            .export(Typescript::default(), BINDINGS_PATH)
+            .expect("export bindings");
+    }
+}

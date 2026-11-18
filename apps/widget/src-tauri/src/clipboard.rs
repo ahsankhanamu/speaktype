@@ -3,19 +3,20 @@ use crate::logging::log_message;
 use crate::paste;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
-/// Poll the clipboard and capture user copies into the active scribe session.
+/// Poll the clipboard and capture user copies into the active session.
 ///
 /// Our own dictation paste is excluded via the `is_pasting` flag on AppState,
 /// and repeated identical copies are deduplicated by tracking the last text +
 /// a maturation timestamp (the paste restore happens ~500ms after our paste).
+/// With no active session the monitor is a no-op: captures never start one.
 pub fn spawn_clipboard_monitor(app: AppHandle) {
     std::thread::spawn(move || {
         // Prime the dedup baseline with whatever is already on the clipboard,
-        // so a session is only started by a copy the user makes *after* launch
-        // — never by the content that was there at startup.
+        // so a capture only happens for a copy the user makes *after* launch
+        // — never for the content that was there at startup.
         let mut last_text: Option<String> = arboard::Clipboard::new()
             .ok()
             .and_then(|mut cb| cb.get_text().ok());
@@ -36,16 +37,6 @@ pub fn spawn_clipboard_monitor(app: AppHandle) {
                 .map(|s| s.scribe_clipboard_monitor)
                 .unwrap_or(true);
             if !monitor_enabled {
-                continue;
-            }
-            let scribe_on = state
-                .settings
-                .lock()
-                .ok()
-                .map(|s| s.scribe_enabled)
-                .unwrap_or(false);
-            if !scribe_on {
-                last_text = None;
                 continue;
             }
 
@@ -82,7 +73,7 @@ pub fn spawn_clipboard_monitor(app: AppHandle) {
             last_text = Some(text.clone());
 
             // Avoid re-capturing the exact same content if the user copies it
-            // twice months apart *within the same session* — trivial guard.
+            // twice in a row — trivial guard.
             if last_capture.as_deref() == Some(text.as_str()) {
                 continue;
             }
@@ -98,59 +89,64 @@ pub fn spawn_clipboard_monitor(app: AppHandle) {
                 continue;
             }
 
-            // Clipboard capture only feeds an *already-live* session. It must
-            // never start one: recording begins solely when the user records
-            // with the mic, which is what activates the other capture features.
-            let session_id = {
-                let active = match state.scribe.active_session.lock() {
-                    Ok(a) => *a,
-                    Err(e) => {
-                        log_message(&format!("[scribe] Lock error: {}", e));
-                        continue;
-                    }
-                };
-                active
-            };
-            let Some(session_id) = session_id else {
+            // Clipboard capture only feeds an *already-live* session (spec §12).
+            let session_store = app.state::<std::sync::Arc<speaktype_session::Store>>();
+            let Ok(Some(session)) = session_store.active_session() else {
                 continue;
             };
 
             // If the user copied the exact text they just dictated, treat it as
-            // the same content — don't duplicate it as a "copied" event.
-            if state
-                .scribe
-                .clipboard_matches_recent_transcript(session_id, trimmed)
-                .unwrap_or(false)
-            {
+            // the same content — don't duplicate it as a "copied" item.
+            if clipboard_matches_recent_dictation(&session_store, session.id, trimmed) {
                 log_message(&format!(
-                    "[scribe] Skipped clipboard copy identical to recent dictation ({} chars)",
+                    "[clipboard] Skipped copy identical to recent dictation ({} chars)",
                     trimmed.len()
                 ));
                 last_capture = Some(text);
                 continue;
             }
 
-            let source_app = paste::get_frontmost_window().map(|w| w.name);
-            match state.scribe.add_event(
-                session_id,
-                "clipboard",
-                Some(trimmed),
-                None,
-                source_app.as_deref(),
-                None,
-            ) {
-                Ok(ev) => {
+            let item = speaktype_session::NewItem {
+                kind: speaktype_session::ItemKind::Clip,
+                t_start_ms: chrono::Utc::now().timestamp_millis(),
+                t_end_ms: None,
+                text: Some(trimmed.to_string()),
+                image_path: None,
+                source_app: paste::get_frontmost_window().map(|w| w.name),
+                payload: serde_json::json!({}),
+            };
+            match session_store.add_item(session.id, item) {
+                Ok(item) => {
                     last_capture = Some(text);
                     log_message(&format!(
-                        "[scribe] Captured clipboard ({}) into session {}",
-                        ev.id, session_id
+                        "[clipboard] Captured ({}) into session {}",
+                        item.id, session.id
                     ));
-                    let _ = app.emit("scribe:event_added", serde_json::json!({ "event": ev }));
+                    crate::session_cmds::emit_item_added(&app, &item);
                 }
-                Err(e) => log_message(&format!("[scribe] Clipboard capture failed: {}", e)),
+                Err(e) => log_message(&format!("[clipboard] Capture failed: {}", e)),
             }
         }
     });
+}
+
+/// True when `text` matches one of the session's last five dictations, so a
+/// copy of freshly dictated text is not captured twice (spec §12).
+fn clipboard_matches_recent_dictation(
+    store: &speaktype_session::Store,
+    session_id: i64,
+    text: &str,
+) -> bool {
+    match store.detail(session_id) {
+        Ok(detail) => detail
+            .items
+            .iter()
+            .filter(|i| i.kind == speaktype_session::ItemKind::Speech)
+            .rev()
+            .take(5)
+            .any(|i| i.text.as_deref() == Some(text)),
+        Err(_) => false,
+    }
 }
 
 /// Register the Scribe screenshot hotkey. Returns Err if the modifier is
@@ -166,19 +162,13 @@ pub fn register_scribe_screenshot_hotkey(app: &AppHandle, hotkey: &str) -> Resul
         if event.state() == ShortcutState::Pressed {
             let app_for_cmd = app.clone();
             tauri::async_runtime::spawn(async move {
-                let state = app_for_cmd.state::<AppState>();
-                if let Err(e) =
-                    crate::commands::capture_scribe_screenshot(app_for_cmd.clone(), state).await
-                {
-                    log_message(&format!("[scribe] Screenshot hotkey error: {}", e));
+                if let Err(e) = crate::session_cmds::capture_screenshot(app_for_cmd).await {
+                    log_message(&format!("[capture] Screenshot hotkey: {}", e));
                 }
             });
         }
     }) {
-        return Err(format!(
-            "Failed to register scribe screenshot hotkey: {}",
-            e
-        ));
+        return Err(format!("Failed to register screenshot hotkey: {}", e));
     }
     log_message(&format!(
         "[scribe] Screenshot hotkey registered: {}",

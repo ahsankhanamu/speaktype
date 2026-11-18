@@ -35,16 +35,14 @@
   import MicTest from './MicTest.svelte';
 import HistoryTab from './HistoryTab.svelte';
 import DebugTab from './DebugTab.svelte';
-import ScribeTab from './ScribeTab.svelte';
 import * as Select from '$lib/ui/select/index.js';
 import SettingsFooter from '$lib/SettingsFooter.svelte';
 
   let historyRef: HistoryTab;
   let debugRef: DebugTab;
-  let scribeRef: ScribeTab | undefined = $state();
 
   // ---- Tab shell state ----
-  type TabName = 'hotkey' | 'server' | 'general' | 'models' | 'history' | 'debug' | 'scribe';
+  type TabName = 'hotkey' | 'server' | 'general' | 'models' | 'history' | 'debug';
   let activeTab = $state<TabName>('hotkey');
 
   const TABS: { id: TabName; title: string; desc: string }[] = [
@@ -54,7 +52,6 @@ import SettingsFooter from '$lib/SettingsFooter.svelte';
     { id: 'models', title: 'Models', desc: 'Download, resume, and switch between Whisper models.' },
     { id: 'history', title: 'History', desc: 'Replay, copy, reprocess, or delete past transcriptions.' },
     { id: 'debug', title: 'Debug', desc: 'Inspect how each recording was chunked and decoded.' },
-    { id: 'scribe', title: 'Scribe', desc: 'Capture dictation, copies, and screenshots into sessions — then assemble a document.' },
   ];
   const meta = $derived(TABS.find((t) => t.id === activeTab) || TABS[0]);
 
@@ -735,16 +732,6 @@ import SettingsFooter from '$lib/SettingsFooter.svelte';
               <path d="M12 12l-4 6"/>
               <path d="M12 12l4 6"/>
             </svg>
-          {:else if tab.id === 'scribe'}
-            <svg class="tab-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-              <path d="M12 4a4 4 0 0 1 4 4"/>
-              <path d="M12 8a4 4 0 1 0 0 8 4 4 0 1 0 0-8"/>
-              <path d="M12 20v-4"/>
-              <path d="M15 6l3-3"/>
-              <path d="M9 6L6 3"/>
-              <path d="M15 18l3 3"/>
-              <path d="M9 18l-3 3"/>
-            </svg>
           {/if}
           <span class="tab-label">{tab.title}</span>
           {#if tab.id === 'models'}
@@ -1049,10 +1036,6 @@ import SettingsFooter from '$lib/SettingsFooter.svelte';
         <DebugTab bind:this={debugRef} active={activeTab === 'debug'} />
       </div>
 
-      <!-- SCRIBE -->
-      <div class="tab-content" class:active={activeTab === 'scribe'} id="tab-scribe">
-        <ScribeTab bind:this={scribeRef} active={activeTab === 'scribe'} />
-      </div>
     </div>
 
     <div class="pane-footer-strip">
@@ -1119,11 +1102,6 @@ import SettingsFooter from '$lib/SettingsFooter.svelte';
         {/snippet}
       </SettingsFooter>
 
-      <SettingsFooter hidden={activeTab !== 'scribe'}>
-        {#snippet right()}
-          <button class="btn primary" id="scribe-settings-save" onclick={() => scribeRef?.saveAll()}>Save Scribe Settings</button>
-        {/snippet}
-      </SettingsFooter>
     </div>
   </section>
 </div>

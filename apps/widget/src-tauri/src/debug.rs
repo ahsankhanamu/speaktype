@@ -30,7 +30,7 @@ const AUDIO_RETAIN_RATE: u32 = 16_000;
 static SESSION_SEQ: AtomicU64 = AtomicU64::new(0);
 
 static CURRENT: Mutex<Option<CurrentSession>> = Mutex::new(None);
-static SESSIONS: Mutex<VecDeque<Session>> = Mutex::new(VecDeque::new());
+static SESSIONS: Mutex<VecDeque<DebugSession>> = Mutex::new(VecDeque::new());
 
 /// A debug-captured transcription session under construction.
 struct CurrentSession {
@@ -43,9 +43,9 @@ struct CurrentSession {
     audio: Option<StoredAudio>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
-pub struct Session {
+pub struct DebugSession {
     #[serde(default)]
     pub id: u64,
     #[serde(default)]
@@ -109,7 +109,7 @@ fn downsample_audio(input: &[f32], rate: u32) -> StoredAudio {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct ChunkEvent {
     #[serde(default)]
@@ -134,7 +134,7 @@ pub struct ChunkEvent {
     pub seeded_prompt: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PassEvent {
     /// Chunk this pass belongs to; None for a whole-recording decode.
@@ -160,7 +160,7 @@ pub struct PassEvent {
     pub segments: Vec<SegmentDebug>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 #[serde(rename_all = "camelCase")]
 pub struct SegmentDebug {
     #[serde(default)]
@@ -377,7 +377,7 @@ pub fn finish_session(final_text: &str) -> u64 {
     });
     passes.sort_by_key(|p| p.chunk_idx.unwrap_or(0));
 
-    let session = Session {
+    let session = DebugSession {
         id: cur.id,
         started_at: Local::now().format("%Y-%m-%d %H:%M:%S").to_string(),
         mode: cur.mode,
@@ -481,7 +481,7 @@ fn push(event: DebugEvent) {
 }
 
 /// Sessions newest-first.
-pub fn sessions() -> Vec<Session> {
+pub fn sessions() -> Vec<DebugSession> {
     match SESSIONS.lock() {
         Ok(guard) => guard.iter().cloned().collect(),
         Err(_) => Vec::new(),
@@ -542,9 +542,9 @@ fn audio_path(id: u64) -> PathBuf {
 #[cfg(not(test))]
 pub fn load_persisted() {
     let path = persist_path();
-    let sessions: Vec<Session> = if path.exists() {
+    let sessions: Vec<DebugSession> = if path.exists() {
         match fs::read_to_string(&path) {
-            Ok(content) => match serde_json::from_str::<Vec<Session>>(&content) {
+            Ok(content) => match serde_json::from_str::<Vec<DebugSession>>(&content) {
                 Ok(v) => v,
                 Err(e) => {
                     let backup = path.with_extension("json.corrupt");
@@ -586,7 +586,7 @@ pub fn load_persisted() {
 }
 
 #[cfg(not(test))]
-fn persist_session(session: &Session) {
+fn persist_session(session: &DebugSession) {
     if let Some(audio) = session.audio.as_ref() {
         if fs::create_dir_all(audio_dir()).is_ok() {
             match crate::audio::to_wav(&audio.samples, audio.rate) {
@@ -613,7 +613,7 @@ fn persist_session(session: &Session) {
 #[cfg(not(test))]
 fn persist_sessions_only() {
     if let Ok(guard) = SESSIONS.lock() {
-        let all: Vec<Session> = guard.iter().cloned().collect();
+        let all: Vec<DebugSession> = guard.iter().cloned().collect();
         match serde_json::to_string_pretty(&all) {
             Ok(json) => {
                 if let Err(e) = fs::write(persist_path(), json) {

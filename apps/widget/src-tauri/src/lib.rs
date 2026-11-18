@@ -4,13 +4,18 @@ mod chunk_session;
 mod clipboard;
 mod commands;
 mod debug;
-mod docx_export;
 mod download_queue;
 mod downloader;
 mod format;
 mod history;
 mod hotkey;
+mod ipc_export;
+// Kept compiled (spec §10: "llm.rs, llm_server.rs and templates.rs stay
+// compiled behind Advanced for the later cleanup-modes feature"); their Scribe
+// UI entry points were removed in Phase 0, so nothing calls them yet.
+#[allow(dead_code)]
 mod llm;
+#[allow(dead_code)]
 mod llm_server;
 mod logging;
 mod ocr;
@@ -18,10 +23,11 @@ mod paste;
 mod paths;
 mod permissions;
 mod quality;
-mod scribe;
 mod segmented_download;
 mod server;
+mod session_cmds;
 mod settings;
+#[allow(dead_code)]
 mod templates;
 mod tones;
 mod transcribe;
@@ -49,6 +55,8 @@ unsafe extern "C" {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    let specta_builder = ipc_export::builder();
+    let session_muted: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
@@ -66,81 +74,13 @@ pub fn run() {
                 _ => {}
             }
         })
-        .invoke_handler(tauri::generate_handler![
-            commands::toggle_recording,
-            commands::cancel_recording,
-            commands::check_permissions,
-            commands::start_mic_test,
-            commands::stop_mic_test,
-            commands::get_audio_input_info,
-            commands::get_input_devices,
-            commands::log_frontend,
-            commands::copy_to_clipboard,
-            commands::request_accessibility,
-            commands::request_microphone_access,
-            commands::get_onboarding_status,
-            commands::open_onboarding,
-            commands::finish_onboarding,
-            commands::open_system_pane,
-            commands::open_models_folder,
-            commands::open_recordings_folder,
-            commands::get_settings,
-            commands::save_settings,
-            commands::update_hotkey,
-            commands::check_server,
-            commands::get_server_status,
-            commands::stop_whisper_server,
-            commands::restart_whisper_server,
-            commands::load_model,
-            commands::queue_model_download,
-            commands::restart_model_download,
-            commands::cancel_model_download,
-            commands::pause_model_download,
-            commands::get_models,
-            commands::get_model_progress,
-            commands::open_about,
-            commands::open_settings,
-            commands::hide_widget,
-            commands::minimize_widget,
-            commands::quit_app,
-            commands::save_window_position,
-            commands::reset_widget_position,
-            commands::get_history,
-            commands::delete_history_entry,
-            commands::delete_history_audio,
-            commands::clear_history,
-            commands::get_history_audio,
-            commands::reprocess_history_entry,
-            commands::get_debug_sessions,
-            commands::clear_debug_sessions,
-            commands::delete_debug_session,
-            commands::get_debug_audio_slice,
-            commands::scribe_permissions,
-            commands::scribe_request_screen_access,
-            commands::start_scribe_session,
-            commands::stop_scribe_session,
-            commands::set_scribe_enabled,
-            commands::get_scribe_sessions,
-            commands::get_scribe_active_session,
-            commands::get_scribe_session_events,
-            commands::delete_scribe_session,
-            commands::capture_scribe_screenshot,
-            commands::scribe_session_image_path,
-            commands::export_scribe_session,
-            commands::export_scribe_session_all,
-            commands::export_scribe_session_docx,
-            commands::reveal_path,
-            commands::search_scribe_sessions,
-            commands::generate_scribe_document,
-            commands::validate_scribe_llm_settings,
-            commands::start_scribe_llm_local,
-            commands::stop_scribe_llm_local,
-            commands::get_scribe_llm_local_status,
-        ])
-        .setup(|app| {
+        .invoke_handler(specta_builder.invoke_handler())
+        .setup(move |app| {
             logging::init_logging();
             #[cfg(not(test))]
             debug::load_persisted();
+
+            specta_builder.mount_events(app);
 
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Regular);
@@ -311,6 +251,16 @@ pub fn run() {
                 });
             }
 
+            // The session store (v2 schema; a pre-2 dev DB is reset by design,
+            // spec §10). Managed on its own so every surface — commands, the
+            // clipboard monitor, the screenshot hotkey — reaches the same one.
+            let session_store = Arc::new(
+                speaktype_session::Store::open(&paths::config_dir().join("scribe.db"))
+                    .map_err(|e| e.to_string())?,
+            );
+            app.manage(session_muted.clone());
+            app.manage(session_store.clone());
+
             let app_state = AppState {
                 settings: Arc::new(Mutex::new(settings.clone())),
                 recorder: Arc::new(Mutex::new(recorder)),
@@ -320,7 +270,6 @@ pub fn run() {
                 target_window: Arc::new(Mutex::new(None)),
                 last_active_window,
                 chunk_session: Arc::new(Mutex::new(None)),
-                scribe: scribe::ScribeStore::init()?,
                 is_pasting: Arc::new(AtomicBool::new(false)),
             };
 
@@ -600,27 +549,25 @@ mod ipc_surface {
         "clear_debug_sessions",
         "delete_debug_session",
         "get_debug_audio_slice",
-        "scribe_permissions",
-        "scribe_request_screen_access",
-        "start_scribe_session",
-        "stop_scribe_session",
-        "set_scribe_enabled",
-        "get_scribe_sessions",
-        "get_scribe_active_session",
-        "get_scribe_session_events",
-        "delete_scribe_session",
-        "capture_scribe_screenshot",
-        "scribe_session_image_path",
-        "export_scribe_session",
-        "export_scribe_session_all",
-        "export_scribe_session_docx",
         "reveal_path",
-        "search_scribe_sessions",
-        "generate_scribe_document",
-        "validate_scribe_llm_settings",
-        "start_scribe_llm_local",
-        "stop_scribe_llm_local",
-        "get_scribe_llm_local_status",
+        "session_start",
+        "session_stop",
+        "session_active",
+        "session_set_mute",
+        "session_list",
+        "session_get",
+        "session_rename",
+        "session_delete",
+        "item_update",
+        "item_delete",
+        "item_restore",
+        "item_move",
+        "item_split",
+        "prompt_render",
+        "prompt_copy",
+        "bundle_reveal",
+        "overlay_pen",
+        "overlay_mark_complete",
     ];
 
     // The frontend `ipc.ts` surface (mirrors src/settings/../lib/ipc.ts).
@@ -674,27 +621,25 @@ mod ipc_surface {
         "get_model_progress",
         "cancel_model_download",
         "pause_model_download",
-        "scribe_permissions",
-        "scribe_request_screen_access",
-        "start_scribe_session",
-        "stop_scribe_session",
-        "set_scribe_enabled",
-        "get_scribe_sessions",
-        "get_scribe_active_session",
-        "get_scribe_session_events",
-        "delete_scribe_session",
-        "capture_scribe_screenshot",
-        "scribe_session_image_path",
-        "export_scribe_session",
-        "export_scribe_session_all",
-        "export_scribe_session_docx",
         "reveal_path",
-        "search_scribe_sessions",
-        "generate_scribe_document",
-        "validate_scribe_llm_settings",
-        "start_scribe_llm_local",
-        "stop_scribe_llm_local",
-        "get_scribe_llm_local_status",
+        "session_start",
+        "session_stop",
+        "session_active",
+        "session_set_mute",
+        "session_list",
+        "session_get",
+        "session_rename",
+        "session_delete",
+        "item_update",
+        "item_delete",
+        "item_restore",
+        "item_move",
+        "item_split",
+        "prompt_render",
+        "prompt_copy",
+        "bundle_reveal",
+        "overlay_pen",
+        "overlay_mark_complete",
     ];
 
     #[test]

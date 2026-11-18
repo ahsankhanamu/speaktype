@@ -1,0 +1,21 @@
+[package]
+name = "speaktype-session"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rusqlite = { version = "0.40", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+chrono = "0.4"
+speaktype-capture = { path = "../speaktype-capture" }
+# NFKD folding for session-name slugs (plan: "NFKD → ASCII").
+unicode-normalization = "0.1"
+# Exact pin: tauri-specta (Task 12) requires precisely this specta line;
+# one version across the workspace keeps the derives and the TS export in sync.
+specta = { version = "=2.0.0-rc.28", features = ["derive", "serde_json"] }
+
+[dev-dependencies]
+# Test fixtures write real PNGs (dev-only).
+image = { version = "0.25", default-features = false, features = ["png"] }

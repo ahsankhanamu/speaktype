@@ -24,7 +24,7 @@ describe('Settings runtime mount (jsdom)', () => {
     await new Promise((r) => setTimeout(r, 100));
 
     const tabs = Array.from(host.querySelectorAll('.tab'));
-    expect(tabs.length).toBe(7);
+    expect(tabs.length).toBe(6);
     expect(host.querySelector('.pane-title')?.textContent?.trim()).toBe('Hotkey');
     expect(host.querySelector('#save-btn')).toBeTruthy();
     expect(host.querySelector('#api-url')).toBeTruthy();

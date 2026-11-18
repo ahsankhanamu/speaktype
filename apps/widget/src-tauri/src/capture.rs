@@ -1,47 +1,8 @@
 use crate::logging::log_message;
-use crate::scribe::ScribeStore;
-use screencapturekit::shareable_content::SCShareableContent;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// Check whether the app has macOS Screen Recording permission.
-#[cfg(target_os = "macos")]
-pub fn has_screen_recording_permission() -> bool {
-    unsafe extern "C" {
-        fn CGPreflightScreenCaptureAccess() -> bool;
-    }
-    unsafe { CGPreflightScreenCaptureAccess() }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn has_screen_recording_permission() -> bool {
-    false
-}
-
-/// Try to obtain Screen Recording permission. Returns `(granted, denied)`.
-///
-/// macOS has no programmatic grant — the system only shows its permission
-/// dialog on the *first* attempt to touch the screen. So this deliberately runs
-/// a real ScreenCaptureKit query: if the state is undetermined, macOS pops the
-/// prompt; if it is already denied, the query errors out and `denied` is true so
-/// the UI can route the user to System Settings.
-#[cfg(target_os = "macos")]
-pub fn request_screen_recording_permission() -> (bool, bool) {
-    if has_screen_recording_permission() {
-        return (true, false);
-    }
-    match SCShareableContent::get() {
-        Ok(_) => (true, false),
-        Err(_) => (false, true),
-    }
-}
-
-#[cfg(not(target_os = "macos"))]
-pub fn request_screen_recording_permission() -> (bool, bool) {
-    (false, true)
-}
-
 /// Read a PNG's width/height straight from its IHDR chunk. Used everywhere we
-/// need pixel dimensions up front (docx embedding, event metadata).
+/// need pixel dimensions up front (capture metadata).
 pub fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
     const PNG_SIGNATURE: [u8; 8] = [137, 80, 78, 71, 13, 10, 26, 10];
     if bytes.len() >= 24 && bytes[0..8] == PNG_SIGNATURE {
@@ -58,14 +19,14 @@ pub fn png_dimensions(bytes: &[u8]) -> Option<(u32, u32)> {
 /// We launch `/usr/sbin/screencapture -i`, the same native interaction that
 /// the system screenshot shortcuts use: a crosshair appears, the user drags a
 /// region or hits Space + clicks a window, and the image is written to the
-/// chosen path. Saving into the session directory means no "find the new file"
-/// step — the intent and the retrieval are the same action.
+/// chosen path. Saving into the session's capture directory means no "find the
+/// new file" step — the intent and the retrieval are the same action.
 ///
-/// Returns `(relative_image_path, "WxH" dimensions)`. Returns an `Err` when the
+/// Returns `(absolute_image_path, "WxH" dimensions)`. Returns an `Err` when the
 /// user cancels (Esc) so the caller can treat it as a deliberate no-op.
 #[cfg(target_os = "macos")]
 pub fn capture_interactive_screenshot(session_id: i64) -> Result<(String, String), String> {
-    let dir = ScribeStore::session_dir(session_id);
+    let dir = crate::session_cmds::session_capture_dir(session_id);
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -95,15 +56,33 @@ pub fn capture_interactive_screenshot(session_id: i64) -> Result<(String, String
         Some((w, h)) => format!("{}x{}", w, h),
         None => "unknown".to_string(),
     };
-    let relative = format!("scribe/{}/{}", session_id, file_name);
     log_message(&format!(
-        "[scribe] Screenshot saved: {} ({})",
+        "[capture] Screenshot saved: {} ({})",
         abs_str, dims
     ));
-    Ok((relative, dims))
+    Ok((abs_str, dims))
 }
 
 #[cfg(not(target_os = "macos"))]
 pub fn capture_interactive_screenshot(_session_id: i64) -> Result<(String, String), String> {
     Err("Screenshot capture is only supported on macOS".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A minimal valid 1x1 transparent PNG (IHDR width/height = 1).
+    const ONE_PX_PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x04, 0x49, 0x44, 0x41, 0x54, 0x08, 0xD7, 0x63, 0x78,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+
+    #[test]
+    fn png_dimensions_reads_ihdr() {
+        assert_eq!(png_dimensions(ONE_PX_PNG), Some((1, 1)));
+        assert_eq!(png_dimensions(b"not a png"), None);
+    }
 }

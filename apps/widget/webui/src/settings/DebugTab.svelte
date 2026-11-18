@@ -24,7 +24,7 @@
     idx?: number;
     status?: string;
     source?: string;
-    chars?: string;
+    chars?: number;
     durationSecs?: number;
     startSecs?: number;
     endSecs?: number;

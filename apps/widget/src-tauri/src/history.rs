@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 const MAX_ENTRIES: usize = 100;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct HistoryEntry {
     #[serde(default)]
     pub id: String,
@@ -21,7 +21,7 @@ pub struct HistoryEntry {
     pub duration_secs: Option<f64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
 pub struct History {
     pub entries: Vec<HistoryEntry>,
 }

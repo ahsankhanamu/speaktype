@@ -6,7 +6,6 @@ use crate::format::{catalog_model_size_bytes, format_byte_size, format_byte_size
 use crate::history::{self, History};
 use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
-use crate::scribe::{ScribeEvent, ScribeSession, ScribeStore};
 use crate::settings::Settings;
 use crate::tones::{self, Tone};
 use crate::tray::{self, TrayState};
@@ -40,11 +39,11 @@ pub struct AppState {
     pub target_window: Arc<Mutex<Option<WindowInfo>>>,
     pub last_active_window: Arc<Mutex<Option<WindowInfo>>>,
     pub chunk_session: Arc<Mutex<Option<ChunkSession>>>,
-    pub scribe: Arc<ScribeStore>,
     pub is_pasting: Arc<AtomicBool>,
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn toggle_recording(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -200,6 +199,7 @@ pub fn toggle_recording_impl(app: &AppHandle, state: &AppState) -> Result<(), St
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if !state.is_recording.load(Ordering::SeqCst) {
         return Ok(());
@@ -271,6 +271,7 @@ fn spawn_mic_test_watchdog(app: AppHandle, generation: u64) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn start_mic_test(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -303,12 +304,14 @@ pub fn start_mic_test(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn stop_mic_test(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     stop_mic_test_internal(&app, &state, "user");
     Ok(())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_audio_input_info() -> Result<serde_json::Value, String> {
     Ok(json!({
         "device": audio::get_default_input_device_name(),
@@ -317,6 +320,7 @@ pub fn get_audio_input_info() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_input_devices() -> Result<serde_json::Value, String> {
     Ok(json!({
         "devices": audio::list_input_devices(),
@@ -327,6 +331,7 @@ pub fn get_input_devices() -> Result<serde_json::Value, String> {
 /// Forward webview console errors/warnings into the app log so that a frozen
 /// settings window or widget leaves a trace on the next occurrence.
 #[tauri::command]
+#[specta::specta]
 pub fn log_frontend(level: String, message: String) {
     crate::logging::log_message(&format!("[webview] {} {}", level, message));
 }
@@ -337,6 +342,7 @@ pub fn log_frontend(level: String, message: String) {
 /// is not a secure context and may be undefined. UI copy buttons therefore need
 /// this native path.
 #[tauri::command]
+#[specta::specta]
 pub fn copy_to_clipboard(text: String) -> Result<(), String> {
     let mut clipboard = arboard::Clipboard::new().map_err(|e| e.to_string())?;
     clipboard.set_text(text).map_err(|e| e.to_string())
@@ -561,6 +567,10 @@ async fn process_recording(
         }
     }
 
+    let recording_duration_ms = saved_recording
+        .as_ref()
+        .map(|(_, duration)| (duration * 1000.0) as i64);
+
     if let Err(e) = History::add_entry(
         &entry_id,
         &text,
@@ -571,58 +581,20 @@ async fn process_recording(
         log_message(&format!("[history] Save error: {}", e));
     }
 
-    let scribe_on = app
-        .state::<AppState>()
-        .settings
-        .lock()
-        .ok()
-        .map(|s| s.scribe_enabled)
-        .unwrap_or(false);
-    let scribe_store = app.state::<AppState>().scribe.clone();
-    if scribe_on {
-        match scribe_store.ensure_active_session() {
-            Ok(active) => {
-                log_message(&format!(
-                    "[scribe] Capturing transcript into session {}",
-                    active
-                ));
-                let source_app = paste::get_frontmost_window().map(|w| w.name);
-                match scribe_store.add_event(
-                    active,
-                    "transcript",
-                    Some(&text),
-                    None,
-                    source_app.as_deref(),
-                    None,
-                ) {
-                    Ok(ev) => {
-                        let _ = app.emit("scribe:event_added", json!({ "event": ev }));
-                    }
-                    Err(e) => log_message(&format!("[scribe] Failed to store transcript: {}", e)),
-                }
-                // The dictation *is* the recording, and it ends the moment the
-                // text is produced and pasted. Close the session here so the
-                // mic's own stop/cancel buttons are the only recording controls
-                // — no separate scribe stop button, nothing stays "live".
-                if let Err(e) = scribe_store.stop_session(active) {
-                    log_message(&format!(
-                        "[scribe] Failed to close session {}: {}",
-                        active, e
-                    ));
-                } else {
-                    if let Ok(mut active_ptr) = app.state::<AppState>().scribe.active_session.lock()
-                    {
-                        if *active_ptr == Some(active) {
-                            *active_ptr = None;
-                        }
-                    }
-                    if let Ok(Some(session)) = scribe_store.get_session(active) {
-                        let _ = app.emit("scribe:session_stopped", json!({ "session": session }));
-                    }
-                }
-            }
-            Err(e) => log_message(&format!("[scribe] Session auto-start failed: {}", e)),
-        }
+    // Dictation inside an active session becomes a speech item; the session
+    // stays open (spec §12: dictations no longer close sessions).
+    let session_store = app.state::<Arc<speaktype_session::Store>>();
+    if let Ok(Some(session)) = session_store.active_session() {
+        let now = chrono::Utc::now().timestamp_millis();
+        let duration_ms = recording_duration_ms.unwrap_or(0);
+        crate::session_cmds::add_dictation_item(
+            &app,
+            &session_store,
+            session.id,
+            &text,
+            now - duration_ms,
+            now,
+        );
     }
 
     tray::set_tray_state(&app, TrayState::Idle);
@@ -639,6 +611,7 @@ pub fn emit_permissions(app: &AppHandle) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn check_permissions() -> Result<serde_json::Value, String> {
     let accessibility = crate::permissions::check_accessibility(false);
     let microphone = crate::permissions::check_microphone();
@@ -658,6 +631,7 @@ pub fn requirements_met(model: &str) -> bool {
 
 /// Onboarding status used by the onboarding window to drive its serial steps.
 #[tauri::command]
+#[specta::specta]
 pub fn get_onboarding_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let model = {
         let s = state.settings.lock().map_err(|e| e.to_string())?;
@@ -678,6 +652,7 @@ pub fn get_onboarding_status(state: State<'_, AppState>) -> Result<serde_json::V
 
 /// Trigger the macOS microphone permission prompt (step 1 of onboarding).
 #[tauri::command]
+#[specta::specta]
 pub fn request_microphone_access(app: AppHandle) -> Result<bool, String> {
     let granted = crate::permissions::request_microphone();
     emit_permissions(&app);
@@ -686,6 +661,7 @@ pub fn request_microphone_access(app: AppHandle) -> Result<bool, String> {
 
 /// Open (or focus) the onboarding window.
 #[tauri::command]
+#[specta::specta]
 pub async fn open_onboarding(app: AppHandle) -> Result<(), String> {
     open_onboarding_window(&app)
 }
@@ -762,6 +738,7 @@ fn position_widget_for_onboarding(app: &AppHandle) {
 /// Called when the user finishes onboarding: ensure the server is running for the
 /// selected model, then close the onboarding window and reveal the widget.
 #[tauri::command]
+#[specta::specta]
 pub async fn finish_onboarding(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     let model = {
         let s = state.settings.lock().map_err(|e| e.to_string())?;
@@ -797,6 +774,7 @@ pub async fn finish_onboarding(app: AppHandle, state: State<'_, AppState>) -> Re
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn request_accessibility(app: AppHandle) -> Result<bool, String> {
     let granted = crate::permissions::check_accessibility(true);
     emit_permissions(&app);
@@ -804,6 +782,7 @@ pub fn request_accessibility(app: AppHandle) -> Result<bool, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 #[cfg(target_os = "macos")]
 pub fn open_system_pane(pane: String) -> Result<(), String> {
     let url = format!("x-apple.systempreferences:{}", pane);
@@ -820,6 +799,7 @@ pub fn open_system_pane(_pane: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_models_folder(app: AppHandle) -> Result<(), String> {
     let dir = crate::paths::models_dir();
     std::fs::create_dir_all(&dir)
@@ -831,6 +811,7 @@ pub fn open_models_folder(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
     let dir = History::recordings_dir();
     std::fs::create_dir_all(&dir)
@@ -842,12 +823,14 @@ pub fn open_recordings_folder(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_settings(state: State<'_, AppState>) -> Result<Settings, String> {
     let settings = state.settings.lock().map_err(|e| e.to_string())?;
     Ok(settings.clone())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn save_settings(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -902,6 +885,7 @@ pub fn save_settings(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn update_hotkey(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1011,6 +995,7 @@ fn start_server_model_operation(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn load_model(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1023,6 +1008,7 @@ pub async fn load_model(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn queue_model_download(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1037,6 +1023,7 @@ pub async fn queue_model_download(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn restart_model_download(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1047,6 +1034,7 @@ pub async fn restart_model_download(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn cancel_model_download(
     app: AppHandle,
     model: String,
@@ -1056,6 +1044,7 @@ pub async fn cancel_model_download(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn pause_model_download(
     app: AppHandle,
     model: String,
@@ -1077,6 +1066,7 @@ fn model_catalog_entry(id: &str, desc: &str, speed: &str) -> serde_json::Value {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_models() -> Result<serde_json::Value, String> {
     let mut available: Vec<serde_json::Value> = vec![
         model_catalog_entry("tiny.en", "Tiny (English only)", "fastest"),
@@ -1169,6 +1159,7 @@ pub async fn get_models() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_model_progress() -> Result<serde_json::Value, String> {
     let (mut downloading, waiting) = download_queue::queue_status();
     for model in downloader::get_downloading_models() {
@@ -1198,6 +1189,7 @@ pub async fn get_model_progress() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn check_server(api_url: String) -> Result<serde_json::Value, String> {
     // Derive health endpoint: strip the last path segment and append /health
     let base = api_url.trim_end_matches('/');
@@ -1229,6 +1221,7 @@ pub async fn check_server(api_url: String) -> Result<serde_json::Value, String> 
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_server_status(app: AppHandle) -> Result<serde_json::Value, String> {
     Ok(json!({
         "embedded": crate::server::has_embedded_server(&app),
@@ -1238,6 +1231,7 @@ pub fn get_server_status(app: AppHandle) -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn stop_whisper_server(app: AppHandle) -> Result<serde_json::Value, String> {
     if !crate::server::has_embedded_server(&app) {
         return Err("No embedded whisper server in this build".to_string());
@@ -1252,6 +1246,7 @@ pub fn stop_whisper_server(app: AppHandle) -> Result<serde_json::Value, String> 
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn restart_whisper_server(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1325,31 +1320,37 @@ pub async fn restart_whisper_server(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_history() -> Result<History, String> {
     Ok(History::load())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn delete_history_entry(index: usize) -> Result<(), String> {
     History::delete_entry(index)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn delete_history_audio(index: usize) -> Result<(), String> {
     History::delete_entry_audio(index)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clear_history() -> Result<(), String> {
     History::clear()
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn get_history_audio(index: usize) -> Result<Vec<u8>, String> {
     History::read_entry_audio_bytes(index)
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn reprocess_history_entry(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1414,6 +1415,7 @@ fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn open_about(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("about") {
         return show_and_focus_window(&window);
@@ -1504,6 +1506,7 @@ pub fn persist_settings_window_geometry(app: &AppHandle) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("settings") {
         return show_and_focus_window(&window);
@@ -1553,6 +1556,7 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn hide_widget(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         window.hide().map_err(|e| e.to_string())?;
@@ -1561,6 +1565,7 @@ pub fn hide_widget(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn minimize_widget(app: AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
         window.minimize().map_err(|e| e.to_string())?;
@@ -1569,6 +1574,7 @@ pub fn minimize_widget(app: AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn quit_app(app: AppHandle) {
     if let Some(window) = app.get_webview_window("onboarding") {
         persist_onboarding_window_position(&window);
@@ -1580,6 +1586,7 @@ pub fn quit_app(app: AppHandle) {
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn save_window_position(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1596,6 +1603,7 @@ pub async fn save_window_position(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn reset_widget_position(
     app: AppHandle,
     state: State<'_, AppState>,
@@ -1624,11 +1632,13 @@ pub async fn reset_widget_position(
 
 /// Latest debug sessions (newest first) captured by the Debug panel.
 #[tauri::command]
-pub fn get_debug_sessions() -> Result<Vec<crate::debug::Session>, String> {
+#[specta::specta]
+pub fn get_debug_sessions() -> Result<Vec<crate::debug::DebugSession>, String> {
     Ok(crate::debug::sessions())
 }
 
 #[tauri::command]
+#[specta::specta]
 pub fn clear_debug_sessions() -> Result<(), String> {
     crate::debug::clear();
     Ok(())
@@ -1636,6 +1646,7 @@ pub fn clear_debug_sessions() -> Result<(), String> {
 
 /// Remove a single debug session (and its persisted audio) by id.
 #[tauri::command]
+#[specta::specta]
 pub fn delete_debug_session(session_id: u64) -> Result<(), String> {
     crate::debug::delete_session(session_id);
     Ok(())
@@ -1645,6 +1656,7 @@ pub fn delete_debug_session(session_id: u64) -> Result<(), String> {
 /// recording as a mono WAV, for per-chunk/per-segment playback in the Debug
 /// panel. Empty when the session kept no audio.
 #[tauri::command]
+#[specta::specta]
 pub fn get_debug_audio_slice(
     session_id: u64,
     start_secs: f64,
@@ -1653,512 +1665,9 @@ pub fn get_debug_audio_slice(
     Ok(crate::debug::slice_audio(session_id, start_secs, end_secs).unwrap_or_default())
 }
 
-// ─── Scribe ────────────────────────────────────────────────────────────────
-
-/// Whether the screen-recording (screenshot) pipeline is available and granted.
-#[tauri::command]
-pub fn scribe_permissions() -> Result<serde_json::Value, String> {
-    Ok(json!({
-        "screen_recording": crate::capture::has_screen_recording_permission(),
-    }))
-}
-
-/// Trigger the macOS Screen Recording prompt (if undetermined) and report the
-/// resulting state so the UI can route to System Settings when already denied.
-#[tauri::command]
-pub fn scribe_request_screen_access() -> Result<serde_json::Value, String> {
-    let (granted, denied) = crate::capture::request_screen_recording_permission();
-    Ok(json!({ "granted": granted, "denied": denied }))
-}
-
-/// Start a new scribe session, stop any previously-live session, and make the
-/// new one active. Any later transcription is appended to it automatically.
-#[tauri::command]
-pub fn start_scribe_session(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    name: String,
-    template: Option<String>,
-) -> Result<serde_json::Value, String> {
-    // "Auto" (or no choice) → infer the document type from the session name so
-    // the user never has to pick General/Thesis/… up front.
-    let template = match template {
-        Some(t) if t.trim().is_empty() || t.trim() == "auto" => {
-            crate::templates::infer_template(&name).to_string()
-        }
-        None => crate::templates::infer_template(&name).to_string(),
-        Some(t) => t,
-    };
-    log_message(&format!(
-        "[scribe] Starting session '{}' with auto-detected template '{}'",
-        name, template
-    ));
-    // A previous live session stays "open" forever unless we close it here.
-    let previous = {
-        let active = state
-            .scribe
-            .active_session
-            .lock()
-            .map_err(|e| e.to_string())?;
-        *active
-    };
-    if let Some(prev) = previous {
-        let _ = state.scribe.stop_session(prev);
-    }
-    let id = state.scribe.start_session(&name, &template)?;
-    {
-        let mut active = state
-            .scribe
-            .active_session
-            .lock()
-            .map_err(|e| e.to_string())?;
-        *active = Some(id);
-    }
-    let session = state.scribe.get_session(id)?.unwrap();
-    let _ = app.emit("scribe:session_started", json!({ "session": session }));
-    Ok(json!({ "session": session, "active": true }))
-}
-
-/// Stop a session and make it inactive. If `session_id` is given it stops that
-/// session (clearing the active pointer if it matches); otherwise it stops the
-/// active session. Returns the stopped session.
-#[tauri::command]
-pub fn stop_scribe_session(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    session_id: Option<i64>,
-) -> Result<serde_json::Value, String> {
-    let id = match session_id {
-        Some(id) => id,
-        None => {
-            let active = state
-                .scribe
-                .active_session
-                .lock()
-                .map_err(|e| e.to_string())?;
-            active.unwrap_or(-1)
-        }
-    };
-    if id < 0 {
-        return Ok(json!({ "session": null, "active": false }));
-    }
-    state.scribe.stop_session(id)?;
-    {
-        let mut active = state
-            .scribe
-            .active_session
-            .lock()
-            .map_err(|e| e.to_string())?;
-        if *active == Some(id) {
-            *active = None;
-        }
-    }
-    let session = state.scribe.get_session(id)?.unwrap();
-    let _ = app.emit("scribe:session_stopped", json!({ "session": session }));
-    Ok(json!({ "session": session, "active": false }))
-}
-
-/// Flip the scribe mode switch. Turning it off stops any live session.
-#[tauri::command]
-pub fn set_scribe_enabled(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    enabled: bool,
-) -> Result<serde_json::Value, String> {
-    {
-        let settings = state.settings.lock().map_err(|e| e.to_string())?;
-        if settings.scribe_enabled == enabled {
-            return Ok(json!({ "enabled": enabled }));
-        }
-    }
-    {
-        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.scribe_enabled = enabled;
-        settings.save().map_err(|e| e.to_string())?;
-    }
-    if !enabled {
-        let id = {
-            let active = state
-                .scribe
-                .active_session
-                .lock()
-                .map_err(|e| e.to_string())?;
-            *active
-        };
-        if let Some(id) = id {
-            state.scribe.stop_session(id)?;
-            {
-                let mut active = state
-                    .scribe
-                    .active_session
-                    .lock()
-                    .map_err(|e| e.to_string())?;
-                *active = None;
-            }
-            if let Ok(Some(session)) = state.scribe.get_session(id) {
-                let _ = app.emit("scribe:session_stopped", json!({ "session": session }));
-            }
-        }
-        log_message("[scribe] Mode disabled");
-    } else {
-        log_message("[scribe] Mode enabled");
-    }
-    let _ = app.emit("scribe:mode_changed", json!({ "enabled": enabled }));
-    Ok(json!({ "enabled": enabled }))
-}
-
-/// List all sessions, newest first.
-#[tauri::command]
-pub fn get_scribe_sessions(state: State<'_, AppState>) -> Result<Vec<ScribeSession>, String> {
-    state.scribe.get_sessions()
-}
-
-/// Summary of the currently-active scribe session, if any. Lets the floating
-/// widget show a live indicator without polling every event.
-#[tauri::command]
-pub fn get_scribe_active_session(
-    state: State<'_, AppState>,
-) -> Result<Option<serde_json::Value>, String> {
-    let id = {
-        let active = state
-            .scribe
-            .active_session
-            .lock()
-            .map_err(|e| e.to_string())?;
-        *active
-    };
-    let Some(id) = id else { return Ok(None) };
-    let Some(session) = state.scribe.get_session(id)? else {
-        return Ok(None);
-    };
-    let count = state.scribe.get_events(id)?.len();
-    Ok(Some(json!({
-        "id": session.id,
-        "name": session.name,
-        "count": count,
-    })))
-}
-
-/// Events of a session (timestamp-ordered).
-#[tauri::command]
-pub fn get_scribe_session_events(
-    state: State<'_, AppState>,
-    session_id: i64,
-) -> Result<Vec<ScribeEvent>, String> {
-    state.scribe.get_events(session_id)
-}
-
-/// Delete a session and its captured screenshots.
-#[tauri::command]
-pub fn delete_scribe_session(state: State<'_, AppState>, session_id: i64) -> Result<(), String> {
-    state.scribe.delete_session(session_id)
-}
-
-/// Capture a screenshot. The click is itself the record action: a session is
-/// created if none is open (the mic is the other way to start one), the image
-/// is captured into it, and the session is closed right after — matching how a
-/// dictation produces one self-contained session. Returns the stored event.
-#[tauri::command]
-pub async fn capture_scribe_screenshot(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<ScribeEvent, String> {
-    let scribe_on = state
-        .settings
-        .lock()
-        .map(|s| s.scribe_enabled)
-        .unwrap_or(false);
-    if !scribe_on {
-        return Err("Scribe mode is off — flip the toggle first".to_string());
-    }
-    let session_id = state.scribe.ensure_active_session()?;
-
-    let max = state
-        .settings
-        .lock()
-        .map(|s| s.scribe_max_screenshots)
-        .unwrap_or(50);
-    let taken = state
-        .scribe
-        .count_events_of_type(session_id, "screenshot")?;
-    if taken >= max as i64 {
-        return Err(format!(
-            "Screenshot limit reached ({}/{}) — raise it in Scribe settings",
-            taken, max
-        ));
-    }
-
-    let (relative, dims) = {
-        tokio::task::spawn_blocking(move || {
-            crate::capture::capture_interactive_screenshot(session_id)
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?
-    };
-
-    // OCR the screenshot async (vision runs on its own queue).
-    let app2 = app.clone();
-    let abs_path = ScribeStore::session_dir(session_id)
-        .join(relative.split('/').next_back().unwrap_or(&relative));
-    let abs_str = abs_path.to_string_lossy().to_string();
-    let ocr_future = tokio::task::spawn_blocking(move || crate::ocr::ocr_image(&abs_str));
-    let ocr_text = ocr_future.await.map_err(|e| e.to_string())?.unwrap_or(None);
-
-    let mut metadata = json!({ "dimensions": dims }).to_string();
-    if let Some(ocr) = &ocr_text {
-        metadata = json!({ "dimensions": dims, "ocr": ocr }).to_string();
-    }
-    log_message(&format!(
-        "[scribe] Screenshot OCR {}",
-        ocr_text
-            .as_ref()
-            .map(|t| format!("{} chars", t.len()))
-            .unwrap_or_else(|| "none".into())
-    ));
-
-    let source_app = paste::get_frontmost_window().map(|w| w.name);
-    let event = state.scribe.add_event(
-        session_id,
-        "screenshot",
-        ocr_text.as_deref(),
-        Some(&relative),
-        source_app.as_deref(),
-        Some(&metadata),
-    )?;
-    let _ = app2.emit("scribe:event_added", json!({ "event": event }));
-
-    // Close the session right after the capture — one capture, one
-    // self-contained session, same lifecycle as a dictation. Nothing lingers
-    // and no separate scribe stop button is needed.
-    if let Err(e) = state.scribe.stop_session(session_id) {
-        log_message(&format!(
-            "[scribe] Failed to close session {}: {}",
-            session_id, e
-        ));
-    } else {
-        if let Ok(mut active_ptr) = state.scribe.active_session.lock() {
-            if *active_ptr == Some(session_id) {
-                *active_ptr = None;
-            }
-        }
-        if let Ok(Some(session)) = state.scribe.get_session(session_id) {
-            let _ = app2.emit("scribe:session_stopped", json!({ "session": session }));
-        }
-    }
-    Ok(event)
-}
-
-/// Resolve a screenshot event's stored relative image path to an absolute file
-/// path the frontend can display through the asset protocol.
-#[tauri::command]
-pub fn scribe_session_image_path(session_id: i64, relative: String) -> Result<String, String> {
-    let base = relative.split('/').next_back().unwrap_or(&relative);
-    let path = ScribeStore::session_dir(session_id).join(base);
-    if path.exists() {
-        Ok(path.to_string_lossy().to_string())
-    } else {
-        Err(format!(
-            "Screenshot file not found: {}",
-            path.to_string_lossy()
-        ))
-    }
-}
-
-/// Write a session's assembled markdown (plus a sibling `_images` folder) to
-/// the user's Documents/SpeakType/Scribe dir. Returns the `.md` path. Screenshots
-/// are copied into `_images` and referenced with relative paths so the exported
-/// document keeps working when moved on disk.
-fn export_session_md(state: &AppState, session_id: i64) -> Result<std::path::PathBuf, String> {
-    let session = state
-        .scribe
-        .get_session(session_id)?
-        .ok_or("Session not found")?;
-
-    let docs = dirs::document_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("SpeakType")
-        .join("Scribe");
-    std::fs::create_dir_all(&docs).map_err(|e| e.to_string())?;
-
-    let safe_name: String = session
-        .name
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect();
-    let ts = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let file = docs.join(format!("{}_{}.md", safe_name, ts));
-
-    // Copy each screenshot into a sibling `_images` dir and reference it with a
-    // relative path in the markdown so the export is portable.
-    let images_name = format!("{}_{}_images", safe_name, ts);
-    let images_dir = docs.join(&images_name);
-    std::fs::create_dir_all(&images_dir).map_err(|e| e.to_string())?;
-    for event in state.scribe.get_events(session_id)? {
-        if event.event_type != "screenshot" {
-            continue;
-        }
-        if let Some(rel) = event.image_path {
-            let src = ScribeStore::session_dir(session_id)
-                .join(rel.split('/').next_back().unwrap_or(&rel));
-            let name = match src.file_name() {
-                Some(n) => n.to_string_lossy().to_string(),
-                None => continue,
-            };
-            let dst = images_dir.join(&name);
-            if let Err(e) = std::fs::copy(&src, &dst) {
-                log_message(&format!(
-                    "[scribe] Could not copy screenshot {} for export: {}",
-                    src.to_string_lossy(),
-                    e
-                ));
-            }
-        }
-    }
-
-    let markdown = crate::templates::render_session_markdown_with(
-        &state.scribe,
-        session_id,
-        Some(std::path::Path::new(&images_name)),
-    )?;
-    std::fs::write(&file, &markdown).map_err(|e| e.to_string())?;
-    log_message(&format!(
-        "[scribe] Exported session {} to {:?}",
-        session_id, file
-    ));
-    Ok(file)
-}
-
-/// Export a session's assembled markdown to the user's Documents/SpeakType/Scribe dir.
-#[tauri::command]
-pub fn export_scribe_session(
-    state: State<'_, AppState>,
-    session_id: i64,
-) -> Result<String, String> {
-    Ok(export_session_md(&state, session_id)?
-        .to_string_lossy()
-        .to_string())
-}
-
-/// Export a session as both `.md` and `.docx` in one action. Returns both
-/// paths (md, docx) so the frontend can reveal them in Finder right away.
-#[tauri::command]
-pub fn export_scribe_session_all(
-    state: State<'_, AppState>,
-    session_id: i64,
-) -> Result<Vec<String>, String> {
-    let md = export_session_md(&state, session_id)?;
-    let docx = crate::docx_export::export_session_docx(&state.scribe, session_id)?;
-    Ok(vec![
-        md.to_string_lossy().to_string(),
-        docx.to_string_lossy().to_string(),
-    ])
-}
-
-/// Export a session as a `.docx` document alongside the markdown export.
-#[tauri::command]
-pub fn export_scribe_session_docx(
-    state: State<'_, AppState>,
-    session_id: i64,
-) -> Result<String, String> {
-    let file = crate::docx_export::export_session_docx(&state.scribe, session_id)?;
-    Ok(file.to_string_lossy().to_string())
-}
-
 /// Reveal a file (e.g. an exported `.md` / `.docx`) in the file manager.
 #[tauri::command]
+#[specta::specta]
 pub fn reveal_path(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|e| e.to_string())
-}
-
-/// Search across all sessions' events (transcripts, screenshots' OCR, clipboard).
-#[tauri::command]
-pub fn search_scribe_sessions(
-    state: State<'_, AppState>,
-    query: String,
-) -> Result<Vec<ScribeEvent>, String> {
-    if query.trim().is_empty() {
-        return Ok(vec![]);
-    }
-    state.scribe.search_sessions(&query)
-}
-
-/// Generate (and cache in memory for the UI) a document from a session's
-/// captures. Returns the document markdown.
-#[tauri::command]
-pub async fn generate_scribe_document(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    session_id: i64,
-) -> Result<String, String> {
-    let markdown = crate::llm::generate_session_document(&app, &state, session_id).await?;
-    let _ = app.emit("scribe:document_ready", json!({ "session_id": session_id }));
-    Ok(markdown)
-}
-
-/// Start the local llama.cpp server with the configured GGUF model. Returns
-/// the base URL to use once it is ready.
-#[tauri::command]
-pub async fn start_scribe_llm_local(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
-    if crate::llm_server::is_llm_running() {
-        return crate::llm_server::local_base_url()
-            .ok_or_else(|| "Local LLM: server is running but port is unknown".to_string());
-    }
-    let (model, ctx) = {
-        let settings = state.settings.lock().map_err(|e| e.to_string())?;
-        (
-            settings.scribe_llm_local_model.clone(),
-            settings.scribe_llm_local_ctx,
-        )
-    };
-    let info = crate::llm_server::start_llm_server(&app, &model, ctx)?;
-    if !crate::llm_server::wait_for_llm_server(info.port).await {
-        crate::llm_server::stop_llm_server();
-        let _ = app.emit(
-            "scribe:llm_server:error",
-            json!({ "reason": "llama-server failed to start within timeout" }),
-        );
-        return Err("Local LLM: llama-server failed to start in time".to_string());
-    }
-    crate::llm_server::local_base_url()
-        .ok_or_else(|| "Local LLM: server port unavailable".to_string())
-}
-
-/// Stop the local llama.cpp server, if running.
-#[tauri::command]
-pub fn stop_scribe_llm_local() -> Result<(), String> {
-    crate::llm_server::stop_llm_server();
-    Ok(())
-}
-
-/// Status of the local llama.cpp server.
-#[tauri::command]
-pub fn get_scribe_llm_local_status() -> Result<serde_json::Value, String> {
-    let running = crate::llm_server::is_llm_running();
-    Ok(json!({
-        "running": running,
-        "port": crate::llm_server::current_llm_port(),
-        "base_url": crate::llm_server::local_base_url(),
-    }))
-}
-
-/// Validate the Scribe LLM settings (for the Settings UI feedback).
-#[tauri::command]
-pub fn validate_scribe_llm_settings(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    let settings = state.settings.lock().map_err(|e| e.to_string())?;
-    match crate::llm::validate_llm_settings(&settings) {
-        Ok(()) => Ok(json!({ "ok": true })),
-        Err(e) => Ok(json!({ "ok": false, "error": e })),
-    }
 }
