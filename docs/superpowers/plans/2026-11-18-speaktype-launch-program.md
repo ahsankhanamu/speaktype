@@ -138,16 +138,13 @@ The opencode orchestrator (GLM-5.3) is not used for this build: I hand off direc
    - The board PNGs to match.
    - Done criteria.
    - The report format.
-3. **Visible launch, per `~/.config/opencode/AGENTS.md`.** Run `~/.local/share/agent-hq/dash-up "$PWD"` first, then:
-
+3. **Visible launch in herdr** (we run inside herdr; tmux only as a fallback when `HERDR_ENV` is unset). Split a sibling pane in the current tab with the worktree as cwd, start opencode there under a short agent name, then prompt it:
    ```bash
-   tmux new-window -t team -n <id> -c ../speaktype-ws/<id> \
-     "opencode run --agent builder -m <model> --title '<id> <slug>' --auto \
-      -f docs/superpowers/briefs/<id>.md \
-      'Execute the attached brief task by task with TDD. Commit after each task. Finish by writing .handoff/<id>/REPORT.md.'"
+   P=$(herdr pane split --current --direction right --cwd ../speaktype-ws/<id> --no-focus | jq -r .result.pane.pane_id)
+   herdr agent start <id> --kind opencode --pane "$P" -- -m <model>      # or -s <session> to resume
+   herdr agent prompt <id> "Execute docs/superpowers/briefs/<id>.md (read _common.md first)…"
    ```
-
-   At most 4 builders run at once (6 panes max, minus SHARED SHELL and the tester).
+   Watch with `herdr agent get <id>` (working / idle / blocked / done) and `herdr agent read <id>`; send review rounds with `herdr agent prompt`. Keep panes usable: split wide panes right, tall ones down; at most 4 builders at once.
 4. **The report** at `.handoff/<id>/REPORT.md` contains:
    - Tasks done.
    - Exact commands run, with tails of their output.
