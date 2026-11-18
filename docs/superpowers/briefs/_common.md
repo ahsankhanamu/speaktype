@@ -22,6 +22,8 @@
   - Every new dependency gets a one-line reason in the report.
 - Before reporting, run `make verify` from the worktree root. It must exit 0.
 
+**No subagents.** Don't spawn subagents or a second-model review, because review is the reviewer's job and it doubles the cost. Run tests and `make verify` yourself, in your own pane.
+
 **Report:** write `.handoff/<WS>/REPORT.md` and commit it with `git add -f`. It contains:
 - Tasks done, with commit hashes.
 - The exact commands run, with the tail of each output.
