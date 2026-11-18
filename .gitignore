@@ -81,6 +81,7 @@ assets/source/screenshots/raw/
 node_modules/
 test-results/
 playwright-report/
+.claude/worktrees/
 
 # visual test screenshots (made locally by Playwright, never committed)
 **/tests/visual/__screenshots__/
