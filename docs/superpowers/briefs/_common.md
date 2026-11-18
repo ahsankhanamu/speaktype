@@ -18,7 +18,7 @@ mkdir -p apps/widget/src-tauri/binaries && cp /Users/ahsan/Desktop/speaktype/app
   2. Run it and see it fail.
   3. Implement.
   4. See it pass.
-  5. Commit with the plan's message, ending with the line `Co-Authored-By: <your model name> <noreply@anthropic.com>`.
+  5. Commit with the plan's message, ending with the line `Built-with: <your model name> (opencode)`.
 - Edit only your **owned paths**. If something outside them must change, stop and write it under "Open questions" in your report.
 - Lean code, which the reviewer enforces:
   - No speculative options.
