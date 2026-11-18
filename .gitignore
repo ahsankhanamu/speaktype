@@ -76,3 +76,11 @@ assets/source/screenshots/raw/
 !.handoff/*/
 .handoff/*/*
 !.handoff/*/REPORT.md
+
+# workspaces
+node_modules/
+test-results/
+playwright-report/
+
+# visual test screenshots (made locally by Playwright, never committed)
+**/tests/visual/__screenshots__/
