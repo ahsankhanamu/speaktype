@@ -5,6 +5,13 @@
 2. Your tasks in `docs/superpowers/plans/2026-11-18-phase0-foundation.md`. Follow them exactly: file names, signatures, test names, values.
 3. The spec sections your tasks cite, in `docs/superpowers/specs/2026-11-18-speaktype-launch-design.md`.
 
+**Fresh worktree setup** (run once, from the worktree root; both artifacts are git-ignored):
+```bash
+npm ci
+npm --prefix apps/widget/webui run build
+mkdir -p apps/widget/src-tauri/binaries && cp /Users/ahsan/Desktop/speaktype/apps/widget/src-tauri/binaries/* apps/widget/src-tauri/binaries/
+```
+
 **Work rules:**
 - TDD per step:
   1. Write the failing test.
