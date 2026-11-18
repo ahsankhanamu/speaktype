@@ -1,4 +1,8 @@
 {
+  "name": "speaktype",
   "private": true,
-  "workspaces": ["packages/ui", "apps/widget/webui"]
+  "workspaces": [
+    "packages/ui",
+    "apps/widget/webui"
+  ]
 }
