@@ -103,7 +103,7 @@
    "is_interactive": true
   },
   "Components.dc.html": {
-   "h": 1740,
+   "h": 1860,
    "w": 1440,
    "x": 2720,
    "y": 0,
@@ -168,6 +168,23 @@
    "radius": 12,
    "is_interactive": true,
    "title": "Onboarding 4 — Speech model"
+  },
+  "Components-light.dc.html": {
+   "x": 4240,
+   "y": 0,
+   "w": 1440,
+   "h": 1860,
+   "is_interactive": true,
+   "title": "Light mode — Components (for approval)"
+  },
+  "SettingsAppearance-light.dc.html": {
+   "x": 5760,
+   "y": 0,
+   "w": 1040,
+   "h": 920,
+   "radius": 12,
+   "is_interactive": true,
+   "title": "Light mode — SpeakType window · Appearance (for approval)"
   }
  },
  "createdOnFiles": {
@@ -181,7 +198,7 @@
  "notes": {
   "t1": {
    "kind": "title1",
-   "maxW": 4160,
+   "maxW": 6800,
    "text": "Foundations",
    "w": 240,
    "x": 0,
@@ -193,7 +210,7 @@
    "text": "Say it. Show it.",
    "w": 240,
    "x": 0,
-   "y": 1820
+   "y": 1960
   },
   "t3": {
    "kind": "title1",
@@ -241,13 +258,23 @@
    "w": 1400,
    "size": "m",
    "fill": "blue",
-   "text": "How first run is presented: one 960 × 640 window, centred. Each step slides in from the right; Back and Continue at the bottom right. Continue unlocks only when a required step is done (mic and Accessibility auto-detect and move on by themselves). Quitting midway resumes at the same step next launch, and the widget shows a 'Finish setup' dot until done. Step 5 isn't part of the window: it appears the first time you start a session."
+   "text": "How first run is presented: one 960 × 640 window, centred. Each step slides in from the right; Back and Continue at the bottom right. Continue unlocks only when a required step is done (mic and Accessibility auto-detect and move on by themselves). Quitting midway resumes at the same step next launch, and the widget shows a 'Finish setup' dot until done. Step 6 (Screen Recording) isn't part of the window: it appears the first time you start a session."
+  },
+  "light": {
+   "x": 5760,
+   "y": 1000,
+   "w": 1040,
+   "size": "m",
+   "fill": "blue",
+   "text": "Light mode, derived from the approved dark boards with Apple's light system colours: window #F5F5F7, groups white, controls #E5E5EA, blue #007AFF, warning #FF9500, red #FF3B30, green #34C759. Hairlines and shadows are about half as strong as in dark. Things that stay the same in both themes: the floating widget/HUD (always dark), ink colours, and theme previews. Follows macOS by default; Appearance › Auto / Light / Dark overrides."
   }
  },
  "order": [
   "Main.dc.html",
   "Widget.dc.html",
   "Components.dc.html",
+  "Components-light.dc.html",
+  "SettingsAppearance-light.dc.html",
   "Overlay.dc.html",
   "Timeline.dc.html",
   "Prompt.dc.html",
