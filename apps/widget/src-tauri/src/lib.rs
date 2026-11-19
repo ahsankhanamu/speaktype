@@ -60,6 +60,10 @@ pub fn run() {
     let session_muted: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
@@ -95,6 +99,23 @@ pub fn run() {
                     loop {
                         let has_mic = permissions::check_microphone();
                         let has_acc = permissions::check_accessibility(false);
+
+                        if accessibility_became_granted(
+                            last.is_some_and(|(_, acc)| acc),
+                            has_acc,
+                        ) {
+                            let state = app_handle.state::<commands::AppState>();
+                            if let Ok(mut live) = state.app_hotkey.lock() {
+                                hotkey::rearm_after_accessibility_grant(
+                                    &app_handle,
+                                    &mut live,
+                                    state.is_recording.clone(),
+                                );
+                            }
+                            logging::log_message(
+                                "[permissions] Accessibility granted — hotkey re-armed",
+                            );
+                        }
 
                         if last != Some((has_mic, has_acc)) {
                             last = Some((has_mic, has_acc));
@@ -272,6 +293,10 @@ pub fn run() {
                 last_active_window,
                 chunk_session: Arc::new(Mutex::new(None)),
                 is_pasting: Arc::new(AtomicBool::new(false)),
+                app_hotkey: Arc::new(Mutex::new(hotkey::AppHotkey {
+                    hotkey: Some(settings.hotkey.clone()),
+                    shortcut: None,
+                })),
             };
 
             app.manage(app_state);
@@ -362,10 +387,13 @@ pub fn run() {
                 logging::log_message("[server] No embedded server found, using external API");
             }
 
-            let hotkey_str = settings.hotkey.clone();
             let is_rec_for_shortcut = is_recording.clone();
 
-            hotkey::register_app_hotkey(app.handle(), &hotkey_str, is_rec_for_shortcut);
+            {
+                let state = app.state::<AppState>();
+                let mut live = state.app_hotkey.lock().map_err(|e| e.to_string())?;
+                hotkey::arm_initial_hotkey(app.handle(), &mut live, is_rec_for_shortcut);
+            }
 
             clipboard::spawn_clipboard_monitor(app.handle().clone());
             let _ = clipboard::register_scribe_screenshot_hotkey(
@@ -490,6 +518,12 @@ pub fn run() {
         });
 }
 
+/// Accessibility granted while running must arm the dictation hotkey at once:
+/// the Super+Control tap only exists once macOS allows event taps.
+fn accessibility_became_granted(prev: bool, now: bool) -> bool {
+    !prev && now
+}
+
 // IPC command surface contract.
 //
 // The Svelte frontend calls commands by (snake_case) name via `src/lib/ipc.ts`.
@@ -498,6 +532,7 @@ pub fn run() {
 // the single biggest "don't break the UI" risk.
 #[cfg(test)]
 mod ipc_surface {
+    use super::accessibility_became_granted;
 
     // Exactly the set registered in `invoke_handler(generate_handler![...])`.
     // Keeping the two in sync is intentional and enforced by this test.
@@ -521,6 +556,7 @@ mod ipc_surface {
         "open_recordings_folder",
         "get_settings",
         "save_settings",
+        "set_launch_at_login",
         "update_hotkey",
         "check_server",
         "get_server_status",
@@ -591,6 +627,7 @@ mod ipc_surface {
         "request_microphone_access",
         "get_settings",
         "save_settings",
+        "set_launch_at_login",
         "update_hotkey",
         "check_server",
         "get_server_status",
@@ -642,6 +679,14 @@ mod ipc_surface {
         "overlay_pen",
         "overlay_mark_complete",
     ];
+
+    #[test]
+    fn accessibility_became_granted_only_on_the_false_to_true_flip() {
+        assert!(accessibility_became_granted(false, true));
+        assert!(!accessibility_became_granted(true, true));
+        assert!(!accessibility_became_granted(false, false));
+        assert!(!accessibility_became_granted(true, false));
+    }
 
     #[test]
     fn every_frontend_command_is_registered() {

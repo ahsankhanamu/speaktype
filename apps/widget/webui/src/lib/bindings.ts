@@ -43,6 +43,7 @@ export const commands = {
 	openRecordingsFolder: (options?: InvokeOptions) => __TAURI_INVOKE<null>("open_recordings_folder", undefined, options),
 	getSettings: (options?: InvokeOptions) => __TAURI_INVOKE<Settings>("get_settings", undefined, options),
 	saveSettings: (settings: Settings, options?: InvokeOptions) => __TAURI_INVOKE<null>("save_settings", { settings }, options),
+	setLaunchAtLogin: (on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_launch_at_login", { on }, options),
 	updateHotkey: (hotkey: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("update_hotkey", { hotkey }, options),
 	checkServer: (apiUrl: string, options?: InvokeOptions) => __TAURI_INVOKE<Value>("check_server", { apiUrl }, options),
 	getServerStatus: (options?: InvokeOptions) => __TAURI_INVOKE<Value>("get_server_status", undefined, options),
@@ -129,6 +130,7 @@ export const events = {
 	sessionItemsDeleted: makeEvent<SessionItemsDeleted, SessionItemsDeleted>("session-items-deleted"),
 	sessionState: makeEvent<SessionState, SessionState>("session-state"),
 	sessionsChanged: makeEvent<SessionsChanged, SessionsChanged>("sessions-changed"),
+	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
 };
 
 /* Types */
@@ -379,7 +381,7 @@ export type Settings = {
 	scribe_llm_api_key?: string,
 	/**
 	 *  Where transcription comes from. Missing in files written before the
-	 *  Providers page existed; [`Settings::from_json`] fills it from `api_url`.
+	 *  Providers page existed; [`Settings::load_from`] fills it from `api_url`.
 	 */
 	stt_provider?: ProviderConfig | null,
 	scribe_llm_model?: string,
@@ -392,7 +394,36 @@ export type Settings = {
 	scribe_llm_local_model?: string,
 	/**  Scribe: context size for the local llama-server. */
 	scribe_llm_local_ctx?: number,
+	/**
+	 *  Settings schema. Files written before v2 have no key: they are existing
+	 *  installs, so [`Settings::load_from`] keeps their `post_paste_keys`.
+	 */
+	version?: number,
+	sounds?: boolean,
+	/**  "small" | "regular" | "large" */
+	widget_size?: string,
+	/**  "always" | "active" | "never" */
+	widget_visibility?: string,
+	/**  "orange" | "red" | "amber" | "green" | "blue" | "purple" | "white" */
+	ink_color?: string,
+	/**  "thin" | "regular" | "bold" */
+	ink_thickness?: string,
+	/**  "right_option" | "right_command" | "fn" */
+	draw_key?: string,
+	/**  Always-on drawing; Phase 2 reads it. */
+	draw_anytime?: boolean,
+	/**  Kept history entries; None = forever. */
+	history_limit?: number | null,
+	launch_at_login?: boolean,
+	/**  Last onboarding step reached, for resume. */
+	onboarding_step?: number,
 };
+
+/**
+ *  Typed event: settings changed through any path that writes them (the
+ *  settings window, the widget's context menus). Windows refetch on it.
+ */
+export type SettingsChanged = Record<string, never>;
 
 /**  What `stt_test` reports back. */
 export type SttTestResult = {

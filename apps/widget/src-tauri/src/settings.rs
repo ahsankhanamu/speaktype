@@ -2,6 +2,9 @@ use serde::{Deserialize, Serialize};
 use speaktype_stt::{ProviderConfig, SecretStore};
 use std::fs;
 use std::path::PathBuf;
+use tauri_specta::Event;
+
+use crate::session_cmds::IpcError;
 
 /// The whisper-server address the app writes on every start; an `api_url`
 /// still holding it means On this Mac.
@@ -94,7 +97,7 @@ pub struct Settings {
     #[serde(default)]
     pub scribe_llm_api_key: String,
     /// Where transcription comes from. Missing in files written before the
-    /// Providers page existed; [`Settings::from_json`] fills it from `api_url`.
+    /// Providers page existed; [`Settings::load_from`] fills it from `api_url`.
     #[serde(default)]
     pub stt_provider: Option<ProviderConfig>,
     #[serde(default = "default_scribe_llm_model")]
@@ -109,6 +112,38 @@ pub struct Settings {
     /// Scribe: context size for the local llama-server.
     #[serde(default = "default_scribe_llm_local_ctx")]
     pub scribe_llm_local_ctx: usize,
+    /// Settings schema. Files written before v2 have no key: they are existing
+    /// installs, so [`Settings::load_from`] keeps their `post_paste_keys`.
+    #[serde(default = "default_version")]
+    pub version: u32,
+    #[serde(default = "default_sounds")]
+    pub sounds: bool,
+    /// "small" | "regular" | "large"
+    #[serde(default = "default_widget_size")]
+    pub widget_size: String,
+    /// "always" | "active" | "never"
+    #[serde(default = "default_widget_visibility")]
+    pub widget_visibility: String,
+    /// "orange" | "red" | "amber" | "green" | "blue" | "purple" | "white"
+    #[serde(default = "default_ink_color")]
+    pub ink_color: String,
+    /// "thin" | "regular" | "bold"
+    #[serde(default = "default_ink_thickness")]
+    pub ink_thickness: String,
+    /// "right_option" | "right_command" | "fn"
+    #[serde(default = "default_draw_key")]
+    pub draw_key: String,
+    /// Always-on drawing; Phase 2 reads it.
+    #[serde(default = "default_draw_anytime")]
+    pub draw_anytime: bool,
+    /// Kept history entries; None = forever.
+    #[serde(default = "default_history_limit")]
+    pub history_limit: Option<u32>,
+    #[serde(default)]
+    pub launch_at_login: bool,
+    /// Last onboarding step reached, for resume.
+    #[serde(default)]
+    pub onboarding_step: u8,
 }
 
 fn default_paste_mode() -> String {
@@ -117,6 +152,16 @@ fn default_paste_mode() -> String {
 
 fn default_post_paste_keys() -> Option<String> {
     Some("enter".to_string())
+}
+
+/// Whether a settings file has the `version` key. One without it predates v2.
+fn file_has_version(json: &str) -> bool {
+    let Ok(file) =
+        serde_json::from_str::<std::collections::BTreeMap<String, serde_json::Value>>(json)
+    else {
+        return false;
+    };
+    file.contains_key("version")
 }
 
 fn default_save_recordings() -> bool {
@@ -183,6 +228,42 @@ fn default_scribe_llm_local_ctx() -> usize {
     4096
 }
 
+fn default_version() -> u32 {
+    2
+}
+
+fn default_sounds() -> bool {
+    true
+}
+
+fn default_widget_size() -> String {
+    "regular".to_string()
+}
+
+fn default_widget_visibility() -> String {
+    "always".to_string()
+}
+
+fn default_ink_color() -> String {
+    "orange".to_string()
+}
+
+fn default_ink_thickness() -> String {
+    "regular".to_string()
+}
+
+fn default_draw_key() -> String {
+    "right_option".to_string()
+}
+
+fn default_draw_anytime() -> bool {
+    true
+}
+
+fn default_history_limit() -> Option<u32> {
+    Some(100)
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Self {
@@ -199,7 +280,7 @@ impl Default for Settings {
             settings_w: None,
             settings_h: None,
             paste_mode: "active".to_string(),
-            post_paste_keys: Some("enter".to_string()),
+            post_paste_keys: None,
             save_recordings: false,
             theme: "auto".to_string(),
             hallucination_guard: default_hallucination_guard(),
@@ -220,8 +301,64 @@ impl Default for Settings {
             scribe_llm_use_local: default_scribe_llm_use_local(),
             scribe_llm_local_model: String::new(),
             scribe_llm_local_ctx: default_scribe_llm_local_ctx(),
+            version: default_version(),
+            sounds: default_sounds(),
+            widget_size: default_widget_size(),
+            widget_visibility: default_widget_visibility(),
+            ink_color: default_ink_color(),
+            ink_thickness: default_ink_thickness(),
+            draw_key: default_draw_key(),
+            draw_anytime: default_draw_anytime(),
+            history_limit: default_history_limit(),
+            launch_at_login: false,
+            onboarding_step: 0,
         }
     }
+}
+
+/// Typed event: settings changed through any path that writes them (the
+/// settings window, the widget's context menus). Windows refetch on it.
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, tauri_specta::Event)]
+#[serde(rename_all = "camelCase")]
+pub struct SettingsChanged {}
+
+/// Where `SettingsChanged` goes: the app's emitter, or a counter in tests.
+#[cfg_attr(test, allow(dead_code))]
+pub(crate) trait SettingsEventSink {
+    fn emit_settings_changed(&self) -> Result<(), String>;
+}
+
+impl SettingsEventSink for tauri::AppHandle {
+    fn emit_settings_changed(&self) -> Result<(), String> {
+        SettingsChanged {}.emit(self).map_err(|e| e.to_string())
+    }
+}
+
+/// Best-effort: a window that missed the event refetches on its next open.
+pub(crate) fn emit_settings_changed(sink: &impl SettingsEventSink) {
+    if let Err(e) = sink.emit_settings_changed() {
+        crate::logging::log_message(&format!("[settings] SettingsChanged emit failed: {e}"));
+    }
+}
+
+/// Launch at login through `tauri-plugin-autostart` (a LaunchAgent on macOS).
+/// The settings window saves `launch_at_login` alongside the other fields, so
+/// an error here is reported, not fatal. The handle is a parameter so the
+/// not-running case is testable.
+pub(crate) fn set_launch_at_login<R: tauri::Runtime>(
+    app: Option<&tauri::AppHandle<R>>,
+    on: bool,
+) -> Result<(), IpcError> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app
+        .ok_or_else(|| IpcError::new("launchAtLogin", "SpeakType is not running."))?
+        .autolaunch();
+    if on {
+        manager.enable()
+    } else {
+        manager.disable()
+    }
+    .map_err(|e| IpcError::new("launchAtLogin", e.to_string()))
 }
 
 impl Settings {
@@ -262,19 +399,20 @@ impl Settings {
             None
         };
         let keychain = speaktype_stt::KeychainStore;
-        let (mut settings, mut changed) = match read {
-            Some(content) => match Self::from_json(&content, &keychain) {
-                Ok(migrated) => migrated,
-                Err(e) => {
-                    crate::logging::log_message(&format!(
-                        "[settings] Corrupt settings file at {:?}, backing up and using defaults: {}",
-                        path, e
-                    ));
-                    let _ = fs::rename(&path, path.with_extension("json.corrupt"));
-                    (Self::default(), true)
-                }
-            },
-            None => (Self::default(), false),
+        let file = match &read {
+            Some(content) => Ok(Some(content.as_str())),
+            None => Ok(None),
+        };
+        let (mut settings, mut changed) = match Self::load_from(file, &keychain) {
+            Ok(migrated) => migrated,
+            Err(e) => {
+                crate::logging::log_message(&format!(
+                    "[settings] Corrupt settings file at {:?}, backing up and using defaults: {}",
+                    path, e
+                ));
+                let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+                (Self::default(), true)
+            }
         };
 
         let normalized = Self::normalize_hotkey(&settings.hotkey);
@@ -291,12 +429,28 @@ impl Settings {
         settings
     }
 
-    /// Parse a settings file, migrating out-of-date fields. The second value
-    /// reports whether `settings` needs writing back.
-    pub fn from_json(json: &str, secrets: &dyn SecretStore) -> Result<(Self, bool), String> {
-        let mut settings: Settings = serde_json::from_str(json).map_err(|e| e.to_string())?;
-        let mut changed = false;
-
+    /// Parse the settings file, migrating out-of-date fields. The second value
+    /// reports whether `settings` needs writing back. `Ok(None)` is a fresh
+    /// install and `Err` a corrupt file: both fall back to [`Settings::default`],
+    /// which pastes nothing after dictation (spec §6.7) and carries `version: 2`.
+    /// A file without a `version` key is an existing install: it keeps its
+    /// `post_paste_keys` and only gains the key.
+    pub fn load_from(
+        file: Result<Option<&str>, String>,
+        secrets: &dyn SecretStore,
+    ) -> Result<(Self, bool), String> {
+        let (mut settings, mut changed) = match file? {
+            Some(json) => {
+                let settings: Settings = serde_json::from_str(json).map_err(|e| e.to_string())?;
+                let changed = !file_has_version(json);
+                (settings, changed)
+            }
+            None => (Self::default(), true),
+        };
+        if settings.version < 2 {
+            settings.version = 2;
+            changed = true;
+        }
         if settings.stt_provider.is_none() {
             settings.stt_provider = Some(if is_app_managed_url(&settings.api_url) {
                 ProviderConfig::Local {
@@ -349,6 +503,18 @@ impl Settings {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Counts emits in place of the app's event loop.
+    #[derive(Default)]
+    struct SettingsEvents(AtomicUsize);
+
+    impl SettingsEventSink for SettingsEvents {
+        fn emit_settings_changed(&self) -> Result<(), String> {
+            self.0.fetch_add(1, Ordering::SeqCst);
+            Ok(())
+        }
+    }
 
     /// A settings.json written before the settings-window geometry fields existed.
     /// Failing to deserialize this would make `load()` rename it to `.corrupt` and
@@ -421,12 +587,15 @@ mod tests {
         )
     }
 
+    fn load_legacy(json: &str, store: &dyn SecretStore) -> (Settings, bool) {
+        Settings::load_from(Ok(Some(json)), store).expect("legacy settings must parse")
+    }
+
     #[test]
     fn settings_migrates_default_url_to_local() {
         let store = speaktype_stt::MemoryStore::new();
         let (settings, changed) =
-            Settings::from_json(&legacy_json("http://127.0.0.1:8002/inference", ""), &store)
-                .expect("legacy settings must parse");
+            load_legacy(&legacy_json("http://127.0.0.1:8002/inference", ""), &store);
         assert!(changed);
         assert_eq!(
             settings.active_provider(),
@@ -440,8 +609,7 @@ mod tests {
     fn settings_migrates_app_managed_port_to_local() {
         let store = speaktype_stt::MemoryStore::new();
         let (settings, _) =
-            Settings::from_json(&legacy_json("http://127.0.0.1:8004/inference", ""), &store)
-                .expect("legacy settings must parse");
+            load_legacy(&legacy_json("http://127.0.0.1:8004/inference", ""), &store);
         assert!(matches!(
             settings.active_provider(),
             ProviderConfig::Local { .. }
@@ -451,11 +619,10 @@ mod tests {
     #[test]
     fn settings_migrates_custom_url_to_server() {
         let store = speaktype_stt::MemoryStore::new();
-        let (settings, changed) = Settings::from_json(
+        let (settings, changed) = load_legacy(
             &legacy_json("https://whisper.example.com/v1/inference", ""),
             &store,
-        )
-        .expect("legacy settings must parse");
+        );
         assert!(changed);
         assert_eq!(
             settings.active_provider(),
@@ -468,13 +635,99 @@ mod tests {
     #[test]
     fn llm_key_moves_to_keychain_and_blanks_json() {
         let store = speaktype_stt::MemoryStore::new();
-        let (settings, _) = Settings::from_json(
+        let (settings, _) = load_legacy(
             &legacy_json("http://127.0.0.1:8002/inference", "sk-llm"),
             &store,
-        )
-        .expect("legacy settings must parse");
+        );
         assert_eq!(settings.scribe_llm_api_key, "");
         assert_eq!(store.get("llm.api_key").unwrap().as_deref(), Some("sk-llm"));
+    }
+
+    #[test]
+    fn settings_defaults_for_new_install() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, changed) = Settings::load_from(Ok(None), &store).expect("no file");
+
+        assert!(changed);
+
+        assert_eq!(settings.version, 2);
+        assert_eq!(settings.post_paste_keys, None);
+        assert!(settings.sounds);
+        assert_eq!(settings.widget_size, "regular");
+        assert_eq!(settings.widget_visibility, "always");
+        assert_eq!(settings.ink_color, "orange");
+        assert_eq!(settings.ink_thickness, "regular");
+        assert_eq!(settings.draw_key, "right_option");
+        assert!(settings.draw_anytime);
+        assert_eq!(settings.history_limit, Some(100));
+        assert!(!settings.launch_at_login);
+        assert_eq!(settings.onboarding_step, 0);
+    }
+
+    #[test]
+    fn settings_existing_install_keeps_post_paste() {
+        let store = speaktype_stt::MemoryStore::new();
+        let json = serde_json::to_string_pretty(&Settings {
+            post_paste_keys: Some("enter".to_string()),
+            ..Settings::default()
+        })
+        .expect("serialize")
+        .replace(",\n  \"version\": 2", "");
+        assert!(!json.contains(r#""version""#), "fixture must predate v2");
+
+        let (settings, _) = Settings::load_from(Ok(Some(&json)), &store).expect("parse");
+
+        assert_eq!(settings.post_paste_keys.as_deref(), Some("enter"));
+        assert_eq!(settings.version, 2);
+    }
+
+    #[test]
+    fn settings_roundtrip_new_fields() {
+        let settings = Settings {
+            version: 2,
+            sounds: false,
+            widget_size: "large".to_string(),
+            widget_visibility: "active".to_string(),
+            ink_color: "blue".to_string(),
+            ink_thickness: "bold".to_string(),
+            draw_key: "fn".to_string(),
+            draw_anytime: false,
+            history_limit: None,
+            launch_at_login: true,
+            onboarding_step: 3,
+            ..Settings::default()
+        };
+
+        let parsed: Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).expect("deserialize");
+
+        assert_eq!(parsed.version, 2);
+        assert!(!parsed.sounds);
+        assert_eq!(parsed.widget_size, "large");
+        assert_eq!(parsed.widget_visibility, "active");
+        assert_eq!(parsed.ink_color, "blue");
+        assert_eq!(parsed.ink_thickness, "bold");
+        assert_eq!(parsed.draw_key, "fn");
+        assert!(!parsed.draw_anytime);
+        assert_eq!(parsed.history_limit, None);
+        assert!(parsed.launch_at_login);
+        assert_eq!(parsed.onboarding_step, 3);
+    }
+
+    #[test]
+    fn set_launch_at_login_fails_as_ipc_error_without_an_app_handle() {
+        let e = set_launch_at_login::<tauri::Wry>(None, true)
+            .expect_err("no AppHandle means no plugin");
+        assert_eq!(e.kind, "launchAtLogin");
+    }
+
+    #[test]
+    fn save_settings_emits_settings_changed() {
+        let sink = SettingsEvents::default();
+
+        emit_settings_changed(&sink);
+
+        assert_eq!(sink.0.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -490,7 +743,7 @@ mod tests {
             ..Settings::default()
         };
         let json = serde_json::to_string(&explicit).expect("serialize");
-        let (settings, changed) = Settings::from_json(&json, &store).expect("parse");
+        let (settings, changed) = load_legacy(&json, &store);
         assert!(!changed);
         assert_eq!(settings.active_provider(), explicit.active_provider());
     }

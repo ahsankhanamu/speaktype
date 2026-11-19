@@ -40,6 +40,8 @@ pub struct AppState {
     pub last_active_window: Arc<Mutex<Option<WindowInfo>>>,
     pub chunk_session: Arc<Mutex<Option<ChunkSession<tauri::Wry>>>>,
     pub is_pasting: Arc<AtomicBool>,
+    /// The dictation hotkey currently armed, so a change touches only it.
+    pub app_hotkey: Arc<Mutex<crate::hotkey::AppHotkey>>,
 }
 
 #[tauri::command]
@@ -862,13 +864,12 @@ pub fn save_settings(
         let mut current = state.settings.lock().map_err(|e| e.to_string())?;
         *current = settings;
     }
+    crate::settings::emit_settings_changed(&app);
 
     let _ = app.emit("theme:changed", json!({ "theme": theme }));
 
     if hotkey_changed {
-        let ok =
-            crate::hotkey::reregister_app_hotkey(&app, &new_hotkey, state.is_recording.clone());
-        crate::clipboard::reregister_scribe_screenshot_hotkey(&app);
+        let ok = arm_dictation_hotkey(&app, state.inner(), new_hotkey.clone());
         let _ = app.emit(
             "hotkey:registered",
             json!({ "hotkey": new_hotkey, "success": ok }),
@@ -882,6 +883,28 @@ pub fn save_settings(
     }
 
     Ok(())
+}
+
+/// Arm `hotkey`, touching only the previous dictation shortcut.
+fn arm_dictation_hotkey(app: &AppHandle, state: &AppState, hotkey: String) -> bool {
+    match state.app_hotkey.lock() {
+        Ok(mut live) => crate::hotkey::reregister_app_hotkey(
+            app,
+            &mut live,
+            &hotkey,
+            state.is_recording.clone(),
+        ),
+        Err(e) => {
+            log_message(&format!("[shortcut] Hotkey state poisoned: {}", e));
+            false
+        }
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn set_launch_at_login(app: AppHandle, on: bool) -> Result<(), crate::session_cmds::IpcError> {
+    crate::settings::set_launch_at_login(Some(&app), on)
 }
 
 #[tauri::command]
@@ -906,8 +929,7 @@ pub fn update_hotkey(
         settings.save()?;
     }
 
-    let ok = crate::hotkey::reregister_app_hotkey(&app, &normalized, state.is_recording.clone());
-    crate::clipboard::reregister_scribe_screenshot_hotkey(&app);
+    let ok = arm_dictation_hotkey(&app, &state, normalized.clone());
     let _ = app.emit(
         "hotkey:registered",
         json!({ "hotkey": normalized, "success": ok }),

@@ -31,6 +31,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::commands::open_recordings_folder,
             crate::commands::get_settings,
             crate::commands::save_settings,
+            crate::commands::set_launch_at_login,
             crate::commands::update_hotkey,
             crate::commands::check_server,
             crate::commands::get_server_status,
@@ -92,6 +93,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::session_cmds::SessionItemUpdated,
             crate::session_cmds::SessionItemsDeleted,
             crate::session_cmds::SessionsChanged,
+            crate::settings::SettingsChanged,
         ])
 }
 
@@ -133,6 +135,7 @@ mod tests {
             "\"session-item-updated\"",
             "\"session-items-deleted\"",
             "\"sessions-changed\"",
+            "\"settings-changed\"",
         ] {
             assert!(bindings.contains(name), "bindings.ts must register {name}");
         }

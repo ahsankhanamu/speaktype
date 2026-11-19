@@ -177,24 +177,6 @@ pub fn register_scribe_screenshot_hotkey(app: &AppHandle, hotkey: &str) -> Resul
     Ok(())
 }
 
-/// Re-register the scribe screenshot hotkey from current settings. Use after
-/// the dictation hotkey re-registration wipes all global shortcuts.
-pub fn reregister_scribe_screenshot_hotkey(app: &AppHandle) {
-    let hotkey = app
-        .state::<AppState>()
-        .settings
-        .lock()
-        .ok()
-        .map(|s| s.scribe_screenshot_hotkey.clone())
-        .unwrap_or_else(|| "Super+Option+S".to_string());
-    if let Err(e) = register_scribe_screenshot_hotkey(app, &hotkey) {
-        log_message(&format!(
-            "[scribe] Screenshot hotkey re-register failed: {}",
-            e
-        ));
-    }
-}
-
 fn parse_shortcut(hotkey: &str) -> Result<Shortcut, String> {
     let normalized = crate::settings::Settings::normalize_hotkey(hotkey);
     normalized
