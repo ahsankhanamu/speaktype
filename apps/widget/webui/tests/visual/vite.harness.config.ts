@@ -9,5 +9,8 @@ export default defineConfig({
   root,
   plugins: [svelte()],
   resolve: { alias: { $lib: resolve(root, 'src/lib') } },
-  server: { port: 5198, strictPort: true },
+  // The host is pinned so the readiness check and the tests reach the same
+  // address: on this Mac `localhost` resolves to ::1, which the server may not
+  // bind, and other worktrees share port 5198.
+  server: { host: '127.0.0.1', port: 5198, strictPort: true },
 });

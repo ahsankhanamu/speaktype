@@ -18,7 +18,7 @@ const ipc = vi.hoisted(() => ({
   pauseModelDownload: vi.fn(),
   cancelModelDownload: vi.fn(),
   getInputDevices: vi.fn(),
-  reprocessHistoryEntry: vi.fn(),
+  reprocessPreview: vi.fn(),
 }));
 const mic = vi.hoisted(() => ({ micLevelsStart: vi.fn(), micLevelsStop: vi.fn() }));
 const motion = vi.hoisted(() => ({ step: vi.fn() }));
@@ -296,7 +296,7 @@ describe('Try it', () => {
 
     beforeEach(() => {
       ipc.getModels.mockResolvedValue(downloadedFast());
-      ipc.reprocessHistoryEntry.mockResolvedValue({ text: 'Hi, this is my first note with SpeakType.', index: 0 });
+      ipc.reprocessPreview.mockResolvedValue('Hi, this is my first note with SpeakType.');
     });
 
     it('does nothing before the first dictation', async () => {
@@ -305,7 +305,7 @@ describe('Try it', () => {
       await vi.waitFor(() => expect(bus.liveListeners).toBeGreaterThan(0));
       await switchTo('small');
       await new Promise((resolve) => setTimeout(resolve, 100));
-      expect(ipc.reprocessHistoryEntry).not.toHaveBeenCalled();
+      expect(ipc.reprocessPreview).not.toHaveBeenCalled();
     });
 
     it('shows Getting ready… while the other model loads', async () => {
@@ -314,14 +314,14 @@ describe('Try it', () => {
       ipc.getModels.mockResolvedValue({ ...downloadedFast(), progress: [{ model: 'small', phase: 'loading' }] });
       bus.emit('model:progress', { model: 'small', phase: 'done' });
       await at('Getting ready…');
-      expect(ipc.reprocessHistoryEntry).not.toHaveBeenCalled();
+      expect(ipc.reprocessPreview).not.toHaveBeenCalled();
     });
 
     it('re-runs the practice entry once the model is in use and offers Keep or Back', async () => {
       start({ onboarding_step: 4 });
       await dictate();
       await switchTo('small');
-      await vi.waitFor(() => expect(ipc.reprocessHistoryEntry).toHaveBeenCalledWith(0));
+      await vi.waitFor(() => expect(ipc.reprocessPreview).toHaveBeenCalledWith(0));
       await at('Hi, this is my first note with SpeakType.');
       expect(button('Keep Balanced')).toBeDefined();
       expect(button('Back to Fast')).toBeDefined();

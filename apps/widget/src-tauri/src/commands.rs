@@ -39,6 +39,10 @@ pub struct AppState {
     pub level_monitor: Arc<Mutex<LevelMonitor>>,
     pub mic_levels: Arc<Mutex<DeviceLevels<LevelsUi>>>,
     pub dictation: Arc<Mutex<DictationState>>,
+    /// The audio of the latest dictation, with the entry it belongs to. Onboarding's
+    /// compare re-runs it without the recording being saved and without
+    /// overwriting the entry.
+    pub last_dictation: Arc<Mutex<Option<LastDictation>>>,
     /// Set when the first press's model load gave up, so "Getting ready…" can
     /// end in the server error instead of waiting out its bound.
     pub model_load_failed: Arc<AtomicBool>,
@@ -50,6 +54,14 @@ pub struct AppState {
     pub is_pasting: Arc<AtomicBool>,
     /// The dictation hotkey currently armed, so a change touches only it.
     pub app_hotkey: Arc<Mutex<crate::hotkey::AppHotkey>>,
+}
+
+/// Kept in memory because *Save recording audio* may be off: the newest
+/// dictation can still be re-run until the next one replaces it.
+pub struct LastDictation {
+    pub entry_id: String,
+    pub samples: Vec<f32>,
+    pub sample_rate: u32,
 }
 
 /// Open the microphone and the chunk session. The dictation state is set by
@@ -138,6 +150,16 @@ fn end_recording(app: &AppHandle, state: &AppState) -> Result<(Vec<f32>, u32), S
     tray::set_tray_state(app, TrayState::Transcribing);
     tones::play(Tone::RecordingStop);
     Ok((samples, sample_rate))
+}
+
+/// Keep the latest dictation's audio for `reprocess_preview`. Each new
+/// dictation replaces the previous one, whether or not it was saved to disk.
+fn replace_last_dictation(app: &AppHandle, next: Option<LastDictation>) {
+    if let Some(current) = app.try_state::<AppState>() {
+        if let Ok(mut last) = current.last_dictation.lock() {
+            *last = next;
+        }
+    }
 }
 
 fn discard_recording(app: &AppHandle, state: &AppState) {
@@ -620,7 +642,7 @@ async fn process_recording(
             _ => {
                 log_message("[process] Chunk session produced no text, falling back");
                 crate::debug::capture_audio(&samples, sample_rate);
-                match transcribe_chunked(&app, samples, sample_rate, &settings).await {
+                match transcribe_chunked(&app, samples.clone(), sample_rate, &settings).await {
                     Ok(t) => {
                         crate::debug::update_meta(duration_secs, "post_hoc_fallback");
                         crate::debug::finish_session(&t);
@@ -640,7 +662,7 @@ async fn process_recording(
         }
     } else {
         crate::debug::capture_audio(&samples, sample_rate);
-        match transcribe_chunked(&app, samples, sample_rate, &settings).await {
+        match transcribe_chunked(&app, samples.clone(), sample_rate, &settings).await {
             Ok(t) => {
                 crate::debug::update_meta(duration_secs, "chunked");
                 crate::debug::finish_session(&t);
@@ -711,6 +733,14 @@ async fn process_recording(
     if let Err(e) = history.save() {
         log_message(&format!("[history] Save error: {}", e));
     }
+    replace_last_dictation(
+        &app,
+        Some(LastDictation {
+            entry_id: entry_id.clone(),
+            samples,
+            sample_rate,
+        }),
+    );
 
     // Dictation inside an active session becomes a speech item; the session
     // stays open (spec §12: dictations no longer close sessions).
@@ -729,7 +759,7 @@ async fn process_recording(
     }
 
     tray::set_tray_state(&app, TrayState::Idle);
-    let _ = app.emit("history:changed", json!({}));
+    crate::history::emit_changed(&app);
     let state = app
         .try_state::<AppState>()
         .and_then(|current| current.dictation.lock().ok().map(|s| s.clone()))
@@ -800,26 +830,7 @@ pub async fn open_onboarding(app: AppHandle) -> Result<(), String> {
     open_onboarding_window(&app)
 }
 
-pub fn persist_onboarding_window_position(window: &WebviewWindow) {
-    let app = window.app_handle();
-    let Some(state) = app.try_state::<AppState>() else {
-        return;
-    };
-    let Ok(pos) = window.outer_position() else {
-        return;
-    };
-    let (cx, cy) = crate::window::clamp_to_visible_screens(window, pos.x as f64, pos.y as f64);
-    let save_result = {
-        let Ok(mut settings) = state.settings.lock() else {
-            return;
-        };
-        settings.onboarding_window_x = Some(cx);
-        settings.onboarding_window_y = Some(cy);
-        settings.save()
-    };
-    let _ = save_result;
-}
-
+/// Onboarding is centred every launch, so it has no saved position.
 pub fn open_onboarding_window(app: &AppHandle) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("onboarding") {
         let _ = window.show();
@@ -829,36 +840,21 @@ pub fn open_onboarding_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let (saved_x, saved_y) = onboarding_window_position(app);
-
-    let window =
-        WebviewWindowBuilder::new(app, "onboarding", WebviewUrl::App("onboarding.html".into()))
-            .title("SpeakType")
-            .inner_size(SETTINGS_WINDOW_W, SETTINGS_WINDOW_H)
-            .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
-            .resizable(true)
-            .build()
-            .map_err(|e| e.to_string())?;
-
-    if let (Some(x), Some(y)) = (saved_x, saved_y) {
-        crate::window::apply_saved_position(&window, x, y);
-    } else {
-        let _ = window.center();
-    }
+    let _ = hidden_title_bar(WebviewWindowBuilder::new(
+        app,
+        "onboarding",
+        WebviewUrl::App("onboarding.html".into()),
+    ))
+    .title("SpeakType")
+    .inner_size(ONBOARDING_WINDOW_W, ONBOARDING_WINDOW_H)
+    .resizable(false)
+    .center()
+    .build()
+    .map_err(|e| e.to_string())?;
 
     position_widget_for_onboarding(app);
     let _ = app.emit("onboarding:opened", json!({}));
     Ok(())
-}
-
-fn onboarding_window_position(app: &AppHandle) -> (Option<f64>, Option<f64>) {
-    if let Some(state) = app.try_state::<AppState>() {
-        if let Ok(settings) = state.settings.lock() {
-            return (settings.onboarding_window_x, settings.onboarding_window_y);
-        }
-    }
-    let settings = Settings::load();
-    (settings.onboarding_window_x, settings.onboarding_window_y)
 }
 
 fn position_widget_for_onboarding(app: &AppHandle) {
@@ -891,7 +887,6 @@ pub async fn finish_onboarding(app: AppHandle, state: State<'_, AppState>) -> Re
     }
 
     if let Some(window) = app.get_webview_window("onboarding") {
-        persist_onboarding_window_position(&window);
         let _ = window.close();
     }
     let hotkey = {
@@ -1035,8 +1030,19 @@ fn arm_dictation_hotkey(app: &AppHandle, state: &AppState, hotkey: String) -> bo
 
 #[tauri::command]
 #[specta::specta]
-pub fn set_launch_at_login(app: AppHandle, on: bool) -> Result<(), crate::session_cmds::IpcError> {
-    crate::settings::set_launch_at_login(Some(&app), on)
+pub fn set_launch_at_login(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    on: bool,
+) -> Result<(), crate::session_cmds::IpcError> {
+    let mut settings = state
+        .settings
+        .lock()
+        .map_err(|e| IpcError::new("launchAtLogin", e.to_string()))?;
+    crate::settings::set_launch_at_login(Some(&app), on, &mut settings)?;
+    drop(settings);
+    crate::settings::emit_settings_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1590,7 +1596,7 @@ pub async fn restart_whisper_server(
 /// Paste again: re-deliver the newest history text into the current app.
 #[tauri::command]
 #[specta::specta]
-pub async fn paste_last(state: State<'_, AppState>) -> Result<(), IpcError> {
+pub async fn paste_last(app: AppHandle, state: State<'_, AppState>) -> Result<(), IpcError> {
     let Some(text) = History::load().newest_text() else {
         return Err(IpcError::new("history", "Nothing to paste yet"));
     };
@@ -1632,6 +1638,7 @@ pub async fn paste_last(state: State<'_, AppState>) -> Result<(), IpcError> {
                 e
             ));
         }
+        crate::history::emit_changed(&app);
     }
     if pasted {
         Ok(())
@@ -1651,20 +1658,26 @@ pub fn get_history() -> Result<History, String> {
 
 #[tauri::command]
 #[specta::specta]
-pub fn delete_history_entry(index: usize) -> Result<(), String> {
-    History::delete_entry(index)
+pub fn delete_history_entry(app: AppHandle, index: usize) -> Result<(), String> {
+    History::delete_entry(index)?;
+    crate::history::emit_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn delete_history_audio(index: usize) -> Result<(), String> {
-    History::delete_entry_audio(index)
+pub fn delete_history_audio(app: AppHandle, index: usize) -> Result<(), String> {
+    History::delete_entry_audio(index)?;
+    crate::history::emit_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
-pub fn clear_history() -> Result<(), String> {
-    History::clear()
+pub fn clear_history(app: AppHandle) -> Result<(), String> {
+    History::clear()?;
+    crate::history::emit_changed(&app);
+    Ok(())
 }
 
 #[tauri::command]
@@ -1694,29 +1707,10 @@ pub async fn reprocess_history_entry(
 
     ensure_settings_api_ready(&app, &mut settings).await?;
 
-    let (samples, sample_rate) = History::read_entry_audio(index)?;
-    let reprocess_duration = samples.len() as f64 / sample_rate as f64;
-
-    crate::debug::start_session(&settings.model);
-    crate::debug::capture_audio(&samples, sample_rate);
-    let result = transcribe_chunked(&app, samples, sample_rate, &settings).await;
-    let text = match result {
-        Ok(t) => {
-            crate::debug::update_meta(reprocess_duration, "reprocess");
-            crate::debug::finish_session(&t);
-            t
-        }
-        Err(e) => {
-            crate::debug::discard_session();
-            return Err(format!("Transcription failed: {}", e));
-        }
-    };
-
-    if text.is_empty() {
-        return Err("No speech detected in recording".to_string());
-    }
+    let text = History::reprocess(&app, index, &settings, None).await?;
 
     History::update_text(index, &text)?;
+    crate::history::emit_changed(&app);
 
     Ok(json!({ "text": text, "index": index }))
 }
@@ -1738,21 +1732,27 @@ fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), String> {
     Ok(())
 }
 
+/// About is a page of the main SpeakType window, so its URL is the window's own
+/// with the `#/about` route.
+pub(crate) fn about_url(window_url: &tauri::Url) -> tauri::Url {
+    let mut url = window_url.clone();
+    url.set_fragment(Some("/about"));
+    url
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn open_about(app: AppHandle) -> Result<(), String> {
-    if let Some(window) = app.get_webview_window("about") {
-        return show_and_focus_window(&window);
-    }
-
-    let window = WebviewWindowBuilder::new(&app, "about", WebviewUrl::App("about.html".into()))
-        .title("About SpeakType")
-        .inner_size(320.0, 380.0)
-        .resizable(false)
-        .center()
-        .build()
-        .map_err(|e| e.to_string())?;
-
+    let window = match app.get_webview_window("settings") {
+        Some(window) => window,
+        None => {
+            open_settings(app.clone()).await?;
+            app.get_webview_window("settings")
+                .ok_or_else(|| "The SpeakType window did not open".to_string())?
+        }
+    };
+    let url = about_url(&window.url().map_err(|e| e.to_string())?);
+    window.navigate(url).map_err(|e| e.to_string())?;
     show_and_focus_window(&window)
 }
 
@@ -1760,6 +1760,27 @@ const SETTINGS_WINDOW_W: f64 = 880.0;
 const SETTINGS_WINDOW_H: f64 = 640.0;
 const SETTINGS_WINDOW_MIN_W: f64 = 720.0;
 const SETTINGS_WINDOW_MIN_H: f64 = 540.0;
+const ONBOARDING_WINDOW_W: f64 = 960.0;
+const ONBOARDING_WINDOW_H: f64 = 640.0;
+
+/// Both document windows use macOS's overlay title bar with a hidden title, so
+/// the sidebar (and onboarding's page) runs to the top of the window while the
+/// traffic lights float over it.
+#[cfg(target_os = "macos")]
+fn hidden_title_bar(
+    builder: WebviewWindowBuilder<'_, tauri::Wry, AppHandle>,
+) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
+    builder
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn hidden_title_bar(
+    builder: WebviewWindowBuilder<'_, tauri::Wry, AppHandle>,
+) -> WebviewWindowBuilder<'_, tauri::Wry, AppHandle> {
+    builder
+}
 
 fn settings_window_geometry(app: &AppHandle) -> (Option<f64>, Option<f64>, f64, f64) {
     let settings = match app.try_state::<AppState>() {
@@ -1782,7 +1803,7 @@ fn settings_window_geometry(app: &AppHandle) -> (Option<f64>, Option<f64>, f64, 
 
 /// Copy the live settings-window geometry into the in-memory settings. Disk
 /// writes are deferred to close/quit so dragging does not hammer settings.json.
-fn update_settings_window_geometry(window: &WebviewWindow) {
+pub(crate) fn update_settings_window_geometry(window: &WebviewWindow) {
     let app = window.app_handle();
     let Some(state) = app.try_state::<AppState>() else {
         return;
@@ -1813,7 +1834,7 @@ fn update_settings_window_geometry(window: &WebviewWindow) {
     settings.settings_h = Some(logical.height);
 }
 
-pub fn persist_settings_window_geometry(app: &AppHandle) {
+pub(crate) fn persist_settings_window_geometry(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("settings") {
         update_settings_window_geometry(&window);
     }
@@ -1838,14 +1859,17 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
 
     let (saved_x, saved_y, width, height) = settings_window_geometry(&app);
 
-    let window =
-        WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
-            .title("SpeakType Settings")
-            .inner_size(width, height)
-            .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
-            .resizable(true)
-            .build()
-            .map_err(|e| e.to_string())?;
+    let window = hidden_title_bar(WebviewWindowBuilder::new(
+        &app,
+        "settings",
+        WebviewUrl::App("settings.html".into()),
+    ))
+    .title("SpeakType")
+    .inner_size(width, height)
+    .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
+    .resizable(true)
+    .build()
+    .map_err(|e| e.to_string())?;
 
     // A position the clamp rejects falls back to the widget's top-right corner,
     // which is meaningless for a window this size — centre it instead.
@@ -1858,22 +1882,6 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     };
     if !restored {
         let _ = window.center();
-    }
-
-    {
-        let geometry_app = app.clone();
-        window.on_window_event(move |event| match event {
-            tauri::WindowEvent::Moved(_) | tauri::WindowEvent::Resized(_) => {
-                if let Some(w) = geometry_app.get_webview_window("settings") {
-                    update_settings_window_geometry(&w);
-                }
-            }
-            tauri::WindowEvent::CloseRequested { .. } | tauri::WindowEvent::Destroyed => {
-                persist_settings_window_geometry(&geometry_app);
-                stop_mic_test_for_app(&geometry_app, "window_closed");
-            }
-            _ => {}
-        });
     }
 
     show_and_focus_window(&window)
@@ -1900,9 +1908,6 @@ pub fn minimize_widget(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 #[specta::specta]
 pub fn quit_app(app: AppHandle) {
-    if let Some(window) = app.get_webview_window("onboarding") {
-        persist_onboarding_window_position(&window);
-    }
     if app.get_webview_window("settings").is_some() {
         persist_settings_window_geometry(&app);
     }
@@ -1921,6 +1926,7 @@ pub async fn save_window_position(
         let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
         settings.window_x = Some(cx);
         settings.window_y = Some(cy);
+        settings.widget_corner = crate::window::WidgetCorner::Custom.as_str().to_string();
         settings.save()?;
     }
     Ok(())
@@ -1936,14 +1942,19 @@ pub async fn reset_widget_position(
         return Err("Widget window not found".to_string());
     };
 
-    let _ = crate::window::reset_to_default_position(&window);
-
-    {
-        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.window_x = None;
-        settings.window_y = None;
-        settings.save()?;
+    crate::widget_cmds::apply_corner(
+        &window,
+        &state.settings,
+        crate::window::WidgetCorner::BottomRight,
+    )
+    .map_err(|e| e.message)?;
+    crate::widget_cmds::WidgetCornerChanged {
+        corner: crate::window::WidgetCorner::BottomRight
+            .as_str()
+            .to_string(),
     }
+    .emit(&app)
+    .map_err(|e| e.to_string())?;
 
     let _ = window.unminimize();
     window.show().map_err(|e| e.to_string())?;
@@ -1994,4 +2005,36 @@ pub fn get_debug_audio_slice(
 #[specta::specta]
 pub fn reveal_path(path: String) -> Result<(), String> {
     tauri_plugin_opener::reveal_item_in_dir(&path).map_err(|e| e.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn about_url_is_the_windows_route() {
+        for (page, expected) in [
+            (
+                "http://tauri.localhost/settings.html",
+                "http://tauri.localhost/settings.html#/about",
+            ),
+            (
+                "http://localhost:5173/settings.html",
+                "http://localhost:5173/settings.html#/about",
+            ),
+        ] {
+            let url = about_url(&tauri::Url::parse(page).unwrap());
+            assert_eq!(url.as_str(), expected);
+            assert_eq!(url.fragment(), Some("/about"));
+        }
+    }
+
+    #[test]
+    fn about_url_replaces_another_route() {
+        let url = tauri::Url::parse("http://tauri.localhost/settings.html#/general").unwrap();
+        assert_eq!(
+            about_url(&url).as_str(),
+            "http://tauri.localhost/settings.html#/about"
+        );
+    }
 }

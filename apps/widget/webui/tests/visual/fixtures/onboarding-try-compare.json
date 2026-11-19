@@ -95,8 +95,5 @@
       }
     }
   ],
-  "reprocess_history_entry": {
-    "text": "Hi, this is my first note with SpeakType. It actually works.",
-    "index": 0
-  }
+  "reprocess_preview": "Hi, this is my first note with SpeakType. It actually works."
 }

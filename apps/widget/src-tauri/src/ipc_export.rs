@@ -66,6 +66,11 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::commands::delete_debug_session,
             crate::commands::get_debug_audio_slice,
             crate::commands::reveal_path,
+            crate::widget_cmds::set_widget_corner,
+            crate::widget_cmds::screen_recording_status,
+            crate::widget_cmds::request_screen_recording,
+            crate::widget_cmds::test_typing,
+            crate::widget_cmds::reprocess_preview,
             crate::session_cmds::session_start,
             crate::session_cmds::session_stop,
             crate::session_cmds::session_active,
@@ -99,6 +104,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::session_cmds::SessionsChanged,
             crate::settings::SettingsChanged,
             crate::controller::DictationState,
+            crate::history::HistoryChanged,
+            crate::widget_cmds::MicDevicesChanged,
+            crate::widget_cmds::WidgetCornerChanged,
         ])
 }
 

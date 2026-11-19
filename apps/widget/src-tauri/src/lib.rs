@@ -35,6 +35,7 @@ mod templates;
 mod tones;
 mod transcribe;
 mod tray;
+mod widget_cmds;
 mod window;
 
 use audio::{AudioRecorder, LevelMonitor};
@@ -69,13 +70,21 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .on_window_event(|window, event| {
-            if window.label() != "onboarding" {
-                return;
-            }
-            match event {
-                WindowEvent::Moved(_) | WindowEvent::CloseRequested { .. } => {
-                    if let Some(onboarding) = window.app_handle().get_webview_window("onboarding") {
-                        commands::persist_onboarding_window_position(&onboarding);
+            match (window.label(), event) {
+                ("settings", WindowEvent::Moved(_))
+                | ("settings", WindowEvent::Resized(_)) => {
+                    if let Some(settings) = window.app_handle().get_webview_window("settings") {
+                        commands::update_settings_window_geometry(&settings);
+                    }
+                }
+                ("settings", WindowEvent::CloseRequested { .. })
+                | ("settings", WindowEvent::Destroyed) => {
+                    commands::persist_settings_window_geometry(window.app_handle());
+                    commands::stop_mic_test_for_app(window.app_handle(), "window_closed");
+                }
+                ("main", WindowEvent::Moved(position)) => {
+                    if let Some(widget) = window.app_handle().get_webview_window("main") {
+                        widget_cmds::save_dragged_position(&widget, *position);
                     }
                 }
                 _ => {}
@@ -188,18 +197,29 @@ pub fn run() {
             let settings = Settings::load();
 
             if let Some(window) = app.get_webview_window("main") {
-                match (settings.window_x, settings.window_y) {
-                    (Some(x), Some(y)) => {
-                        let (cx, cy) = window::apply_saved_position(&window, x, y);
-                        if (cx, cy) != (x, y) {
-                            let mut corrected = settings.clone();
-                            corrected.window_x = Some(cx);
-                            corrected.window_y = Some(cy);
-                            let _ = corrected.save();
+                let at_corner = match window::WidgetCorner::parse(&settings.widget_corner) {
+                    Some(corner) => window::place_at_corner(&window, corner),
+                    None => None,
+                };
+                if at_corner.is_none() {
+                    match (settings.window_x, settings.window_y) {
+                        (Some(x), Some(y)) => {
+                            let (cx, cy) = window::apply_saved_position(&window, x, y);
+                            if (cx, cy) != (x, y) {
+                                let mut corrected = settings.clone();
+                                corrected.window_x = Some(cx);
+                                corrected.window_y = Some(cy);
+                                if let Err(e) = corrected.save() {
+                                    logging::log_message(&format!(
+                                        "[window] Failed to save the corrected position: {}",
+                                        e
+                                    ));
+                                }
+                            }
                         }
-                    }
-                    _ => {
-                        window::place_at_default_position(&window);
+                        _ => {
+                            window::place_at_default_position(&window);
+                        }
                     }
                 }
             }
@@ -255,29 +275,7 @@ pub fn run() {
             }
 
             {
-                let app_handle_for_device = app.handle().clone();
-                std::thread::spawn(move || {
-                    let mut last_name: Option<String> = None;
-                    let mut last_count: usize = 0;
-                    loop {
-                        let current = audio::get_default_input_device_name();
-                        let count = audio::count_input_devices();
-                        if current != last_name || count != last_count {
-                            let name = current.clone().unwrap_or_default();
-                            logging::log_message(&format!(
-                                "[audio] Device changed: {:?} (inputs={})",
-                                name, count
-                            ));
-                            let _ = app_handle_for_device.emit(
-                                "sidecar:device_changed",
-                                serde_json::json!({ "name": name, "count": count }),
-                            );
-                            last_name = current;
-                            last_count = count;
-                        }
-                        std::thread::sleep(std::time::Duration::from_secs(2));
-                    }
-                });
+                widget_cmds::spawn_device_watcher(app.handle().clone());
             }
 
             // The session store (v2 schema; a pre-2 dev DB is reset by design,
@@ -297,6 +295,7 @@ pub fn run() {
                 level_monitor: Arc::new(Mutex::new(LevelMonitor::new())),
                 mic_levels: Arc::new(Mutex::new(audio::DeviceLevels::new(levels_ui))),
                 dictation: Arc::new(Mutex::new(controller::idle())),
+                last_dictation: Arc::new(Mutex::new(None)),
                 model_load_failed: Arc::new(AtomicBool::new(false)),
                 is_recording: is_recording.clone(),
                 is_transcribing: is_transcribing.clone(),
@@ -458,7 +457,12 @@ pub fn run() {
                     "about" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = commands::open_about(app).await;
+                            if let Err(e) = commands::open_about(app).await {
+                                logging::log_message(&format!(
+                                    "[tray] Could not open About: {}",
+                                    e
+                                ));
+                            }
                         });
                     }
                     "settings" => {
@@ -468,16 +472,26 @@ pub fn run() {
                         });
                     }
                     "show" => {
-                        if let Some(window) = app.get_webview_window("main") {
+                        let app = app.clone();
+                        let show_item = show_item.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let Some(window) = app.get_webview_window("main") else {
+                                return;
+                            };
                             if window.is_visible().unwrap_or(false) {
                                 let _ = window.hide();
                                 let _ = show_item.set_text("Show Widget");
+                            } else if let Err(e) =
+                                widget_cmds::show_widget_at(&app, window::WidgetCorner::BottomRight)
+                            {
+                                logging::log_message(&format!(
+                                    "[tray] Could not show the widget: {}",
+                                    e
+                                ));
                             } else {
-                                let _ = window.show();
-                                let _ = window.set_focus();
                                 let _ = show_item.set_text("Hide Widget");
                             }
-                        }
+                        });
                     }
                     "quit" => {
                         app.exit(0);
@@ -593,6 +607,11 @@ mod ipc_surface {
         "delete_debug_session",
         "get_debug_audio_slice",
         "reveal_path",
+        "set_widget_corner",
+        "screen_recording_status",
+        "request_screen_recording",
+        "test_typing",
+        "reprocess_preview",
         "session_start",
         "session_stop",
         "session_active",
@@ -666,6 +685,11 @@ mod ipc_surface {
         "cancel_model_download",
         "pause_model_download",
         "reveal_path",
+        "set_widget_corner",
+        "screen_recording_status",
+        "request_screen_recording",
+        "test_typing",
+        "reprocess_preview",
         "session_start",
         "session_stop",
         "session_active",

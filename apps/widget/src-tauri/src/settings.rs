@@ -144,6 +144,32 @@ pub struct Settings {
     /// Last onboarding step reached, for resume.
     #[serde(default)]
     pub onboarding_step: u8,
+    /// Hotkey that starts a Show & Tell session.
+    #[serde(default = "default_session_hotkey")]
+    pub session_hotkey: String,
+    /// Show the latest transcribed line under the HUD during a session.
+    #[serde(default = "default_live_captions")]
+    pub live_captions: bool,
+    /// Keep a session's audio on disk.
+    #[serde(default)]
+    pub keep_session_audio: bool,
+    /// "bottom_right" | "bottom_center" | "top_right" | "bottom_left" |
+    /// "custom" (where the user last dragged it).
+    #[serde(default = "default_widget_corner")]
+    pub widget_corner: String,
+}
+
+/// "Option+Super+K", in the app's modifier order (⌥⌘K).
+pub(crate) fn default_session_hotkey() -> String {
+    "Option+Super+K".to_string()
+}
+
+fn default_live_captions() -> bool {
+    true
+}
+
+fn default_widget_corner() -> String {
+    "bottom_right".to_string()
 }
 
 fn default_paste_mode() -> String {
@@ -312,6 +338,10 @@ impl Default for Settings {
             history_limit: default_history_limit(),
             launch_at_login: false,
             onboarding_step: 0,
+            session_hotkey: default_session_hotkey(),
+            live_captions: default_live_captions(),
+            keep_session_audio: false,
+            widget_corner: default_widget_corner(),
         }
     }
 }
@@ -341,13 +371,14 @@ pub(crate) fn emit_settings_changed(sink: &impl SettingsEventSink) {
     }
 }
 
-/// Launch at login through `tauri-plugin-autostart` (a LaunchAgent on macOS).
-/// The settings window saves `launch_at_login` alongside the other fields, so
-/// an error here is reported, not fatal. The handle is a parameter so the
-/// not-running case is testable.
+/// Launch at login through `tauri-plugin-autostart` (a LaunchAgent on macOS),
+/// then persist the flag: Rust is the single source of truth, so the settings
+/// window reads it back rather than tracking its own copy. The handle is a
+/// parameter so the not-running case is testable.
 pub(crate) fn set_launch_at_login<R: tauri::Runtime>(
     app: Option<&tauri::AppHandle<R>>,
     on: bool,
+    settings: &mut Settings,
 ) -> Result<(), IpcError> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app
@@ -358,7 +389,11 @@ pub(crate) fn set_launch_at_login<R: tauri::Runtime>(
     } else {
         manager.disable()
     }
-    .map_err(|e| IpcError::new("launchAtLogin", e.to_string()))
+    .map_err(|e| IpcError::new("launchAtLogin", e.to_string()))?;
+    settings.launch_at_login = on;
+    settings
+        .save()
+        .map_err(|e| IpcError::new("launchAtLogin", e))
 }
 
 impl Settings {
@@ -662,6 +697,49 @@ mod tests {
         assert_eq!(settings.history_limit, Some(100));
         assert!(!settings.launch_at_login);
         assert_eq!(settings.onboarding_step, 0);
+        assert_eq!(settings.session_hotkey, "Option+Super+K");
+        assert!(settings.live_captions);
+        assert!(!settings.keep_session_audio);
+        assert_eq!(settings.widget_corner, "bottom_right");
+    }
+
+    #[test]
+    fn settings_reads_the_session_and_widget_fields_from_an_existing_file() {
+        let store = speaktype_stt::MemoryStore::new();
+        let json = serde_json::to_string_pretty(&Settings {
+            session_hotkey: "Option+Super+J".to_string(),
+            live_captions: false,
+            keep_session_audio: true,
+            widget_corner: "custom".to_string(),
+            ..Settings::default()
+        })
+        .expect("serialize");
+
+        let (settings, _) = Settings::load_from(Ok(Some(&json)), &store).expect("parse");
+
+        assert_eq!(settings.session_hotkey, "Option+Super+J");
+        assert!(!settings.live_captions);
+        assert!(settings.keep_session_audio);
+        assert_eq!(settings.widget_corner, "custom");
+    }
+
+    #[test]
+    fn settings_roundtrip_session_and_widget_fields() {
+        let settings = Settings {
+            session_hotkey: "Option+Super+J".to_string(),
+            live_captions: false,
+            keep_session_audio: true,
+            widget_corner: "top_right".to_string(),
+            ..Settings::default()
+        };
+
+        let parsed: Settings =
+            serde_json::from_str(&serde_json::to_string(&settings).unwrap()).expect("deserialize");
+
+        assert_eq!(parsed.session_hotkey, settings.session_hotkey);
+        assert!(!parsed.live_captions);
+        assert!(parsed.keep_session_audio);
+        assert_eq!(parsed.widget_corner, "top_right");
     }
 
     #[test]
@@ -716,9 +794,14 @@ mod tests {
 
     #[test]
     fn set_launch_at_login_fails_as_ipc_error_without_an_app_handle() {
-        let e = set_launch_at_login::<tauri::Wry>(None, true)
+        let mut settings = Settings::default();
+        let e = set_launch_at_login::<tauri::Wry>(None, true, &mut settings)
             .expect_err("no AppHandle means no plugin");
         assert_eq!(e.kind, "launchAtLogin");
+        assert!(
+            !settings.launch_at_login,
+            "a failed enable must not be recorded as on"
+        );
     }
 
     #[test]

@@ -7,13 +7,13 @@ export default defineConfig({
   reporter: 'list',
   expect: { toHaveScreenshot: { scale: 'device' } },
   use: {
-    baseURL: 'http://localhost:5198',
+    baseURL: 'http://127.0.0.1:5198',
     viewport: { width: 1040, height: 900 },
     deviceScaleFactor: 2,
   },
   webServer: {
     command: 'npx vite --config tests/visual/vite.harness.config.ts',
-    url: 'http://localhost:5198/tests/visual/harness.html',
+    url: 'http://127.0.0.1:5198/tests/visual/harness.html',
     reuseExistingServer: true,
   },
 });

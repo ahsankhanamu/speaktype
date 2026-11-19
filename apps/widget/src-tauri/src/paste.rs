@@ -298,6 +298,36 @@ fn simulate_keypress(_key_name: &str) -> bool {
     false
 }
 
+/// The text the permissions page's Test typing types. One line, ASCII, so it
+/// lands the same in every app.
+pub const TEST_TYPING_TEXT: &str = "SpeakType test";
+
+/// Type `text` into the focused element as Unicode keystrokes (`CGEvent`
+/// string events are Unicode-correct, so no key code table is needed).
+#[cfg(target_os = "macos")]
+pub fn type_test_text(text: &str) -> Result<(), String> {
+    use core_graphics::event::CGEventTapLocation;
+    use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
+
+    let source = CGEventSource::new(CGEventSourceStateID::CombinedSessionState)
+        .map_err(|_| "Couldn't reach the keyboard.".to_string())?;
+    for ch in text.chars() {
+        let down = core_graphics::event::CGEvent::new_keyboard_event(source.clone(), 0, true)
+            .map_err(|_| "Couldn't type.".to_string())?;
+        down.set_string(String::from(ch).as_str());
+        down.post(CGEventTapLocation::HID);
+        let up = core_graphics::event::CGEvent::new_keyboard_event(source.clone(), 0, false)
+            .map_err(|_| "Couldn't type.".to_string())?;
+        up.post(CGEventTapLocation::HID);
+    }
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn type_test_text(_text: &str) -> Result<(), String> {
+    Err("Test typing is available on macOS only.".to_string())
+}
+
 /// Press configured keys after pasting, if any.
 fn press_post_paste_keys(post_paste_keys: Option<&str>) {
     let keys_str = match post_paste_keys {
@@ -380,4 +410,16 @@ pub fn paste_text(
     }
 
     true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_typing_text_is_one_plain_line() {
+        assert_eq!(TEST_TYPING_TEXT, "SpeakType test");
+        assert!(TEST_TYPING_TEXT.is_ascii());
+        assert!(!TEST_TYPING_TEXT.contains('\n'));
+    }
 }

@@ -93,6 +93,22 @@ export const commands = {
 	getDebugAudioSlice: (sessionId: number, startSecs: number | null, endSecs: number | null, options?: InvokeOptions) => __TAURI_INVOKE<number[]>("get_debug_audio_slice", { sessionId, startSecs, endSecs }, options),
 	/**  Reveal a file (e.g. an exported `.md` / `.docx`) in the file manager. */
 	revealPath: (path: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("reveal_path", { path }, options),
+	setWidgetCorner: (corner: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_widget_corner", { corner }, options),
+	/**  True when macOS has granted screen recording to this build. */
+	screenRecordingStatus: (options?: InvokeOptions) => __TAURI_INVOKE<boolean>("screen_recording_status", undefined, options),
+	/**  Show the system prompt, which also adds SpeakType to the Screen Recording list. */
+	requestScreenRecording: (options?: InvokeOptions) => __TAURI_INVOKE<boolean>("request_screen_recording", undefined, options),
+	/**
+	 *  Type "SpeakType test" into the focused element (the permissions page's own
+	 *  field). Sent from a worker thread: posting is cheap, but doing it on the IPC
+	 *  thread would make the page wait on the main loop that delivers the keys.
+	 */
+	testTyping: (options?: InvokeOptions) => __TAURI_INVOKE<null>("test_typing", undefined, options),
+	/**
+	 *  Re-run an entry with the active model and return the text without saving it
+	 *  or touching the entry (onboarding's compare).
+	 */
+	reprocessPreview: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<string>("reprocess_preview", { index }, options),
 	sessionStart: (template: string | null, options?: InvokeOptions) => __TAURI_INVOKE<Session>("session_start", { template }, options),
 	sessionStop: (options?: InvokeOptions) => __TAURI_INVOKE<Session>("session_stop", undefined, options),
 	sessionActive: (options?: InvokeOptions) => __TAURI_INVOKE<Session | null>("session_active", undefined, options),
@@ -137,12 +153,15 @@ export const commands = {
 /** Events */
 export const events = {
 	dictationState: makeEvent<DictationState, DictationState>("dictation-state"),
+	historyChanged: makeEvent<HistoryChanged, HistoryChanged>("history-changed"),
+	micDevicesChanged: makeEvent<MicDevicesChanged, MicDevicesChanged>("mic-devices-changed"),
 	sessionItemAdded: makeEvent<SessionItemAdded, SessionItemAdded>("session-item-added"),
 	sessionItemUpdated: makeEvent<SessionItemUpdated, SessionItemUpdated>("session-item-updated"),
 	sessionItemsDeleted: makeEvent<SessionItemsDeleted, SessionItemsDeleted>("session-items-deleted"),
 	sessionState: makeEvent<SessionState, SessionState>("session-state"),
 	sessionsChanged: makeEvent<SessionsChanged, SessionsChanged>("sessions-changed"),
 	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
+	widgetCornerChanged: makeEvent<WidgetCornerChanged, WidgetCornerChanged>("widget-corner-changed"),
 };
 
 /* Types */
@@ -196,6 +215,12 @@ export type History = {
 	entries: HistoryEntry[],
 };
 
+/**
+ *  Typed event: the history file was written (dictation added, entry deleted,
+ *  re-pasted, reprocessed or cleared). Windows refetch on it.
+ */
+export type HistoryChanged = Record<string, never>;
+
 export type HistoryEntry = {
 	id?: string,
 	text: string,
@@ -239,6 +264,12 @@ export type ItemKind = "speech" | "mark" | "screenshot" | "clip" | "note";
 export type ItemPatch = {
 	text: string | null,
 	caption: string | null,
+};
+
+export type MicDevicesChanged = {
+	/**  The system default input's name; empty when there is none. */
+	name: string,
+	count: number,
 };
 
 export type Notice = {
@@ -455,6 +486,17 @@ export type Settings = {
 	launch_at_login?: boolean,
 	/**  Last onboarding step reached, for resume. */
 	onboarding_step?: number,
+	/**  Hotkey that starts a Show & Tell session. */
+	session_hotkey?: string,
+	/**  Show the latest transcribed line under the HUD during a session. */
+	live_captions?: boolean,
+	/**  Keep a session's audio on disk. */
+	keep_session_audio?: boolean,
+	/**
+	 *  "bottom_right" | "bottom_center" | "top_right" | "bottom_left" |
+	 *  "custom" (where the user last dragged it).
+	 */
+	widget_corner?: string,
 };
 
 /**
@@ -473,6 +515,15 @@ export type SttTestResult = {
 export type Target = "codingAgent" | "chat" | "markdown";
 
 export type Value = null | boolean | number | string | Value[] | { [key in string]: Value };
+
+/**
+ *  One change to where the widget sits: a corner (from Settings, the widget's
+ *  menu or the tray) or `custom` after a drag. Every window shows it the same.
+ */
+export type WidgetCornerChanged = {
+	/**  A [`crate::window::WidgetCorner`] wire name. */
+	corner: string,
+};
 
 /* Tauri Specta runtime */
 type EventEmit<T> = [T] extends [null] ? () => Promise<void> : (payload: T) => Promise<void>;

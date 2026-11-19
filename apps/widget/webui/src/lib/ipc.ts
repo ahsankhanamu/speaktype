@@ -65,6 +65,7 @@ export const deleteHistoryEntry = commands.deleteHistoryEntry;
 export const deleteHistoryAudio = commands.deleteHistoryAudio;
 export const clearHistory = commands.clearHistory;
 export const reprocessHistoryEntry = commands.reprocessHistoryEntry;
+export const reprocessPreview = commands.reprocessPreview;
 export const getHistoryAudio = commands.getHistoryAudio;
 
 // Debug

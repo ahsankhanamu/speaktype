@@ -4,7 +4,7 @@
   import ModelMenu from '../lib/app/ModelMenu.svelte';
   import { plainModel } from '../lib/app/models';
   import { runModelAction, useModels } from '../lib/app/models.svelte';
-  import { openSettings, reprocessHistoryEntry } from '../lib/ipc';
+  import { openSettings, reprocessPreview } from '../lib/ipc';
   import Page from './Page.svelte';
   import Paper from './Paper.svelte';
 
@@ -42,7 +42,7 @@
   async function compare(id: string) {
     rerun = { id };
     try {
-      const { text } = (await reprocessHistoryEntry(0)) as { text: string };
+      const text = await reprocessPreview(0);
       rerun = { id, text };
     } catch (error) {
       rerun = undefined;
