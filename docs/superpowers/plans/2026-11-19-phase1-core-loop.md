@@ -271,6 +271,20 @@ export function modelState(m: ModelInfo, progress: ModelProgress | undefined, ac
 - [ ] **Failing tests:** `widget_corner_frames` (pure fn `corner_origin(visible: Rect, size: Size, corner) -> Point` for all four corners), `history_changed_emitted_after_delete`, `launch_at_login_persists`, settings defaults for the new fields, registration test updated. `test_typing` and the permission calls: pure-logic tests plus a manual step recorded for the reviewer.
 - [ ] **Implement**, regenerate bindings, remove the UI stand-ins, `make verify`, commit `feat(app): window chrome, About route, test typing, screen recording status, widget corners, history events`.
 
+### Task 8 (P1-R5, DeepSeek-V4.1-Flash) + Task 9 (P1-U5, Claude Sonnet 5.5): shortcut registry and Settings → Keyboard
+
+Spec: §5 "Keyboard shortcuts (single registry)". R5 and U5 run in parallel against this contract.
+
+**Contract:**
+- Rust `shortcuts.rs`: `enum ShortcutAction { Dictation, Session, Screenshot, DrawKey }` (serde camelCase: `dictation`, `session`, `screenshot`, `drawKey`); `struct ShortcutBinding { action, keys: String /* e.g. "Super+Control", "F8", "Option+Super+K", "RightOption" */ }`.
+- Settings: one `shortcuts: BTreeMap<ShortcutAction, String>`; migration fills it from the old `hotkey`, `scribe_screenshot_hotkey`, `session_hotkey`, `draw_key` **keeping their values** (the owner's F8 survives), then those four fields are removed from the struct (old files still parse).
+- Commands: `shortcuts_get() -> Vec<ShortcutBinding>`; `shortcut_set(action, keys) -> Result<(), IpcError>` (validates, checks conflicts, re-registers **only that action**, persists, emits `ShortcutsChanged {}`); `shortcuts_reset() -> Vec<ShortcutBinding>`.
+- `IpcError.kind` values: `conflict` (message "Already used for <action name>"), `systemShortcut` ("macOS uses this for <name>"; the UI may resend with `force: true` — so `shortcut_set(action, keys, force: bool)`), `registerFailed` ("Couldn't use this shortcut. Another app may own it." — previous binding kept), `invalid`.
+- One registration path: dictation (tap for modifier-only chords, plugin otherwise), session, screenshot via the global-shortcut plugin; draw key via the listen-only tap (Phase 2 consumes it; R5 only stores/validates it). `updateHotkey` is replaced by `shortcut_set(dictation, …)`; callers move.
+- Tests (R5): `migration_keeps_existing_values` (F8 stays), `set_conflicting_shortcut_is_refused`, `system_shortcut_needs_force`, `set_reregisters_only_that_action` (fake registry: other registrations untouched), `register_failure_keeps_previous`, `reset_restores_defaults`.
+
+**U5:** a **Keyboard** sidebar page (between General and Appearance; icon tile `keyboard`, grey) — one `Row` per changeable action from the spec table (Start / stop dictation with presets ⌃⌘ / F9 / F8; Start / stop a session; Take a screenshot; Draw (hold) as a pop-up: Right ⌥ / Right ⌘ / Fn), each a `ShortcutField` showing the conflict / system / register-failure message inline (amber), the system-shortcut case asking "Use anyway" before resending with `force`; **Restore defaults** (secondary) at the bottom with an alert confirm. A read-only group "In SpeakType" lists the fixed shortcuts from the table (Esc, ⌘Z, ⌘↵, ⌘Y, ⌘,, ⌘Q) as keycaps. Dictation's hotkey row on the Dictation page links to Keyboard instead of duplicating the field; search indexes every action. Live via `liveQuery` invalidated by `shortcuts-changed`. Harness screenshots both themes; tests for conflict, system-confirm and reset flows.
+
 ## Phase 1 exit (Claude)
 
 - [ ] Every workstream has been reviewed (code plus screenshots against the boards) and merged.
