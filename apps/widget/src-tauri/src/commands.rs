@@ -17,7 +17,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri_specta::Event;
 
-use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Emitter, Manager, Runtime, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder,
+};
 use tauri_plugin_opener::OpenerExt;
 
 static MODEL_OPERATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
@@ -111,8 +113,11 @@ fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), DictationSta
         .lock()
         .map_err(|_| controller::mic_unavailable())?;
     let buffer = recorder.buffer();
+    let app_for_switch = app.clone();
     recorder
-        .start_with_input(app.clone(), input_device.as_deref())
+        .start_with_input(app.clone(), input_device.as_deref(), move || {
+            emit_dictation(&app_for_switch, controller::mic_fallback());
+        })
         .map_err(|e| {
             log_message(&format!("[dictation] Microphone: {}", e));
             controller::mic_unavailable()
@@ -139,13 +144,7 @@ fn end_recording(app: &AppHandle, state: &AppState) -> Result<(Vec<f32>, u32), S
     state.is_recording.store(false, Ordering::SeqCst);
     let (samples, sample_rate) = {
         let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
-        let take = recorder.stop();
-        if recorder.builtin_fallback() {
-            // The take carries on from the built-in mic; the pill says so as
-            // the preset for this take's outcome.
-            remember_dictation(app, controller::mic_fallback());
-        }
-        take
+        recorder.stop()
     };
     tray::set_tray_state(app, TrayState::Transcribing);
     tones::play(Tone::RecordingStop);
@@ -309,19 +308,25 @@ impl crate::controller::ServerGate for ServerGate<'_> {
 
 /// Store the state and tell every window. The Esc shortcut follows recording
 /// exactly: armed on recording, released on every other phase.
-pub fn remember_dictation(app: &AppHandle, state: DictationState) {
+pub fn remember_dictation<R: Runtime>(app: &AppHandle<R>, state: DictationState) {
     if let Some(app_state) = app.try_state::<AppState>() {
         if let Ok(mut current) = app_state.dictation.lock() {
             *current = state.clone();
         }
-        let _ = state.emit(app);
     }
+    emit_dictation(app, state);
+}
+
+/// Tell the pill without touching the stored state. The mic fallback uses it
+/// from the recorder's stream-error callback, so the recording state with its
+/// notice reaches the pill while the take carries on.
+pub fn emit_dictation<R: Runtime>(app: &AppHandle<R>, state: DictationState) {
+    let _ = state.emit(app);
     if let Some(esc) = app.try_state::<crate::EscHolder>() {
         if let Ok(mut esc) = esc.0.lock() {
             esc.sync(state.phase.is_recording());
         }
     }
-    log_message(&format!("[dictation] {:?}", state.phase));
 }
 
 /// A freshly loaded window missed any event before it mounted; the pill starts
@@ -1735,9 +1740,7 @@ fn show_and_focus_window(window: &tauri::WebviewWindow) -> Result<(), String> {
 /// About is a page of the main SpeakType window, so its URL is the window's own
 /// with the `#/about` route.
 pub(crate) fn about_url(window_url: &tauri::Url) -> tauri::Url {
-    let mut url = window_url.clone();
-    url.set_fragment(Some("/about"));
-    url
+    main_window_url(window_url, Some("about"))
 }
 
 #[tauri::command]
@@ -1746,7 +1749,7 @@ pub async fn open_about(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window("settings") {
         Some(window) => window,
         None => {
-            open_settings(app.clone()).await?;
+            open_settings(app.clone(), None).await?;
             app.get_webview_window("settings")
                 .ok_or_else(|| "The SpeakType window did not open".to_string())?
         }
@@ -1850,10 +1853,42 @@ pub(crate) fn persist_settings_window_geometry(app: &AppHandle) {
     let _ = save_result;
 }
 
+/// The window's page for `section`; no section keeps the page the user is on.
+fn main_window_url(window_url: &tauri::Url, section: Option<&str>) -> tauri::Url {
+    let mut url = window_url.clone();
+    if let Some(section) = section {
+        url.set_fragment(Some(&format!("/{section}")));
+    }
+    url
+}
+
+/// The pages of the one SpeakType window (spec §6.3): History, General, …, About.
+const MAIN_SECTIONS: &[&str] = &[
+    "history",
+    "general",
+    "appearance",
+    "dictation",
+    "sessions",
+    "providers",
+    "permissions",
+    "storage",
+    "advanced",
+    "about",
+];
+
 #[tauri::command]
 #[specta::specta]
-pub async fn open_settings(app: AppHandle) -> Result<(), String> {
+pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<(), String> {
+    if let Some(section) = section.as_deref() {
+        if !MAIN_SECTIONS.contains(&section) {
+            return Err(format!("Unknown section: {section}"));
+        }
+    }
     if let Some(window) = app.get_webview_window("settings") {
+        if let Some(section) = section.as_deref() {
+            let url = main_window_url(&window.url().map_err(|e| e.to_string())?, Some(section));
+            window.navigate(url).map_err(|e| e.to_string())?;
+        }
         return show_and_focus_window(&window);
     }
 
@@ -1882,6 +1917,10 @@ pub async fn open_settings(app: AppHandle) -> Result<(), String> {
     };
     if !restored {
         let _ = window.center();
+    }
+    if let Some(section) = section.as_deref() {
+        let url = main_window_url(&window.url().map_err(|e| e.to_string())?, Some(section));
+        window.navigate(url).map_err(|e| e.to_string())?;
     }
 
     show_and_focus_window(&window)
@@ -2027,6 +2066,48 @@ mod tests {
             assert_eq!(url.as_str(), expected);
             assert_eq!(url.fragment(), Some("/about"));
         }
+    }
+
+    #[test]
+    fn open_settings_lands_on_the_section_it_is_given() {
+        let page = tauri::Url::parse("http://tauri.localhost/settings.html").unwrap();
+        assert_eq!(
+            main_window_url(&page, Some("history")).as_str(),
+            "http://tauri.localhost/settings.html#/history"
+        );
+        let elsewhere = tauri::Url::parse("http://tauri.localhost/settings.html#/general").unwrap();
+        assert_eq!(
+            main_window_url(&elsewhere, Some("history")).as_str(),
+            "http://tauri.localhost/settings.html#/history"
+        );
+        assert_eq!(
+            main_window_url(&elsewhere, None).as_str(),
+            "http://tauri.localhost/settings.html#/general",
+            "no section keeps the page the user is on"
+        );
+    }
+
+    #[test]
+    fn open_settings_sections_are_the_windows_pages() {
+        for section in MAIN_SECTIONS {
+            assert!(
+                [
+                    "history",
+                    "general",
+                    "appearance",
+                    "dictation",
+                    "sessions",
+                    "providers",
+                    "permissions",
+                    "storage",
+                    "advanced",
+                    "about"
+                ]
+                .contains(section),
+                "{section} is not a page of the SpeakType window"
+            );
+        }
+        assert!(MAIN_SECTIONS.contains(&"history"));
     }
 
     #[test]

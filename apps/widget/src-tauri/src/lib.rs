@@ -423,6 +423,8 @@ pub fn run() {
             tray::set_record_menu_item(record_item.clone());
             let about_item =
                 MenuItemBuilder::with_id("about", "About SpeakType").build(app)?;
+            let history_item =
+                MenuItemBuilder::with_id("history", "History…").build(app)?;
             let settings_item =
                 MenuItemBuilder::with_id("settings", "Settings").build(app)?;
             let show_item =
@@ -432,6 +434,7 @@ pub fn run() {
             let menu = MenuBuilder::new(app)
                 .item(&record_item)
                 .separator()
+                .item(&history_item)
                 .item(&settings_item)
                 .item(&show_item)
                 .separator()
@@ -465,10 +468,23 @@ pub fn run() {
                             }
                         });
                     }
+                    "history" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) =
+                                commands::open_settings(app, Some("history".to_string())).await
+                            {
+                                logging::log_message(&format!(
+                                    "[tray] Could not open History: {}",
+                                    e
+                                ));
+                            }
+                        });
+                    }
                     "settings" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = commands::open_settings(app).await;
+                            let _ = commands::open_settings(app, None).await;
                         });
                     }
                     "show" => {
@@ -526,7 +542,7 @@ pub fn run() {
                     }
                     let app_clone = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = commands::open_settings(app_clone).await;
+                        let _ = commands::open_settings(app_clone, None).await;
                     });
                 }
                 _ => {}
@@ -711,6 +727,22 @@ mod ipc_surface {
     ];
 
     #[test]
+    fn the_widget_window_opens_at_the_idle_pill_plus_its_halo_margin() {
+        let config: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(
+                std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tauri.conf.json"),
+            )
+            .expect("tauri.conf.json"),
+        )
+        .expect("valid JSON");
+        let window = &config["app"]["windows"][0];
+        assert_eq!(window["label"], "main");
+        // WindowFit: a 44 pt idle pill inside a 24 pt margin on every side.
+        assert_eq!(window["width"], 92);
+        assert_eq!(window["height"], 92);
+    }
+
+    #[test]
     fn accessibility_became_granted_only_on_the_false_to_true_flip() {
         assert!(accessibility_became_granted(false, true));
         assert!(!accessibility_became_granted(true, true));
@@ -729,6 +761,83 @@ mod ipc_surface {
             missing.is_empty(),
             "frontend calls commands not registered in invoke_handler: {:?}",
             missing
+        );
+    }
+
+    /// Event names a source file emits: quoted literals starting with an
+    /// event prefix, so `log_message` prose about the sidecar is not counted.
+    fn emitted_event_names(text: &str) -> Vec<String> {
+        const PREFIXES: &[&str] = &[
+            concat!("si", "decar:"),
+            concat!("ser", "ver:"),
+            concat!("dicta", "tion:"),
+            concat!("onboar", "ding:"),
+            concat!("mic-devices-", "changed"),
+        ];
+        text.split('"')
+            .skip(1)
+            .step_by(2)
+            .filter(|literal| PREFIXES.iter().any(|prefix| literal.starts_with(prefix)))
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn removed_event_names_are_recognised_as_events() {
+        // Built at run time: the literal would otherwise count as an emit.
+        let speech = ["sidecar", "no_speech"].join(":");
+        let text = format!(
+            "app.emit(\"{speech}\", json!({{}})); log_message(\"Started sidecar: whisper-server\");"
+        );
+        assert_eq!(emitted_event_names(&text), vec![speech.to_string()]);
+        assert!(emitted_event_names("fn open_settings() {}").is_empty());
+    }
+
+    #[test]
+    fn only_the_events_the_new_widget_listens_to_are_emitted() {
+        const KEPT: &[&str] = &[
+            "dictation:long-audio",
+            "onboarding:finished",
+            "onboarding:opened",
+            "server:crash",
+            "server:error",
+            "server:model_needed",
+            "server:ready",
+            "server:starting",
+            "server:stopped",
+            "sidecar:audio_level",
+            "sidecar:permissions",
+            "mic-devices-changed",
+        ];
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut leftovers = Vec::new();
+        for entry in std::fs::read_dir(src).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension() != Some("rs".as_ref()) {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap();
+            for name in emitted_event_names(&text) {
+                if !KEPT.contains(&name.as_str()) {
+                    leftovers.push(format!("{}: {name}", path.display()));
+                }
+            }
+        }
+        assert!(
+            leftovers.is_empty(),
+            "events the new widget does not listen to are still emitted: {leftovers:#?}"
+        );
+    }
+
+    #[test]
+    fn open_settings_is_registered_with_its_section_argument() {
+        let bindings = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../webui/src/lib/bindings.ts"),
+        )
+        .expect("bindings");
+        assert!(
+            bindings.contains("openSettings: (section: string | null"),
+            "bindings.ts must take the section open_settings navigates to"
         );
     }
 

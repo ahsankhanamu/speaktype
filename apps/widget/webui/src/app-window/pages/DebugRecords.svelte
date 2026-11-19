@@ -6,7 +6,7 @@
   import { clearDebugSessions, deleteDebugSession, getDebugSessions } from '../../lib/ipc';
   import Section from '../Section.svelte';
 
-  const records = liveQuery('debug-sessions', getDebugSessions, { invalidateOn: ['dictation-state', 'sidecar:pasted'] });
+  const records = liveQuery('debug-sessions', getDebugSessions, { invalidateOn: ['dictation-state'] });
 
   const title = (record: NonNullable<typeof records.data>[number]) =>
     [new Date(record.startedAt ?? '').toLocaleString(), record.model, record.durationSecs ? formatDuration(record.durationSecs) : '']

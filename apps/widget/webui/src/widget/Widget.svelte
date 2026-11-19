@@ -45,7 +45,7 @@
       case 'pasted':
         return 'success';
       case 'notice':
-        return view.halo;
+        return 'tone' in view ? view.tone : view.halo;
       default:
         return null;
     }
@@ -265,7 +265,7 @@
             {#snippet icon()}<AudioLines size={15} strokeWidth={1.8} aria-hidden="true" />{/snippet}
           </MenuItem>
           <MenuSeparator />
-          <MenuItem label="History" onSelect={() => openSettings().catch(report)}>
+          <MenuItem label="History" onSelect={() => commands.openSettings('history').catch(report)}>
             {#snippet icon()}<History size={15} strokeWidth={1.8} aria-hidden="true" />{/snippet}
           </MenuItem>
           <MenuItem label="Settings" onSelect={() => openSettings().catch(report)}>

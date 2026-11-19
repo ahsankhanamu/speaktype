@@ -171,10 +171,7 @@ pub async fn stt_list_models(state: State<'_, AppState>) -> Result<Vec<RemoteMod
 /// Send the bundled 3 s clip through the provider and report latency and text.
 #[tauri::command]
 #[specta::specta]
-pub async fn stt_test(
-    app: AppHandle,
-    state: State<'_, AppState>,
-) -> Result<SttTestResult, IpcError> {
+pub async fn stt_test(state: State<'_, AppState>) -> Result<SttTestResult, IpcError> {
     let (cfg, api_url) = {
         let settings = state
             .settings
@@ -189,11 +186,10 @@ pub async fn stt_test(
         prompt: None,
         decode: Decode::default(),
     };
-    let transcript = transcribe::run_provider(&cfg, &api_url, &KeychainStore, &clip, || {
-        transcribe::emit_fallback(&app, &cfg)
-    })
-    .await
-    .map_err(|e| IpcError::new("stt", e))?;
+    // A test of the cloud service is not a take, so a fallback is only logged.
+    let transcript = transcribe::run_provider(&cfg, &api_url, &KeychainStore, &clip, || {})
+        .await
+        .map_err(|e| IpcError::new("stt", e))?;
     Ok(SttTestResult {
         latency_ms: transcript.latency_ms,
         text: transcript.text,

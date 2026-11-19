@@ -17,7 +17,6 @@ pub struct AudioRecorder {
     fallback: Option<FallbackMic>,
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: u32,
-    builtin_fallback: bool,
 }
 
 impl AudioRecorder {
@@ -27,12 +26,6 @@ impl AudioRecorder {
 
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
-    }
-
-    /// True when a stream error mid-take switched capture to the built-in
-    /// microphone; the dictation controller reports it as `micFallback`.
-    pub fn builtin_fallback(&self) -> bool {
-        self.builtin_fallback
     }
 
     pub fn new() -> Result<Self, String> {
@@ -49,16 +42,17 @@ impl AudioRecorder {
             fallback: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             sample_rate: DEFAULT_SAMPLE_RATE,
-            builtin_fallback: false,
         })
     }
 
     /// Start capturing using a specific named input device, or the system
-    /// default when `selected` is None/empty.
+    /// default when `selected` is None/empty. `on_switch` runs once, the
+    /// moment a stream error moves the take to the built-in mic.
     pub(crate) fn start_with_input(
         &mut self,
         app_handle: AppHandle,
         selected: Option<&str>,
+        on_switch: impl Fn() + Send + Sync + 'static,
     ) -> Result<(), String> {
         let host = cpal::default_host();
         let device = resolve_input_device(&host, selected)?;
@@ -85,11 +79,11 @@ impl AudioRecorder {
         let buffer = self.buffer.clone();
         let app = app_handle.clone();
         let sample_rate = self.sample_rate;
-        self.builtin_fallback = false;
         let fallback = FallbackMic {
             buffer: buffer.clone(),
             stream: Arc::new(Mutex::new(None)),
             used: Arc::new(AtomicBool::new(false)),
+            on_switch: Arc::new(on_switch),
         };
         let on_error_fallback = fallback.clone();
 
@@ -171,8 +165,7 @@ impl AudioRecorder {
     }
 
     pub fn stop(&mut self) -> (Vec<f32>, u32) {
-        let (samples, sample_rate, switched) = self.take_samples();
-        self.builtin_fallback = switched;
+        let (samples, sample_rate) = self.take_samples();
 
         let duration_ms = if sample_rate > 0 {
             (samples.len() as f64 / sample_rate as f64 * 1000.0) as u64
@@ -190,28 +183,23 @@ impl AudioRecorder {
     }
 
     /// Drain the take: the chosen stream, plus anything the built-in fallback
-    /// captured after the chosen device dropped out. The bool reports the
-    /// switch, once per take.
-    fn take_samples(&mut self) -> (Vec<f32>, u32, bool) {
+    /// captured after the chosen device dropped out.
+    fn take_samples(&mut self) -> (Vec<f32>, u32) {
         if let Some(ref stream) = self.stream {
             let _ = stream.0.pause();
         }
         self.stream.take();
 
-        let switched = match self.fallback.take() {
-            Some(fallback) => {
-                if let Some(stream) = fallback.take_stream() {
-                    let _ = stream.0.pause();
-                }
-                fallback.switched()
+        if let Some(fallback) = self.fallback.take() {
+            if let Some(stream) = fallback.take_stream() {
+                let _ = stream.0.pause();
             }
-            None => false,
-        };
+        }
         let samples = {
             let mut buf = self.buffer.lock().unwrap();
             std::mem::take(&mut *buf)
         };
-        (samples, self.sample_rate, switched)
+        (samples, self.sample_rate)
     }
 }
 
@@ -225,6 +213,7 @@ struct FallbackMic {
     buffer: Arc<Mutex<Vec<f32>>>,
     stream: Arc<Mutex<Option<SendStream>>>,
     used: Arc<AtomicBool>,
+    on_switch: Arc<dyn Fn() + Send + Sync>,
 }
 
 impl FallbackMic {
@@ -236,6 +225,7 @@ impl FallbackMic {
             "[audio] Chosen input failed ({}), switching to the built-in microphone",
             error
         ));
+        (self.on_switch)();
         let built = cpal::default_host()
             .default_input_device()
             .ok_or_else(|| "no default input device".to_string())
@@ -257,10 +247,6 @@ impl FallbackMic {
 
     fn take_stream(&self) -> Option<SendStream> {
         self.stream.lock().ok().and_then(|mut slot| slot.take())
-    }
-
-    fn switched(&self) -> bool {
-        self.used.load(Ordering::SeqCst)
     }
 }
 
@@ -1140,23 +1126,29 @@ mod monitor_tests {
     fn fallback_is_a_property_of_the_take() {
         use super::FallbackMic;
         use std::sync::atomic::AtomicBool;
+        let switches = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let counted = switches.clone();
         let fallback = FallbackMic {
             buffer: Arc::new(Mutex::new(Vec::new())),
             stream: Arc::new(Mutex::new(None)),
             used: Arc::new(AtomicBool::new(false)),
+            on_switch: Arc::new(move || {
+                counted.fetch_add(1, Ordering::SeqCst);
+            }),
         };
-        assert!(
-            !fallback.switched(),
-            "a take with no stream error keeps its mic"
+        fallback.on_error("device unplugged");
+        assert_eq!(
+            switches.load(Ordering::SeqCst),
+            1,
+            "the pill is told the moment the take moves to the built-in mic"
         );
         // Two callbacks report the same failed device; the switch is a
         // property of the take, and `used` is its idempotent latch.
-        fallback.used.store(true, Ordering::SeqCst);
-        fallback.on_error("device unplugged");
-        assert!(fallback.switched());
-        assert!(
-            fallback.take_stream().is_none(),
-            "a second error opens nothing"
+        fallback.on_error("device unplugged again");
+        assert_eq!(
+            switches.load(Ordering::SeqCst),
+            1,
+            "a second error opens nothing and says nothing more"
         );
     }
 }

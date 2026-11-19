@@ -20,16 +20,16 @@ export type View =
   | { kind: 'recording' }
   | { kind: 'transcribing' }
   | { kind: 'pasted' }
-  | ({ kind: 'notice' } & Notice);
+  | ({ kind: 'notice' } & Notice)
+  | ({ kind: 'notice'; tone: 'recording' } & Notice);
 
-const HOLD_MS: Record<NoticeKind, number> = {
+const HOLD_MS: Record<Exclude<NoticeKind, 'micFallback'>, number> = {
   pasted: 500,
   noSpeech: 2000,
   busy: 2000,
   copiedNotPasted: 10_000,
   serverError: 10_000,
   micUnavailable: 10_000,
-  micFallback: 3000,
   providerFallback: 3000,
   screenshotLimit: 3000,
   longAudio: 3000,
@@ -59,13 +59,19 @@ export function useDictation() {
     state = next;
     expired = false;
     longAudio = false;
-    if (next.notice) timer = setTimeout(() => (expired = true), HOLD_MS[next.notice.kind]);
+    // The mic-fallback message stays up: the take, not a timer, outlasts it.
+    if (next.notice && next.notice.kind !== 'micFallback') timer = setTimeout(() => (expired = true), HOLD_MS[next.notice.kind]);
   });
   useEvent('dictation:long-audio', () => (longAudio = true));
   $effect(() => () => clearTimeout(timer));
 
   const view = $derived.by((): View => {
     const { phase, notice } = state;
+    // Spec §6.1: the mic fallback shows in the pill while the take carries on.
+    // Spec §6.1: the mic fallback is said on the pill while the take carries on.
+    if (phase === 'recording' && notice?.kind === 'micFallback') {
+      return { kind: 'notice', tone: 'recording', message: notice.message, ...QUIET };
+    }
     if (phase === 'preparing' || phase === 'recording') return { kind: phase };
     if (phase === 'transcribing') {
       return longAudio ? { kind: 'notice', message: LONG_AUDIO_MESSAGE, ...QUIET } : { kind: 'transcribing' };

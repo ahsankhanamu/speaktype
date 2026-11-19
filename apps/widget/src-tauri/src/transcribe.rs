@@ -2,15 +2,14 @@ use crate::debug;
 use crate::logging::log_message;
 use crate::quality::{self, Report, Segment, Thresholds};
 use crate::settings::Settings;
-use serde_json::json;
 use speaktype_stt::{
     provider_for, CloudService, Decode, KeychainStore, ProviderConfig, SecretStore, SttError,
     SttProvider, TranscribeRequest, Transcript,
 };
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Runtime};
 use tokio_util::sync::CancellationToken;
 
-const LOCAL_NAME: &str = "On this Mac";
+pub(crate) const LOCAL_NAME: &str = "On this Mac";
 
 /// The bundled clip the Providers page's Test button sends.
 pub(crate) const TEST_CLIP: &[u8] = include_bytes!("../../../../assets/test-clip-3s.wav");
@@ -117,18 +116,6 @@ pub(crate) fn cloud_falls_back(cfg: &ProviderConfig, err: &SttError) -> bool {
     ) && matches!(err, SttError::Unreachable | SttError::Timeout)
 }
 
-/// Event the widget already listens to, so a fallback shows as a plain error
-/// pill without a new channel.
-pub(crate) fn emit_fallback<R: Runtime>(app: &AppHandle<R>, cfg: &ProviderConfig) {
-    let _ = app.emit(
-        "sidecar:error",
-        json!({
-            "kind": "providerFallback",
-            "message": format!("Couldn't reach {}. Used {LOCAL_NAME}.", service_name(cfg)),
-        }),
-    );
-}
-
 /// One decode configuration. The first pass runs greedy and deterministic with
 /// whisper's internal temperature fallback disabled, so any invented text comes
 /// from a path we control rather than a silent server-side retry.
@@ -189,7 +176,7 @@ async fn transcribe_pass<R: Runtime>(
         decode: attempt.decode(),
     };
     let transcript = run_provider(&cfg, &settings.api_url, secrets, &clip, || {
-        emit_fallback(app, &cfg)
+        crate::commands::emit_dictation(app, crate::controller::provider_fallback(&cfg))
     })
     .await?;
     log_message(&format!(

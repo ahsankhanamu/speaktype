@@ -16,8 +16,8 @@
       {
         "label": "main",
         "title": "SpeakType",
-        "width": 72,
-        "height": 88,
+        "width": 92,
+        "height": 92,
         "resizable": false,
         "decorations": false,
         "transparent": true,

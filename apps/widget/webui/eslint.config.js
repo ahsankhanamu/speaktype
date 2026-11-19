@@ -48,11 +48,7 @@ export default [
   },
   {
     // These pre-existing polling loops belong to non-F5 migration work.
-    files: [
-      'src/onboarding/Onboarding.svelte',
-      'src/settings/Settings.svelte',
-      'src/widget/Widget.svelte',
-    ],
+    files: ['src/onboarding/Onboarding.svelte'],
     rules: { 'no-restricted-syntax': 'off' },
   },
   {

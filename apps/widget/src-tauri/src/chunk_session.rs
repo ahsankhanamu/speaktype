@@ -495,13 +495,11 @@ mod tests {
     use crate::settings::Settings;
 
     fn test_session() -> ChunkSession<tauri::test::MockRuntime> {
-        let settings = Settings::default();
-        let buffer = Arc::new(Mutex::new(Vec::new()));
         ChunkSession::start(
             tauri::test::mock_app().handle().clone(),
-            settings,
+            Settings::default(),
             16_000,
-            buffer,
+            Arc::new(Mutex::new(Vec::new())),
         )
     }
 

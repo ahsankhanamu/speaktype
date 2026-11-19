@@ -6,10 +6,9 @@
   import { micLevelsStart, micLevelsStop } from './micLevels';
 
   const METER_BARS = 5;
-  const DEVICE_POLL_MS = 3000;
   const KEEPALIVE_MS = 20_000;
 
-  const devices = liveQuery('input-devices', getInputDevices, { invalidateOn: ['settings-changed'], pollMs: DEVICE_POLL_MS });
+  const devices = liveQuery('input-devices', getInputDevices, { invalidateOn: ['settings-changed', 'mic-devices-changed'] });
   const settings = liveQuery('settings', getSettings, { invalidateOn: ['settings-changed'] });
 
   let levels = $state<Record<string, number>>({});

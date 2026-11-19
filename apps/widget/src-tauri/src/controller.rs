@@ -2,6 +2,7 @@ use crate::history::DictationOutcome;
 use crate::logging::log_message;
 use crate::notice::{Notice, NoticeKind};
 use serde::{Deserialize, Serialize};
+use speaktype_stt::ProviderConfig;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
@@ -63,11 +64,23 @@ pub fn server_error() -> DictationState {
     )
 }
 
+/// Spec §6.1: the chosen mic dropped out mid-take, so recording carries on from
+/// the built-in mic and the pill says so now, not after the paste.
 pub fn mic_fallback() -> DictationState {
     DictationState::new(
-        DictationPhase::Done,
+        DictationPhase::Recording,
         Some(Notice::of(NoticeKind::MicFallback)),
     )
+}
+
+pub fn provider_fallback(cfg: &ProviderConfig) -> DictationState {
+    let mut notice = Notice::of(NoticeKind::ProviderFallback);
+    notice.message = format!(
+        "Couldn't reach {}. Used {}.",
+        crate::transcribe::service_name(cfg),
+        crate::transcribe::LOCAL_NAME
+    );
+    DictationState::new(DictationPhase::Done, Some(notice))
 }
 
 pub fn mic_unavailable() -> DictationState {
@@ -261,6 +274,7 @@ impl<'a, H: DictationHost, G: ServerGate> Dictation<'a, H, G> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use speaktype_stt::{CloudService, ProviderConfig};
     use std::sync::{Arc, Mutex};
     use std::time::Duration;
 
@@ -514,6 +528,36 @@ mod tests {
         assert_eq!(
             d.state().notice.as_ref().map(|n| n.message.as_str()),
             Some("Microphone unavailable")
+        );
+    }
+
+    #[test]
+    fn provider_fallback_is_a_done_notice_naming_the_service() {
+        let cfg = ProviderConfig::Cloud {
+            service: CloudService::Groq,
+            base_url: "http://127.0.0.1:9/openai/v1".to_string(),
+            model: "whisper-large-v3-turbo".to_string(),
+            fallback_to_local: true,
+        };
+        let state = provider_fallback(&cfg);
+        assert_eq!(state.phase, DictationPhase::Done);
+        assert_eq!(
+            state.notice.as_ref().map(|n| n.kind),
+            Some(NoticeKind::ProviderFallback)
+        );
+        assert_eq!(
+            state.notice.as_ref().map(|n| n.message.as_str()),
+            Some("Couldn't reach Groq. Used On this Mac.")
+        );
+    }
+
+    #[test]
+    fn mic_fallback_shows_while_recording() {
+        let state = mic_fallback();
+        assert_eq!(state.phase, DictationPhase::Recording);
+        assert_eq!(
+            state.notice.as_ref().map(|n| n.kind),
+            Some(NoticeKind::MicFallback)
         );
     }
 

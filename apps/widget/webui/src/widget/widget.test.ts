@@ -4,7 +4,7 @@ import { setBus } from '../lib/data';
 import { FakeBus } from '../lib/data/testBus';
 
 const ipc = vi.hoisted(() => ({
-  commands: { pasteLast: vi.fn() },
+  commands: { pasteLast: vi.fn(), openSettings: vi.fn() },
   getSettings: vi.fn(),
   getOnboardingStatus: vi.fn(),
   toggleRecording: vi.fn(),
@@ -58,6 +58,7 @@ const send = async (phase: string, kind?: string, message = '') => {
   await settle();
 };
 const halo = () => document.querySelector<HTMLElement>('.halo')!.style.boxShadow;
+const lastFit = () => fit.fitWindow.mock.calls.at(-1)!.slice(0, 2);
 
 beforeEach(() => {
   bus = new FakeBus();
@@ -82,6 +83,7 @@ beforeEach(() => {
   });
   ipc.toggleRecording.mockResolvedValue(null);
   ipc.commands.pasteLast.mockResolvedValue(null);
+  ipc.commands.openSettings.mockResolvedValue(null);
   fit.fitWindow.mockResolvedValue(undefined);
   win.startDragging.mockResolvedValue(undefined);
 });
@@ -187,14 +189,28 @@ describe('states on the board', () => {
     await vi.waitFor(() => expect(text()).toContain('System default'));
   });
 
-  it('mic fallback: says so, then goes quiet', async () => {
+  it('mic fallback: says so while still recording and keeps saying it until Stop', async () => {
     await start();
     vi.useFakeTimers({ toFake: ['setTimeout'] });
-    await send('done', 'micFallback', 'Switched to MacBook microphone');
+    await send('recording');
+    const recordingFit = lastFit();
+    await send('recording', 'micFallback', 'Switched to MacBook microphone');
     expect(text()).toContain('Switched to MacBook microphone');
-    vi.advanceTimersByTime(3100);
+    expect(halo()).toBe('var(--st-halo-recording)');
+    expect(lastFit()).toEqual(recordingFit);
+    vi.advanceTimersByTime(10_000);
     flushSync();
-    expect(text()).not.toContain('Switched to MacBook microphone');
+    expect(text()).toContain('Switched to MacBook microphone');
+    await send('transcribing');
+    expect(button('Stop')).toBeUndefined();
+    expect(document.querySelector('[aria-label="Transcribing"]')).not.toBeNull();
+  });
+
+  it('provider fallback: the done notice names the service', async () => {
+    await start();
+    await send('done', 'providerFallback', "Couldn't reach Groq. Used On this Mac.");
+    expect(text()).toContain("Couldn't reach Groq. Used On this Mac.");
+    expect(halo()).toBe('');
   });
 
   it('server error: Try again presses the hotkey again', async () => {
@@ -233,8 +249,6 @@ describe('size and window', () => {
     await start({ widget_size: size });
     await vi.waitFor(() => expect(document.querySelector<HTMLElement>('.widget')!.style.getPropertyValue('--size')).toBe(px));
   });
-
-  const lastFit = () => fit.fitWindow.mock.calls.at(-1)!.slice(0, 2);
 
   it('fits the window to its content with a 24 px margin', async () => {
     await start();
@@ -300,6 +314,12 @@ describe('right-click menu', () => {
     await open();
     button('Settings')!.click();
     expect(ipc.openSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the History page', async () => {
+    await open();
+    button('History')!.click();
+    expect(ipc.commands.openSettings).toHaveBeenCalledWith('history');
   });
 
   it('hides the widget', async () => {
@@ -372,5 +392,13 @@ describe('setup and server', () => {
     expect(win.startDragging).toHaveBeenCalledTimes(1);
     button('Dictate')!.click();
     expect(ipc.toggleRecording).not.toHaveBeenCalled();
+  });
+});
+
+describe('lint policy', () => {
+  it('the widget does not get a setInterval exemption: polling goes through liveQuery', async () => {
+    const { default: config } = await import('../../eslint.config.js');
+    const exempted = config.flatMap((entry) => (Array.isArray(entry.files) ? entry.files : []));
+    expect(exempted).not.toContain('src/widget/Widget.svelte');
   });
 });

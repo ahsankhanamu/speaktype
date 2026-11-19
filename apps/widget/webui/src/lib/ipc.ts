@@ -31,7 +31,7 @@ export const resetWidgetPosition = commands.resetWidgetPosition;
 
 // Windows
 export const openAbout = commands.openAbout;
-export const openSettings = commands.openSettings;
+export const openSettings = () => commands.openSettings(null);
 export const openOnboarding = commands.openOnboarding;
 export const finishOnboarding = commands.finishOnboarding;
 export const getOnboardingStatus = commands.getOnboardingStatus as unknown as () =>
