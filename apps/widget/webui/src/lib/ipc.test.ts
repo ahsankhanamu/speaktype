@@ -1,21 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const invoke = vi.fn();
-const listen = vi.fn();
 const emitFn = vi.fn();
 
 vi.mock('@tauri-apps/api/core', () => ({
   invoke: (...args: unknown[]) => invoke(...args),
 }));
 vi.mock('@tauri-apps/api/event', () => ({
-  listen: (...args: unknown[]) => listen(...args),
   emit: (...args: unknown[]) => emitFn(...args),
 }));
 
 describe('ipc.ts command surface', () => {
   beforeEach(() => {
     invoke.mockReset().mockResolvedValue(undefined);
-    listen.mockReset().mockResolvedValue(() => {});
     emitFn.mockReset();
   });
 
@@ -146,13 +143,8 @@ describe('ipc.ts command surface', () => {
     expect(invoke.mock.calls[5][1]).toEqual({ pane: 'com.apple.preference.security' });
   });
 
-  it('wraps listen and emit for events', async () => {
+  it('emits events', async () => {
     const ipc = await import('./ipc');
-
-    const cb = vi.fn();
-    const unlisten = await ipc.listenEvent<{ theme: string }>('theme:changed', cb);
-    expect(listen).toHaveBeenCalledWith('theme:changed', expect.any(Function));
-    expect(typeof unlisten).toBe('function');
 
     ipc.emitEvent('theme:changed', { theme: 'dark' });
     expect(emitFn).toHaveBeenCalledWith('theme:changed', { theme: 'dark' });

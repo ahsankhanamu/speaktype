@@ -3,7 +3,7 @@
 // the Rust signatures by tauri-specta). Callers import from here unchanged;
 // surfaces migrate to `commands.*`/`events.*` directly as they are rebuilt.
 import { invoke } from '@tauri-apps/api/core';
-import { emit, listen } from '@tauri-apps/api/event';
+export { emitEvent } from './data/bus';
 
 export * from './bindings';
 import { commands, type Settings as GeneratedSettings } from './bindings';
@@ -220,17 +220,3 @@ export interface ModelEntry {
   downloaded?: boolean;
   [key: string]: unknown;
 }
-
-// ─── Events ──────────────────────────────────────────────────────────────────
-// Legacy string events (sidecar:*, server:*, theme:changed, …) stay raw until
-// the data layer (F5) and the rebuilt surfaces move to `events.*`.
-
-export function listenEvent<T>(
-  eventName: string,
-  callback: (payload: T) => void,
-): Promise<() => void> {
-  return listen<T>(eventName, (event) => callback(event.payload));
-}
-
-export const emitEvent = <T>(eventName: string, payload?: T) =>
-  emit(eventName, payload);

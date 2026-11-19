@@ -5,8 +5,8 @@
     stopMicTest,
     getAudioInputInfo,
     openSystemPane,
-    listenEvent,
   } from '../lib/ipc';
+  import { useEvent } from '../lib/data';
 
   let {
     permitted = null,
@@ -327,33 +327,30 @@
     if (!permitted) stop('permission');
   });
 
+  useEvent<unknown>('mictest:level', (event) => {
+    if (!runningRef) return;
+    const payload =
+      typeof event === 'string' ? JSON.parse(event) : (event as Record<string, unknown>);
+    const peak = Math.max(0, Math.min(1, Number((payload as { peak?: number }).peak) || 0));
+    const rms = Math.max(0, Number((payload as { rms?: number }).rms) || 0);
+    target = normalizeDb(peak);
+    if (rms > bestRms) bestRms = rms;
+    if ((payload as { clipped?: boolean }).clipped || peak >= CLIP_PEAK) lastClipAt = now();
+  });
+
+  useEvent<string | Record<string, unknown>>('mictest:stopped', (event) => {
+    const payload = typeof event === 'string' ? JSON.parse(event) : event;
+    handleBackendStop(((payload as Record<string, unknown>).reason as string) || '');
+  });
+
+  useEvent<void>('sidecar:device_changed', () => refreshDevice());
+
   onMount(() => {
     if (!canvas) return;
     syncSurface();
     refreshColors();
     draw();
     lastTs = 0;
-
-    const unlistenLevel = listenEvent<unknown>('mictest:level', (event) => {
-      if (!runningRef) return;
-      const payload =
-        typeof event === 'string' ? JSON.parse(event) : (event as Record<string, unknown>);
-      const peak = Math.max(0, Math.min(1, Number((payload as { peak?: number }).peak) || 0));
-      const rms = Math.max(0, Number((payload as { rms?: number }).rms) || 0);
-      target = normalizeDb(peak);
-      if (rms > bestRms) bestRms = rms;
-      if ((payload as { clipped?: boolean }).clipped || peak >= CLIP_PEAK) lastClipAt = now();
-    });
-
-    const unlistenStopped = listenEvent<string | Record<string, unknown>>('mictest:stopped', (event) => {
-      const payload = typeof event === 'string' ? JSON.parse(event) : event;
-      handleBackendStop(((payload as Record<string, unknown>).reason as string) || '');
-    });
-
-    const unlistenDevice = listenEvent<void>('sidecar:device_changed', () => refreshDevice());
-
-    const cleanups: (() => void)[] = [];
-    for (const p of [unlistenLevel, unlistenStopped, unlistenDevice]) p.then((fn) => cleanups.push(fn));
 
     const onBlur = () => stop('blur');
     const onVisChange = () => {
@@ -369,7 +366,6 @@
       if (rafId) cancelAnimationFrame(rafId);
       if (runningRef) stopMicTest().catch(() => {});
       runningRef = false;
-      cleanups.forEach((fn) => fn());
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('visibilitychange', onVisChange);
     };

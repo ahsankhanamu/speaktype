@@ -16,7 +16,6 @@
     resetWidgetPosition,
     openAbout,
     emitEvent,
-    listenEvent,
     type Settings,
   } from '../lib/ipc';
   import {
@@ -28,6 +27,7 @@
     captureHotkeyModifiers,
     keyFromKeyboardEvent,
   } from '../lib/format';
+  import { useEvent } from '../lib/data';
   import { applyTheme } from '../lib/theme';
   import { computeDirty, defaultSnapshot, type FormSnapshot, type FormValues } from '../lib/stores';
   import ModelGrid from '../lib/ModelGrid.svelte';
@@ -642,13 +642,12 @@ import SettingsFooter from '$lib/SettingsFooter.svelte';
   }
 
   // ---- onMount wire-up ----
-  let unlistenTheme: (() => void) | null = null;
+  useEvent<{ theme?: string }>('theme:changed', (payload) => {
+    const theme = payload && payload.theme;
+    if (theme) applyTheme(theme);
+  });
 
   onMount(() => {
-    listenEvent<{ theme?: string }>('theme:changed', (payload) => {
-      const theme = payload && payload.theme;
-      if (theme) applyTheme(theme);
-    }).then((fn) => (unlistenTheme = fn));
     loadSettings();
     modelStatusHidden = true;
 
@@ -663,7 +662,6 @@ import SettingsFooter from '$lib/SettingsFooter.svelte';
     document.addEventListener('visibilitychange', onVis);
 
     return () => {
-      unlistenTheme?.();
       if (permissionPollTimer) clearInterval(permissionPollTimer);
       window.removeEventListener('focus', onFocus);
       window.removeEventListener('blur', onBlur);

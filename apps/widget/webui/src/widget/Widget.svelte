@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { PhysicalPosition, LogicalSize } from '@tauri-apps/api/dpi';
-  import { listen } from '@tauri-apps/api/event';
+  import { useEvent } from '../lib/data';
   import Waveform from './Waveform.svelte';
   import { formatHotkey, formatDuration } from '../lib/format';
   import {
@@ -84,7 +84,6 @@
   let locateTimer: ReturnType<typeof setTimeout> | null = null;
   let _dragState: { x: number; y: number; dragging: boolean; source: string } | null = null;
   let rootPaddingCache: { x: number; y: number } | null = null;
-  let unlisteners: Array<() => void> = [];
 
   function rootPadding() {
     if (!rootPaddingCache) {
@@ -551,12 +550,6 @@
       cancelRecording().catch((e2) => console.error('[cancel] error:', e2));
     };
 
-    const registerListen = (ev: string, fn: (payload: any) => void) => {
-      listen(ev, (event) => fn(event.payload)).then((unlisten) => {
-        unlisteners.push(unlisten);
-      });
-    };
-
     const parse = (payload: any) => {
       if (typeof payload === 'string') {
         try {
@@ -568,66 +561,66 @@
       return payload;
     };
 
-    registerListen('sidecar:ready', () => console.log('[sidecar] ready'));
-    registerListen('sidecar:recording_started', () => {
+    useEvent('sidecar:ready', () => console.log('[sidecar] ready'));
+    useEvent('sidecar:recording_started', () => {
       setState('recording');
       startTimer();
       startWaveformLoop();
     });
-    registerListen('sidecar:audio_level', (p) => {
+    useEvent('sidecar:audio_level', (p) => {
       if (currentState !== 'recording') return;
       const d = parse(p);
       const level = d.level || 0;
       setTargetLevel(level, typeof d.peak === 'number' ? d.peak : level);
     });
-    registerListen('sidecar:recording_stopped', () => {
+    useEvent('sidecar:recording_stopped', () => {
       stopWaveformLoop();
     });
-    registerListen('sidecar:recording_cancelled', () => {
+    useEvent('sidecar:recording_cancelled', () => {
       stopWaveformLoop();
       setState('idle');
     });
-    registerListen('sidecar:transcribing', () => {
+    useEvent('sidecar:transcribing', () => {
       stopWaveformLoop();
       setState('transcribing');
     });
-    registerListen('sidecar:long_audio', (p) => {
+    useEvent('sidecar:long_audio', (p) => {
       const d = parse(p);
       console.log('[widget] Long audio detected:', d.duration_secs, 's');
     });
-    registerListen('sidecar:pasted', () => flashState('success'));
-    registerListen('sidecar:no_speech', () => {
+    useEvent('sidecar:pasted', () => flashState('success'));
+    useEvent('sidecar:no_speech', () => {
       stopWaveformLoop();
       flashState('error');
     });
-    registerListen('sidecar:busy', () => {
+    useEvent('sidecar:busy', () => {
       stopWaveformLoop();
       flashState('error');
     });
-    registerListen('sidecar:error', () => {
+    useEvent('sidecar:error', () => {
       stopWaveformLoop();
       flashState('error');
     });
-    registerListen('sidecar:crashed', () => {
+    useEvent('sidecar:crashed', () => {
       stopWaveformLoop();
       flashState('error', CRASH_FLASH_MS);
     });
-    registerListen('sidecar:permissions', (p) => {
+    useEvent('sidecar:permissions', (p) => {
       const d = parse(p);
       syncPermissionState(!!d.microphone, !!d.accessibility);
       if (permissionsMissing) resumeStatusPolling();
     });
-    registerListen('sidecar:device_changed', (p) => {
+    useEvent('sidecar:device_changed', (p) => {
       const d = parse(p);
       console.log('[device] changed:', d.name, 'inputs:', d.count);
     });
 
-    registerListen('server:starting', () => {
+    useEvent('server:starting', () => {
       serverDot.className = 'server-status starting';
       serverDot.title = 'Server starting...';
       serverDot.style.display = 'block';
     });
-    registerListen('server:ready', (p) => {
+    useEvent('server:ready', (p) => {
       const d = parse(p);
       serverDot.className = 'server-status ready';
       serverDot.title = 'Server ready (port ' + (d.port || '?') + ')';
@@ -635,28 +628,28 @@
         serverDot.style.display = 'none';
       }, SERVER_READY_DISMISS_MS);
     });
-    registerListen('server:error', (p) => {
+    useEvent('server:error', (p) => {
       const d = parse(p);
       serverDot.className = 'server-status error';
       serverDot.title = 'Server error: ' + (d.reason || 'unknown');
       serverDot.style.display = 'block';
     });
-    registerListen('widget:highlight', (p) => {
+    useEvent('widget:highlight', (p) => {
       const d = parse(p) || {};
       highlightWidget(d.duration_ms);
     });
-    registerListen('onboarding:opened', () => {
+    useEvent('onboarding:opened', () => {
       onboardingSessionActive = true;
       setBeacon(true);
       resumeStatusPolling();
     });
-    registerListen('onboarding:finished', (p) => {
+    useEvent('onboarding:finished', (p) => {
       const d = parse(p) || {};
       onboardingSessionActive = false;
       stopStatusPolling();
       showReadyTooltip(d.hotkey || 'Super+Control');
     });
-    registerListen('sidecar:onboarding_required', () => {
+    useEvent('sidecar:onboarding_required', () => {
       onboardingSessionActive = true;
       setBeacon(true);
       resumeStatusPolling();
@@ -692,8 +685,6 @@
     return () => {
       document.removeEventListener('mousemove', onDocumentMouseMove);
       document.removeEventListener('mouseup', onDocumentMouseUp);
-      unlisteners.forEach((u) => u());
-      unlisteners = [];
       if (statusPollInterval) clearInterval(statusPollInterval);
       if (readyGuideTimer) clearTimeout(readyGuideTimer);
       if (locateTimer) clearTimeout(locateTimer);

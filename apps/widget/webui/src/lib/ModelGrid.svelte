@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
   import {
     getModels,
     getModelProgress,
@@ -10,8 +9,8 @@
     pauseModelDownload,
     saveSettings,
     getSettings,
-    listenEvent,
   } from './ipc';
+  import { useEvent } from './data';
   import { formatByteSize, formatSpeedMbps } from './format';
 
   interface GridModel {
@@ -113,9 +112,7 @@
   let downloading: string[] = $state([]);
   let waiting: string[] = $state([]);
 
-  let listenersAttached = false;
-  let unlistenProgress: (() => void) | null = null;
-  let unlistenQueue: (() => void) | null = null;
+  let listenersAttached = $state(false);
   let containerEl: HTMLDivElement | null = null;
 
   function baseModelDesc(m: GridModel): string {
@@ -488,15 +485,18 @@
   }
 
   export async function ensureListeners() {
-    if (listenersAttached) return;
     listenersAttached = true;
-    unlistenProgress = await listenEvent<ProgressPayload>('model:progress', (payload) => {
+  }
+
+  $effect(() => {
+    if (!listenersAttached) return;
+    useEvent<ProgressPayload>('model:progress', (payload) => {
       handleProgress(typeof payload === 'string' ? JSON.parse(payload) : payload);
     });
-    unlistenQueue = await listenEvent('model:queue', () => {
+    useEvent('model:queue', () => {
       refresh(true);
     });
-  }
+  });
 
   function handleCardKeydown(e: KeyboardEvent) {
     if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -606,17 +606,6 @@
     }
   }
 
-  onMount(() => {
-    return () => {
-      try {
-        unlistenProgress?.();
-      } catch { /* ignore */ }
-      try {
-        unlistenQueue?.();
-      } catch { /* ignore */ }
-      listenersAttached = false;
-    };
-  });
 </script>
 
 <div
