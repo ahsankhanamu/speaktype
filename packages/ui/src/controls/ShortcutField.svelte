@@ -3,11 +3,16 @@
   import Keycap from './Keycap.svelte';
   import { formatShortcut } from './shortcut';
 
-  const MODIFIER_KEYS = ['Control', 'Alt', 'Shift', 'Meta'];
+  const MODIFIER_NAMES: Record<string, string> = { Control: 'Control', Alt: 'Option', Shift: 'Shift', Meta: 'Super' };
+  const MODIFIER_ORDER = ['Control', 'Option', 'Shift', 'Super'];
 
-  let { value = $bindable([]), conflict }: { value?: string[]; conflict?: string } = $props();
+  let {
+    value = $bindable([]),
+    recording = $bindable(false),
+    conflict,
+  }: { value?: string[]; recording?: boolean; conflict?: string } = $props();
 
-  let recording = $state(false);
+  let root = $state<HTMLElement | null>(null);
 
   function keyName(e: KeyboardEvent) {
     if (e.code.startsWith('Key')) return e.code.slice(3);
@@ -16,26 +21,61 @@
     return e.key.length === 1 ? e.key.toUpperCase() : e.key;
   }
 
-  function capture(e: KeyboardEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (MODIFIER_KEYS.includes(e.key)) return;
-    recording = false;
-    if (e.key === 'Escape' && !(e.ctrlKey || e.altKey || e.shiftKey || e.metaKey)) return;
-    const modifiers = [e.ctrlKey && 'Control', e.altKey && 'Option', e.shiftKey && 'Shift', e.metaKey && 'Super'];
-    value = [...modifiers.filter((m): m is string => !!m), keyName(e)];
-  }
+  /** A shortcut is either modifiers plus a key, or two or more modifiers pressed and released together. */
+  $effect(() => {
+    if (!recording) return;
+    const held = new Set<string>();
+    const peak = new Set<string>();
+
+    const capture = (e: KeyboardEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const modifier = MODIFIER_NAMES[e.key];
+      if (modifier) {
+        held.add(modifier);
+        peak.add(modifier);
+        return;
+      }
+      recording = false;
+      if (e.key === 'Escape') return;
+      const modifiers = [e.ctrlKey && 'Control', e.altKey && 'Option', e.shiftKey && 'Shift', e.metaKey && 'Super'];
+      value = [...modifiers.filter((m): m is string => !!m), keyName(e)];
+    };
+
+    const release = (e: KeyboardEvent) => {
+      const modifier = MODIFIER_NAMES[e.key];
+      if (!modifier) return;
+      held.delete(modifier);
+      if (held.size) return;
+      if (peak.size >= 2) {
+        value = MODIFIER_ORDER.filter((name) => peak.has(name));
+        recording = false;
+      }
+      peak.clear();
+    };
+
+    const clickAway = (e: PointerEvent) => {
+      if (!root?.contains(e.target as Node)) recording = false;
+    };
+
+    window.addEventListener('keydown', capture, true);
+    window.addEventListener('keyup', release, true);
+    window.addEventListener('pointerdown', clickAway, true);
+    return () => {
+      window.removeEventListener('keydown', capture, true);
+      window.removeEventListener('keyup', release, true);
+      window.removeEventListener('pointerdown', clickAway, true);
+    };
+  });
 </script>
 
-<div class="st-shortcut">
+<div class="st-shortcut" bind:this={root}>
   <div class="field" class:recording data-conflict={conflict ? '' : undefined}>
     <button
       type="button"
       class="record"
       aria-label={recording ? 'Press a shortcut' : 'Record shortcut'}
       onclick={() => (recording = true)}
-      onkeydown={recording ? capture : undefined}
-      onblur={() => (recording = false)}
     >
       {#if recording}
         Press a shortcut…

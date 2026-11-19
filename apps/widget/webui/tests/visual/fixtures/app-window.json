@@ -1,0 +1,90 @@
+{
+  "get_settings": {
+    "hotkey": "Super+Control",
+    "api_url": "http://127.0.0.1:8002/inference",
+    "model": "small",
+    "language": "auto",
+    "window_x": null,
+    "window_y": null,
+    "onboarding_window_x": null,
+    "onboarding_window_y": null,
+    "paste_mode": "active",
+    "post_paste_keys": "enter",
+    "save_recordings": true,
+    "theme": "auto",
+    "hallucination_guard": true,
+    "hallucination_retries": 1,
+    "quality_no_speech_prob": 0.6,
+    "quality_avg_logprob": -1,
+    "quality_compression_ratio": 2.4,
+    "input_device": "MacBook Pro Microphone",
+    "scribe_screenshot_hotkey": "Super+Option+S",
+    "scribe_clipboard_monitor": true,
+    "stt_provider": { "kind": "cloud", "service": "groq", "baseUrl": "https://api.groq.com/openai/v1", "model": "whisper-large-v3-turbo", "fallbackToLocal": true },
+    "sounds": true,
+    "widget_size": "regular",
+    "widget_visibility": "always",
+    "ink_color": "orange",
+    "ink_thickness": "regular",
+    "draw_key": "right_option",
+    "draw_anytime": true,
+    "history_limit": 100,
+    "launch_at_login": false,
+    "onboarding_step": 6
+  },
+  "plugin:app|version": "1.0",
+  "get_models": {
+    "available": [
+      { "id": "tiny", "size_bytes": 0, "downloaded": false },
+      { "id": "base", "size_bytes": 157286400, "downloaded": true },
+      { "id": "small", "size_bytes": 524288000, "downloaded": true },
+      { "id": "medium", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3-turbo", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3", "size_bytes": 0, "downloaded": false }
+    ],
+    "downloading": ["large-v3-turbo"],
+    "waiting": [],
+    "progress": [
+      { "model": "large-v3-turbo", "phase": "downloading", "percent": 38, "bytes_downloaded": 608174080, "total_bytes": 1610612736 }
+    ]
+  },
+  "get_input_devices": {
+    "devices": [
+      { "name": "MacBook Pro Microphone", "label": "MacBook Pro Microphone (48 kHz)", "is_default": true },
+      { "name": "AirPods Pro", "label": "AirPods Pro (Bluetooth hands-free, 16 kHz)", "is_default": false }
+    ],
+    "default": "MacBook Pro Microphone"
+  },
+  "check_permissions": { "accessibility": true, "microphone": true },
+  "start_mic_test": { "device": "MacBook Pro Microphone", "sample_rate": 48000, "channels": 1, "inputs": 1, "max_ms": 30000 },
+  "get_server_status": { "embedded": true, "running": true, "port": 8002 },
+  "check_server": { "status": "connected", "message": "Connected" },
+  "stt_has_api_key": true,
+  "stt_reveal_api_key": "gsk_8Fq2NkRw7d3f9a",
+  "stt_list_models": [
+    { "id": "whisper-large-v3-turbo" },
+    { "id": "whisper-large-v3" },
+    { "id": "distil-whisper-large-v3-en" },
+    { "id": "whisper-large-v3-fast" },
+    { "id": "whisper-medium" },
+    { "id": "whisper-small" }
+  ],
+  "stt_test": { "latencyMs": 400, "text": "Testing one two three" },
+  "stt_set_provider": { "kind": "local", "model": "small" },
+  "get_history": {
+    "entries": [
+      { "id": "a", "text": "Pushed the checkout fix, can you retest this on staging when you get a moment please", "timestamp": "2026-11-19T10:52:00Z", "audio_file": "recordings/a.wav", "duration_secs": 9, "outcome": "pasted" },
+      { "id": "b", "text": "Remind me to send the invoice to Dana before Friday", "timestamp": "2026-11-19T09:14:00Z", "audio_file": null, "duration_secs": 6, "outcome": "copied" },
+      { "id": "c", "text": "Switch the settings window to the new layout and check the dark mode contrast", "timestamp": "2026-11-18T16:05:00Z", "audio_file": null, "duration_secs": 14, "outcome": "pasteFailed" },
+      { "id": "d", "text": "Can we move the standup to ten thirty tomorrow", "timestamp": "2026-11-17T08:20:00Z", "audio_file": null, "duration_secs": 5, "outcome": "pasted" }
+    ]
+  },
+  "session_list": [
+    { "id": 1, "name": "Checkout overlaps total on mobile", "startedAtMs": 1795084860000, "endedAtMs": 1795084994000, "markCount": 3, "clipCount": 1, "snippet": "The Pay button sits on top of the total" },
+    { "id": 2, "name": "Checkout copy review", "startedAtMs": 1794931500000, "endedAtMs": 1794931860000, "markCount": 5, "clipCount": 0, "snippet": "The checkout heading should say Review" }
+  ],
+  "get_debug_sessions": [
+    { "id": 2, "startedAt": "2026-11-19T10:52:00Z", "mode": "dictation", "model": "small", "durationSecs": 9, "elapsedMs": 800, "finalChars": 84, "chunks": [{}, {}], "passes": [{}, {}, {}] },
+    { "id": 1, "startedAt": "2026-11-19T09:14:00Z", "mode": "dictation", "model": "small", "durationSecs": 6, "elapsedMs": 500, "finalChars": 51, "chunks": [{}], "passes": [{}] }
+  ]
+}

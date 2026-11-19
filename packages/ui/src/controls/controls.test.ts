@@ -145,6 +145,36 @@ describe('ShortcutField', () => {
     expect(screen.getByRole('button', { name: /press a shortcut/i })).toBeTruthy();
   });
 
+  test('two modifiers released together record a modifier-only chord', async () => {
+    const { component } = render(ShortcutField, { value: [] });
+    await fireEvent.click(screen.getByRole('button', { name: 'Record shortcut' }));
+    await fireEvent.keyDown(window, { key: 'Meta', code: 'MetaLeft', metaKey: true });
+    await fireEvent.keyDown(window, { key: 'Control', code: 'ControlLeft', metaKey: true, ctrlKey: true });
+    await fireEvent.keyUp(window, { key: 'Meta', code: 'MetaLeft', ctrlKey: true });
+    expect(screen.getByRole('button', { name: /press a shortcut/i })).toBeTruthy();
+    await fireEvent.keyUp(window, { key: 'Control', code: 'ControlLeft' });
+    expect([...document.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['⌃', '⌘']);
+    expect(component).toBeTruthy();
+  });
+
+  test('one modifier alone is not a shortcut', async () => {
+    render(ShortcutField, { value: [] });
+    await fireEvent.click(screen.getByRole('button', { name: 'Record shortcut' }));
+    await fireEvent.keyDown(window, { key: 'Alt', code: 'AltLeft', altKey: true });
+    await fireEvent.keyUp(window, { key: 'Alt', code: 'AltLeft' });
+    expect(screen.getByRole('button', { name: /press a shortcut/i })).toBeTruthy();
+    expect(document.querySelectorAll('kbd').length).toBe(0);
+  });
+
+  test('Escape cancels a chord in progress', async () => {
+    render(ShortcutField, { value: ['F9'] });
+    await fireEvent.click(screen.getByRole('button', { name: 'Record shortcut' }));
+    await fireEvent.keyDown(window, { key: 'Meta', code: 'MetaLeft', metaKey: true });
+    await fireEvent.keyDown(window, { key: 'Escape', code: 'Escape', metaKey: true });
+    expect(screen.queryByRole('button', { name: /press a shortcut/i })).toBeNull();
+    expect([...document.querySelectorAll('kbd')].map((k) => k.textContent)).toEqual(['F9']);
+  });
+
   test('Escape cancels recording and the clear button empties the value', async () => {
     render(ShortcutField, { value: ['Super', 'K'] });
     await fireEvent.click(screen.getByRole('button', { name: 'Record shortcut' }));

@@ -49,6 +49,10 @@
   color: #fff;
 }
 
+.st-menu-item.destructive:not([data-highlighted]) {
+  color: var(--st-danger-text);
+}
+
 .st-menu-item[data-disabled] {
   color: var(--st-text-tertiary);
 }

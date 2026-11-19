@@ -1,0 +1,111 @@
+<script lang="ts">
+  import { Button, Group, Row, Segmented, Switch, TextField, toast } from '@speaktype/ui';
+  import { liveQuery } from '../../lib/data';
+  import { checkServer, getServerStatus, restartWhisperServer, stopWhisperServer } from '../../lib/ipc';
+  import Page from '../Page.svelte';
+  import Section from '../Section.svelte';
+  import { useSettings } from '../settings.svelte';
+  import DebugRecords from './DebugRecords.svelte';
+
+  const settings = useSettings();
+  const guard = settings.field('hallucination_guard', true);
+  const retries = settings.field('hallucination_retries', 1);
+  const THRESHOLDS = [
+    { key: 'quality_no_speech_prob', label: 'Silence threshold', caption: 'Above this chance of silence, a segment is dropped' },
+    { key: 'quality_avg_logprob', label: 'Confidence threshold', caption: 'Below this average confidence, the model was guessing' },
+    { key: 'quality_compression_ratio', label: 'Repetition threshold', caption: 'Above this ratio, the text is repeating itself' },
+  ] as const;
+
+  const server = liveQuery('server-status', getServerStatus, {
+    invalidateOn: ['server:starting', 'server:ready', 'server:stopped', 'server:error'],
+  });
+  let apiUrl = $state<string | null>(null);
+  let checkResult = $state('');
+  let busy = $state<'stop' | 'restart' | 'check' | null>(null);
+
+  const url = $derived(apiUrl ?? settings.data?.api_url ?? '');
+  const serverCaption = $derived(
+    !server.data ? '' : !server.data.embedded ? 'This build has no bundled server' : server.data.running ? `Running on port ${server.data.port}` : 'Stopped',
+  );
+
+  async function run(kind: 'stop' | 'restart', action: () => Promise<unknown>) {
+    busy = kind;
+    try {
+      await action();
+      await server.refetch();
+    } catch (error) {
+      toast.show({ message: `Couldn't ${kind} the server. ${(error as { message?: string })?.message ?? error}` });
+    } finally {
+      busy = null;
+    }
+  }
+
+  async function check() {
+    busy = 'check';
+    try {
+      const result = await checkServer(url);
+      checkResult = result.status === 'connected' ? 'Connected' : (result.message ?? 'Couldn’t connect');
+    } catch (error) {
+      checkResult = (error as { message?: string })?.message ?? `${error}`;
+    } finally {
+      busy = null;
+    }
+  }
+
+  const setThreshold = (key: (typeof THRESHOLDS)[number]['key'], text: string) => {
+    const value = Number(text);
+    if (text.trim() && Number.isFinite(value)) settings.save({ [key]: value });
+  };
+</script>
+
+<Page title="Advanced">
+  <Section title="Hallucination filter">
+    <Group>
+      <Row kind="control" label="Hallucination filter" caption="Drops text a model invents from silence or noise, and tries again">
+        {#snippet trailing()}<Switch label="Hallucination filter" bind:checked={guard.value} />{/snippet}
+      </Row>
+      <Row kind="control" label="Retries" caption="Extra attempts when a result looks wrong">
+        {#snippet trailing()}
+          <Segmented
+            label="Retries"
+            bind:value={() => String(retries.value), (next) => (retries.value = Number(next))}
+            items={[{ value: '0', label: '0' }, { value: '1', label: '1' }, { value: '2', label: '2' }]}
+          />
+        {/snippet}
+      </Row>
+      {#each THRESHOLDS as { key, label, caption } (key)}
+        <Row kind="control" {label} {caption}>
+          {#snippet trailing()}
+            <TextField
+              aria-label={label}
+              inputmode="decimal"
+              value={String(settings.data?.[key] ?? '')}
+              onchange={(event) => setThreshold(key, event.currentTarget.value)}
+            />
+          {/snippet}
+        </Row>
+      {/each}
+    </Group>
+  </Section>
+
+  <Section title="Transcription server">
+    <Group>
+      <Row kind="control" label="Transcription server" caption={serverCaption}>
+        {#snippet trailing()}
+          {#if server.data?.embedded}
+            <Button size={28} busy={busy === 'stop'} disabled={!server.data.running} onclick={() => run('stop', stopWhisperServer)}>Stop</Button>
+            <Button size={28} busy={busy === 'restart'} onclick={() => run('restart', restartWhisperServer)}>Restart</Button>
+          {/if}
+        {/snippet}
+      </Row>
+      <Row kind="control" label="API URL" caption={checkResult}>
+        {#snippet trailing()}
+          <TextField aria-label="API URL" bind:value={() => url, (next) => (apiUrl = next)} onchange={() => settings.save({ api_url: url })} />
+          <Button size={28} busy={busy === 'check'} onclick={check}>Check</Button>
+        {/snippet}
+      </Row>
+    </Group>
+  </Section>
+
+  <DebugRecords />
+</Page>

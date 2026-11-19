@@ -9,8 +9,9 @@
     icon,
     value,
     disabled = false,
+    destructive = false,
     onSelect,
-  }: { label: string; icon?: Snippet; value?: string; disabled?: boolean; onSelect?: () => void } = $props();
+  }: { label: string; icon?: Snippet; value?: string; disabled?: boolean; destructive?: boolean; onSelect?: () => void } = $props();
 </script>
 
 {#snippet layout(checked: boolean)}
@@ -24,7 +25,7 @@
     {#snippet children({ checked })}{@render layout(checked)}{/snippet}
   </DropdownMenu.RadioItem>
 {:else}
-  <DropdownMenu.Item {disabled} {onSelect} class="st-menu-item">
+  <DropdownMenu.Item {disabled} {onSelect} class={['st-menu-item', destructive && 'destructive']}>
     {@render layout(false)}
   </DropdownMenu.Item>
 {/if}

@@ -23,8 +23,7 @@ const rules = {
 
 export default [
   {
-    // svelte-eslint-parser 1.10.1 rejects this valid file's parenthesized @const ternaries.
-    ignores: ['dist/**', 'src/lib/bindings.ts', 'src/settings/DebugTab.svelte'],
+    ignores: ['dist/**', 'src/lib/bindings.ts'],
   },
   ...svelte.configs['flat/base'],
   {
