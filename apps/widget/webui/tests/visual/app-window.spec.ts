@@ -11,11 +11,24 @@ async function open(page: Page, route: string, theme: string, fixture = 'app-win
   await expect(page.locator('main')).not.toBeEmpty();
 }
 
+async function refuseShortcuts(page: Page, error: { kind: string; message: string }) {
+  await page.evaluate((refusal) => {
+    const internals = window.__TAURI_INTERNALS__ as { invoke: (cmd: string, args: unknown) => Promise<unknown> };
+    const invoke = internals.invoke;
+    internals.invoke = (cmd, args) => (cmd === 'shortcut_set' ? Promise.reject(refusal) : invoke(cmd, args));
+  }, error);
+}
+
+async function record(page: Page, action: string, key: string) {
+  await page.locator('.st-row', { hasText: action }).getByRole('button', { name: 'Record shortcut' }).click();
+  await page.keyboard.press(`Alt+Meta+${key}`);
+}
+
 const calls = (page: Page) => page.evaluate(() => window.__mock.calls.map((call) => call.cmd));
 
 for (const theme of ['dark', 'light']) {
   test.describe(theme, () => {
-    for (const route of ['general', 'appearance', 'sessions', 'storage', 'advanced', 'about']) {
+    for (const route of ['general', 'keyboard', 'appearance', 'sessions', 'storage', 'advanced', 'about']) {
       test(route, async ({ page }) => {
         await open(page, route, theme);
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
@@ -29,6 +42,33 @@ for (const theme of ['dark', 'light']) {
       await open(page, 'dictation', theme);
       await expect(page.getByText('Accurate is downloading')).toBeVisible();
       await expect(page).toHaveScreenshot(`app-window-dictation-${theme}.png`);
+    });
+
+    test('keyboard, a shortcut another action owns', async ({ page }) => {
+      await open(page, 'keyboard', theme);
+      await refuseShortcuts(page, { kind: 'conflict', message: 'Already used for Start / stop a session' });
+      await record(page, 'Take a screenshot', 'K');
+      await expect(page.getByText('Already used for Start / stop a session')).toBeVisible();
+      await expect(page).toHaveScreenshot(`app-window-keyboard-conflict-${theme}.png`);
+    });
+
+    test('keyboard, a macOS shortcut asks Use anyway', async ({ page }) => {
+      await open(page, 'keyboard', theme);
+      await refuseShortcuts(page, { kind: 'systemShortcut', message: 'macOS uses this for Spotlight' });
+      await record(page, 'Start / stop a session', 'Space');
+      await expect(page.getByText('macOS uses this for Spotlight')).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Use anyway' })).toBeVisible();
+      await expect(page).toHaveScreenshot(`app-window-keyboard-system-${theme}.png`);
+    });
+
+    test('keyboard, restore defaults confirms first', async ({ page }) => {
+      await open(page, 'keyboard', theme);
+      await page.getByRole('button', { name: 'Restore defaults' }).click();
+      await expect(page.getByText('Restore default shortcuts?')).toBeVisible();
+      expect(await calls(page)).not.toContain('shortcuts_reset');
+      await expect(page).toHaveScreenshot(`app-window-keyboard-restore-${theme}.png`);
+      await page.getByRole('button', { name: 'Restore', exact: true }).click();
+      await expect.poll(() => calls(page)).toContain('shortcuts_reset');
     });
 
     test('providers', async ({ page }) => {
@@ -73,9 +113,9 @@ for (const theme of ['dark', 'light']) {
 test('Search finds an individual setting and highlights its row', async ({ page }) => {
   await open(page, 'general', 'dark');
   await page.getByRole('searchbox').fill('draw');
-  await page.getByRole('button', { name: /Sessions › Draw while holding/ }).click();
-  await expect(page.getByRole('heading', { name: 'Sessions', level: 1 })).toBeVisible();
-  await expect(page.locator('.st-row[data-match]')).toContainText('Draw while holding');
+  await page.getByRole('button', { name: /Keyboard › Draw \(hold\)/ }).click();
+  await expect(page.getByRole('heading', { name: 'Keyboard', level: 1 })).toBeVisible();
+  await expect(page.locator('.st-row[data-match]')).toContainText('Draw (hold)');
 });
 
 test('The window opens on the page it was last on', async ({ page }) => {

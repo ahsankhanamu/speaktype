@@ -3,9 +3,9 @@ import { PAGES } from './router.svelte';
 import { filter, index } from './search';
 
 describe('settings search', () => {
-  it('finds Sessions > Draw while holding for "draw"', () => {
-    const hit = filter('draw').find((entry) => entry.label === 'Draw while holding');
-    expect(hit?.page).toBe('sessions');
+  it('finds Keyboard > Draw (hold) for "draw"', () => {
+    const hit = filter('draw').find((entry) => entry.label === 'Draw (hold)');
+    expect(hit?.page).toBe('keyboard');
   });
 
   it('matches keywords, case-insensitively', () => {

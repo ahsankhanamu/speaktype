@@ -33,6 +33,7 @@ vi.mock('@tauri-apps/api/core', () => tauri);
 vi.mock('@tauri-apps/api/app', () => ({ getVersion: () => Promise.resolve('1.0') }));
 vi.mock('@tauri-apps/plugin-opener', () => ({ openUrl: vi.fn() }));
 vi.mock('../lib/app/micLevels', () => ({ micLevelsStart: vi.fn(), micLevelsStop: vi.fn() }));
+vi.mock('./shortcuts', () => ({ shortcutsGet: () => Promise.resolve([{ action: 'dictation', keys: 'F8' }]) }));
 vi.mock('../lib/app/deleteModel', () => ({ deleteModel: vi.fn() }));
 
 const SETTINGS = {
@@ -117,44 +118,21 @@ describe('settings pages', () => {
     render(Dictation);
     await vi.waitFor(() => expect(text()).toContain('Manage models…'));
     expect(labels()).toEqual(
-      expect.arrayContaining(['Start and stop dictation', 'Language', 'Microphone', 'Paste into', 'After pasting, press', 'Save recording audio']),
+      expect.arrayContaining(['Start / stop dictation', 'Language', 'Microphone', 'Paste into', 'After pasting, press', 'Save recording audio']),
     );
     expect(text()).toContain('Balanced');
     switchFor('Save recording audio').click();
     await vi.waitFor(() => expect(ipc.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ save_recordings: true })));
   });
 
-  it('Dictation picks a hotkey preset from the pop-up beside the shortcut', async () => {
+  it('Dictation shows the hotkey as a link to Keyboard instead of a second field', async () => {
+    location.hash = '';
     render(Dictation);
-    await vi.waitFor(() => expect(document.querySelector('[aria-label="Shortcut presets"]')).not.toBeNull());
-    expect(document.querySelectorAll('.st-shortcut kbd')).toHaveLength(2);
-    (document.querySelector('[aria-label="Shortcut presets"]') as HTMLElement).dispatchEvent(
-      new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }),
-    );
-    const labels = await vi.waitFor(() => {
-      const items = [...document.querySelectorAll('[role=menuitemradio], [role=menuitem]')];
-      expect(items.length).toBe(4);
-      return items.map((el) => el.textContent?.trim());
-    });
-    expect(labels).toEqual(['⌃⌘ (default)', 'F9', 'F8', 'Record a shortcut…']);
-    (document.querySelectorAll('[role=menuitemradio]')[1] as HTMLElement).click();
-    await vi.waitFor(() => expect(ipc.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ hotkey: 'F9' })));
-  });
-
-  it('Dictation records ⌃⌘ as the modifier-only chord and refuses other lone modifiers', async () => {
-    render(Dictation);
-    await vi.waitFor(() => expect(document.querySelector('[aria-label="Record shortcut"]')).not.toBeNull());
-    const chord = (first: string, second: string) => {
-      (document.querySelector('[aria-label="Record shortcut"]') as HTMLElement).click();
-      flushSync();
-      for (const key of [first, second]) window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
-      for (const key of [first, second]) window.dispatchEvent(new KeyboardEvent('keyup', { key, bubbles: true }));
-      flushSync();
-    };
-    chord('Alt', 'Shift');
-    expect(ipc.saveSettings).not.toHaveBeenCalled();
-    chord('Meta', 'Control');
-    await vi.waitFor(() => expect(ipc.saveSettings).toHaveBeenCalledWith(expect.objectContaining({ hotkey: 'Super+Control' })));
+    await vi.waitFor(() => expect(document.querySelector('[aria-label="Change in Keyboard"]')).not.toBeNull());
+    expect(document.querySelector('.st-shortcut')).toBeNull();
+    expect([...document.querySelectorAll('.st-row')].find((row) => row.textContent?.includes('Start / stop dictation'))?.textContent).toContain('F8');
+    (document.querySelector('[aria-label="Change in Keyboard"]') as HTMLElement).click();
+    expect(location.hash).toBe('#/keyboard');
   });
 
   it('Advanced keeps the hallucination filter, server controls and API URL check', async () => {

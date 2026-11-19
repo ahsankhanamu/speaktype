@@ -9,7 +9,7 @@ beforeEach(() => {
 describe('router', () => {
   it('has a sidebar item for every spec page', () => {
     expect(PAGES.map((page) => page.id)).toEqual([
-      'history', 'general', 'appearance', 'dictation', 'sessions', 'providers', 'permissions', 'storage', 'advanced',
+      'history', 'general', 'keyboard', 'appearance', 'dictation', 'sessions', 'providers', 'permissions', 'storage', 'advanced',
     ]);
   });
 

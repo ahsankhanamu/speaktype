@@ -40,6 +40,12 @@ describe('Keycap', () => {
     render(Keycap, { key: '⌘' });
     expect(screen.getByText('⌘')).toBeTruthy();
   });
+
+  test('escape reads "esc", as on Mac keyboards', () => {
+    const { container } = render(Keycap, { key: 'escape' });
+    expect(container.textContent?.trim()).toBe('esc');
+    expect(container.querySelector('svg')).toBeNull();
+  });
 });
 
 describe('Button', () => {

@@ -11,6 +11,7 @@
   import Dictation from './pages/Dictation.svelte';
   import General from './pages/General.svelte';
   import History from './pages/History.svelte';
+  import Keyboard from './pages/Keyboard.svelte';
   import Permissions from './pages/Permissions.svelte';
   import Providers from './pages/Providers.svelte';
   import Sessions from './pages/Sessions.svelte';
@@ -20,7 +21,7 @@
   import { useSettings } from './settings.svelte';
 
   const VIEWS: Record<PageId, Component> = {
-    history: History, general: General, appearance: Appearance, dictation: Dictation, sessions: Sessions,
+    history: History, general: General, keyboard: Keyboard, appearance: Appearance, dictation: Dictation, sessions: Sessions,
     providers: Providers, permissions: Permissions, storage: Storage, advanced: Advanced, about: About,
   };
   const HIGHLIGHT_MS = 2000;

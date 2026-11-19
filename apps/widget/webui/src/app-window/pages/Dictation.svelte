@@ -1,9 +1,6 @@
 <script lang="ts">
-  import { AudioLines, ChevronDown, ChevronsUpDown } from '@lucide/svelte';
-  import {
-    Button, Combobox, DropdownMenu, Group, MenuItem, MenuSeparator, Popover, PopupMenu, Progress, Row, ShortcutField,
-    Switch, TextField, toast,
-  } from '@speaktype/ui';
+  import { AudioLines, ChevronsUpDown } from '@lucide/svelte';
+  import { Button, Combobox, Group, Keycap, Popover, PopupMenu, Progress, Row, Switch, TextField, formatShortcut } from '@speaktype/ui';
   import MicPicker from '../../lib/app/MicPicker.svelte';
   import { plainModel } from '../../lib/app/models';
   import { useModels } from '../../lib/app/models.svelte';
@@ -11,13 +8,15 @@
   import { LANGUAGES } from '../languages';
   import Page from '../Page.svelte';
   import Section from '../Section.svelte';
+  import { navigate } from '../router.svelte';
   import { useSettings } from '../settings.svelte';
+  import { useShortcuts } from '../shortcuts.svelte';
 
   const PASTE_KEYS = ['', 'enter', 'tab', 'enter+enter', 'space'];
 
   const settings = useSettings();
   const models = useModels();
-  const hotkey = settings.field('hotkey', 'Super+Control');
+  const shortcuts = useShortcuts();
   const language = settings.field('language', 'auto');
   const pasteMode = settings.field('paste_mode', 'active');
   const saveAudio = settings.field('save_recordings', false);
@@ -27,19 +26,9 @@
   let sheetOpen = $state(false);
   let micOpen = $state(false);
   let customKeys = $state(false);
-  let recording = $state(false);
 
   const pasteChoice = $derived(customKeys || !PASTE_KEYS.includes(postPaste.value) ? 'custom' : postPaste.value);
-  const MODIFIERS = ['Control', 'Option', 'Shift', 'Super'];
-  const hotkeyKeys = {
-    get: () => hotkey.value.split('+'),
-    set(keys: string[]) {
-      if (!keys.length) return;
-      if (!keys.every((key) => MODIFIERS.includes(key))) hotkey.value = keys.join('+');
-      else if (keys.length === 2 && keys.includes('Control') && keys.includes('Super')) hotkey.value = 'Super+Control';
-      else toast.show({ message: 'Only ⌃⌘ works on its own. Add a key to use other modifiers.' });
-    },
-  };
+  const hotkey = $derived(shortcuts.keys('dictation').split('+').filter(Boolean));
 
   const active = $derived(plainModel(models.activeId));
   const activeRow = $derived(models.rows.find((row) => row.model.id === models.activeId));
@@ -54,25 +43,10 @@
 <Page title="Dictation">
   <Section>
     <Group>
-      <Row kind="control" label="Start and stop dictation" caption="Press once to start, again to stop">
+      <Row kind="control" label="Start / stop dictation" caption="Press once to start, again to stop">
         {#snippet trailing()}
-          <ShortcutField bind:value={hotkeyKeys.get, hotkeyKeys.set} bind:recording />
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button {...props} size={28} aria-label="Shortcut presets"><ChevronDown size={13} aria-hidden="true" /></Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content>
-              <DropdownMenu.RadioGroup bind:value={() => hotkey.value, (next) => (hotkey.value = next)}>
-                <MenuItem value="Super+Control" label="⌃⌘ (default)" />
-                <MenuItem value="F9" label="F9" />
-                <MenuItem value="F8" label="F8" />
-              </DropdownMenu.RadioGroup>
-              <MenuSeparator />
-              <MenuItem label="Record a shortcut…" onSelect={() => (recording = true)} />
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
+          <span class="keys">{#each formatShortcut(hotkey) as key}<Keycap {key} />{/each}</span>
+          <Button size={28} aria-label="Change in Keyboard" onclick={() => navigate('keyboard')}>Change in Keyboard…</Button>
         {/snippet}
       </Row>
       <Row kind="control" label="Language">
@@ -160,6 +134,10 @@
 <SpeechModelsSheet bind:open={sheetOpen} />
 
 <style>
+  .keys {
+    display: inline-flex;
+    gap: 3px;
+  }
   .mics {
     width: 340px;
   }

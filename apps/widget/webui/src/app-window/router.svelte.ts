@@ -1,8 +1,8 @@
 import type { Component } from 'svelte';
-import { Clock, Cloud, Cog, Contrast, Database, Lock, Mic, Pencil, SlidersHorizontal } from '@lucide/svelte';
+import { Clock, Cloud, Cog, Contrast, Database, Keyboard, Lock, Mic, Pencil, SlidersHorizontal } from '@lucide/svelte';
 
 export type PageId =
-  | 'history' | 'general' | 'appearance' | 'dictation' | 'sessions'
+  | 'history' | 'general' | 'keyboard' | 'appearance' | 'dictation' | 'sessions'
   | 'providers' | 'permissions' | 'storage' | 'advanced' | 'about';
 
 type Icon = Component<{ size?: number; strokeWidth?: number }>;
@@ -11,6 +11,7 @@ type Icon = Component<{ size?: number; strokeWidth?: number }>;
 export const PAGES: { id: PageId; label: string; icon: Icon; tile: string; gap?: true }[] = [
   { id: 'history', label: 'History', icon: Clock, tile: '#30b0c7' },
   { id: 'general', label: 'General', icon: Cog, tile: '#8e8e93', gap: true },
+  { id: 'keyboard', label: 'Keyboard', icon: Keyboard, tile: '#8e8e93' },
   { id: 'appearance', label: 'Appearance', icon: Contrast, tile: '#1c1c1e' },
   { id: 'dictation', label: 'Dictation', icon: Mic, tile: '#0a84ff', gap: true },
   { id: 'sessions', label: 'Sessions', icon: Pencil, tile: '#ef643c' },
