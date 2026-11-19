@@ -122,7 +122,7 @@ export const queueModelDownload = commands.queueModelDownload as unknown as (
 export const restartModelDownload = commands.restartModelDownload as unknown as (
   model: string,
 ) => Promise<unknown>;
-export const getModels = commands.getModels as unknown as () => Promise<ModelEntry[]>;
+export const getModels = commands.getModels as unknown as () => Promise<ModelCatalog>;
 export const getModelProgress = commands.getModelProgress as unknown as () => Promise<unknown>;
 export const cancelModelDownload = commands.cancelModelDownload as unknown as (
   model: string,
@@ -218,5 +218,16 @@ export interface ModelEntry {
   name?: string;
   size_bytes?: number;
   downloaded?: boolean;
+  partial?: boolean;
+  partial_size?: number;
+  expected_size?: number;
   [key: string]: unknown;
+}
+
+/** What `get_models` returns: the catalog plus the live download queue. */
+export interface ModelCatalog {
+  available: ModelEntry[];
+  downloading: string[];
+  waiting: string[];
+  progress: { model: string; phase: string; percent: number; bytes_downloaded: number; total_bytes: number }[];
 }

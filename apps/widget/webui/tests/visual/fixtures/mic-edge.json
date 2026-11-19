@@ -1,0 +1,13 @@
+{
+  "get_settings": { "model": "small", "language": "auto", "input_device": "Studio Display Microphone" },
+  "get_input_devices": {
+    "devices": [
+      {
+        "name": "A very long microphone name that keeps going because some USB interfaces report their full marketing description plus firmware and the serial number of the unit, which is entirely unreasonable but happens in practice, so the row must truncate it with an ellipsis and a tooltip instead of pushing the level meter out of the card, and it carries on past three hundred characters to be sure",
+        "label": "A very long microphone name that keeps going because some USB interfaces report their full marketing description plus firmware and the serial number of the unit, which is entirely unreasonable but happens in practice, so the row must truncate it with an ellipsis and a tooltip instead of pushing the level meter out of the card, and it carries on past three hundred characters to be sure (Bluetooth hands-free, 16 kHz)",
+        "is_default": true
+      }
+    ],
+    "default": "A very long microphone name that keeps going because some USB interfaces report their full marketing description plus firmware and the serial number of the unit, which is entirely unreasonable but happens in practice, so the row must truncate it with an ellipsis and a tooltip instead of pushing the level meter out of the card, and it carries on past three hundred characters to be sure"
+  }
+}

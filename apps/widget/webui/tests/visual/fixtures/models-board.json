@@ -1,0 +1,33 @@
+{
+  "get_settings": { "model": "small", "language": "auto", "input_device": null },
+  "get_models": {
+    "available": [
+      { "id": "tiny", "size_bytes": 0, "downloaded": false, "partial": true, "partial_size": 32243712, "expected_size": 78643200 },
+      { "id": "base", "size_bytes": 157286400, "downloaded": true },
+      { "id": "small", "size_bytes": 524288000, "downloaded": true },
+      { "id": "medium", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3-turbo", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3", "size_bytes": 0, "downloaded": false }
+    ],
+    "downloading": ["large-v3-turbo"],
+    "waiting": [],
+    "progress": [
+      { "model": "large-v3-turbo", "phase": "downloading", "percent": 38, "bytes_downloaded": 608174080, "total_bytes": 1610612736 }
+    ]
+  },
+  "$events": [
+    {
+      "event": "model:progress",
+      "payload": { "model": "large-v3", "phase": "retrying", "message": "Connection lost — retrying in 8s… (2/5)" }
+    },
+    {
+      "event": "model:progress",
+      "payload": { "model": "large-v3-turbo", "phase": "downloading", "percent": 38, "bytes_downloaded": 608174080, "total_bytes": 1610612736, "eta_secs": 120 }
+    },
+    {
+      "event": "model:progress",
+      "delayMs": 4200,
+      "payload": { "model": "large-v3-turbo", "phase": "downloading", "percent": 38, "bytes_downloaded": 608174080, "total_bytes": 1610612736, "eta_secs": 120 }
+    }
+  ]
+}

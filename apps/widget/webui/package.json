@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
-    "lint": "eslint src"
+    "lint": "eslint src",
+    "visual": "playwright test",
+    "visual:update": "playwright test --update-snapshots"
   },
   "dependencies": {
     "@lucide/svelte": "^1.39.0",
@@ -19,6 +21,7 @@
     "bits-ui": "^2.19.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.65.1",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",
     "@types/node": "^22.10.0",
     "eslint": "^10.15.0",

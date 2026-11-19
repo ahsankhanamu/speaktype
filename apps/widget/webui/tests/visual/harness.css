@@ -1,0 +1,22 @@
+html,
+body {
+  margin: 0;
+  background: var(--st-window);
+  color: var(--st-text);
+  font-family: var(--st-font-family);
+  font-size: var(--st-font-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+*,
+*::before,
+*::after {
+  transition-duration: 0s !important;
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+}
+
+.panel {
+  box-sizing: border-box;
+  padding: 44px 48px;
+}

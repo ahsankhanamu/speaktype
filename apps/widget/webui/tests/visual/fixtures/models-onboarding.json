@@ -1,0 +1,18 @@
+{
+  "get_settings": { "model": "base", "language": "auto", "input_device": null },
+  "get_models": {
+    "available": [
+      { "id": "tiny", "size_bytes": 0, "downloaded": false },
+      { "id": "base", "size_bytes": 157286400, "downloaded": true },
+      { "id": "small", "size_bytes": 0, "downloaded": false },
+      { "id": "medium", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3-turbo", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3", "size_bytes": 0, "downloaded": false }
+    ],
+    "downloading": ["small"],
+    "waiting": [],
+    "progress": [
+      { "model": "small", "phase": "downloading", "percent": 64, "bytes_downloaded": 335544320, "total_bytes": 524288000 }
+    ]
+  }
+}
