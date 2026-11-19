@@ -118,10 +118,7 @@ pub fn run() {
                         let has_mic = permissions::check_microphone();
                         let has_acc = permissions::check_accessibility(false);
 
-                        if accessibility_became_granted(
-                            last.is_some_and(|(_, acc)| acc),
-                            has_acc,
-                        ) {
+                        if accessibility_became_granted(last.map(|(_, acc)| acc), has_acc) {
                             let state = app_handle.state::<commands::AppState>();
                             let keys = state
                                 .settings
@@ -418,6 +415,10 @@ pub fn run() {
                 let state = app.state::<AppState>();
                 let mut live = state.shortcuts.lock().map_err(|e| e.to_string())?;
                 for (action, keys) in &settings.shortcuts {
+                    // The draw key is a held modifier owned by the overlay's key tap (Phase 2).
+                    if *action == shortcuts::ShortcutAction::DrawKey {
+                        continue;
+                    }
                     if !shortcuts::ShortcutsPlatform::arm(&platform, *action, keys) {
                         logging::log_message(&format!(
                             "[shortcut] Could not arm {:?} {:?} at startup",
@@ -679,9 +680,10 @@ fn terminate_in_place() {
 struct EscHolder(std::sync::Mutex<hotkey::EscShortcut<hotkey::EscRegistration>>);
 
 /// Accessibility granted while running must arm the dictation hotkey at once:
-/// the Super+Control tap only exists once macOS allows event taps.
-fn accessibility_became_granted(prev: bool, now: bool) -> bool {
-    !prev && now
+/// the Super+Control tap only exists once macOS allows event taps. The first
+/// poll has no previous value; startup already registered the hotkey.
+fn accessibility_became_granted(prev: Option<bool>, now: bool) -> bool {
+    prev == Some(false) && now
 }
 
 // IPC command surface contract.
@@ -882,10 +884,14 @@ mod ipc_surface {
 
     #[test]
     fn accessibility_became_granted_only_on_the_false_to_true_flip() {
-        assert!(accessibility_became_granted(false, true));
-        assert!(!accessibility_became_granted(true, true));
-        assert!(!accessibility_became_granted(false, false));
-        assert!(!accessibility_became_granted(true, false));
+        assert!(accessibility_became_granted(Some(false), true));
+        assert!(!accessibility_became_granted(Some(true), true));
+        assert!(!accessibility_became_granted(Some(false), false));
+        assert!(!accessibility_became_granted(Some(true), false));
+        assert!(
+            !accessibility_became_granted(None, true),
+            "the first poll is not a grant"
+        );
     }
 
     #[test]

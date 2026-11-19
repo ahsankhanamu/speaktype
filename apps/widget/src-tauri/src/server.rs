@@ -3,7 +3,7 @@ use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -162,10 +162,10 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
 
     // The bundled binary sits in `<Contents/MacOS>/`, the app's own folder and
     // not on PATH, so the watcher takes its directory and runs it from there.
-    let server_bin = match app.path().resource_dir() {
-        Ok(resources) => resources.join("whisper-server"),
+    let server_bin = match std::env::current_exe() {
+        Ok(exe) => sidecar_beside(&exe),
         Err(e) => {
-            logging::log_message(&format!("[server] No resource directory: {}", e));
+            logging::log_message(&format!("[server] Can't locate the app executable: {}", e));
             return None;
         }
     };
@@ -404,6 +404,12 @@ enum Reap {
     /// No record, a pid that was reused, or the process is gone.
     Forget,
     Kill,
+}
+
+/// Tauri puts sidecars next to the app executable (`Contents/MacOS/`), not in
+/// `Contents/Resources/`.
+fn sidecar_beside(exe: &std::path::Path) -> std::path::PathBuf {
+    exe.with_file_name("whisper-server")
 }
 
 /// `sh -c '<watcher>' <server> <app pid> <server argv…>`. Validated as a shell
@@ -777,6 +783,15 @@ mod tests {
                 &record
             ),
             Reap::Kill
+        );
+    }
+
+    #[test]
+    fn the_sidecar_is_found_next_to_the_app_executable() {
+        let exe = std::path::Path::new("/Applications/SpeakType.app/Contents/MacOS/speaktype");
+        assert_eq!(
+            sidecar_beside(exe),
+            std::path::Path::new("/Applications/SpeakType.app/Contents/MacOS/whisper-server")
         );
     }
 }
