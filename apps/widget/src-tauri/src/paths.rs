@@ -23,3 +23,9 @@ pub fn config_dir_opt() -> Option<PathBuf> {
 pub fn models_dir() -> PathBuf {
     config_dir().join("models")
 }
+
+/// Where the running model server records its pid, so a later launch can reap
+/// a server an earlier crash left behind.
+pub fn server_pid_path() -> PathBuf {
+    config_dir().join("whisper-server.pid")
+}

@@ -99,26 +99,11 @@
     ],
     "default": "MacBook Pro Microphone"
   },
-  "check_permissions": {
-    "accessibility": true,
-    "microphone": true
-  },
-  "start_mic_test": {
-    "device": "MacBook Pro Microphone",
-    "sample_rate": 48000,
-    "channels": 1,
-    "inputs": 1,
-    "max_ms": 30000
-  },
-  "get_server_status": {
-    "embedded": true,
-    "running": true,
-    "port": 8002
-  },
-  "check_server": {
-    "status": "connected",
-    "message": "Connected"
-  },
+  "check_permissions": { "accessibility": true, "microphone": true },
+  "start_mic_test": { "device": "MacBook Pro Microphone", "sample_rate": 48000, "channels": 1, "inputs": 1, "max_ms": 30000 },
+  "get_server_status": { "embedded": true, "running": true, "stopped": false, "port": 8002 },
+  "server_info": { "model": null, "size": null },
+  "check_server": { "status": "connected", "message": "Connected" },
   "stt_has_api_key": true,
   "stt_reveal_api_key": "gsk_8Fq2NkRw7d3f9a",
   "stt_list_models": [

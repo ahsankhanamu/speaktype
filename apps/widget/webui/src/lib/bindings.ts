@@ -59,6 +59,13 @@ export const commands = {
 	checkServer: (apiUrl: string, options?: InvokeOptions) => __TAURI_INVOKE<Value>("check_server", { apiUrl }, options),
 	getServerStatus: (options?: InvokeOptions) => __TAURI_INVOKE<Value>("get_server_status", undefined, options),
 	stopWhisperServer: (options?: InvokeOptions) => __TAURI_INVOKE<Value>("stop_whisper_server", undefined, options),
+	unloadModel: (options?: InvokeOptions) => __TAURI_INVOKE<null>("unload_model", undefined, options),
+	/**
+	 *  Load now, after an unload: the one path that clears the unloaded state, so
+	 *  dictation loads the model lazily from then on.
+	 */
+	loadServer: (options?: InvokeOptions) => __TAURI_INVOKE<null>("load_server", undefined, options),
+	serverInfo: (options?: InvokeOptions) => __TAURI_INVOKE<ServerInfo>("server_info", undefined, options),
 	restartWhisperServer: (options?: InvokeOptions) => __TAURI_INVOKE<Value>("restart_whisper_server", undefined, options),
 	loadModel: (model: string, options?: InvokeOptions) => __TAURI_INVOKE<Value>("load_model", { model }, options),
 	queueModelDownload: (model: string, restart: boolean | null, options?: InvokeOptions) => __TAURI_INVOKE<Value>("queue_model_download", { model, restart }, options),
@@ -344,6 +351,15 @@ export type SegmentDebug = {
 	avgLogprob?: number | null,
 	flags?: string[],
 	bad?: boolean,
+};
+
+/**
+ *  What the menu bar has to say about the model: its name and size from the
+ *  catalog, or nothing while the server runs or loads.
+ */
+export type ServerInfo = {
+	model: string | null,
+	size: string | null,
 };
 
 export type Session = {

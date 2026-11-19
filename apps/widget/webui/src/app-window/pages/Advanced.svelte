@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Button, Group, Row, Segmented, Switch, TextField, toast } from '@speaktype/ui';
   import { liveQuery } from '../../lib/data';
-  import { checkServer, getServerStatus, restartWhisperServer, stopWhisperServer } from '../../lib/ipc';
+  import { checkServer, getServerStatus, loadServer, serverInfo, unloadModel } from '../../lib/ipc';
   import Page from '../Page.svelte';
   import Section from '../Section.svelte';
   import { useSettings } from '../settings.svelte';
@@ -16,25 +16,46 @@
     { key: 'quality_compression_ratio', label: 'Repetition threshold', caption: 'Above this ratio, the text is repeating itself' },
   ] as const;
 
-  const server = liveQuery('server-status', getServerStatus, {
+  const statusQuery = liveQuery('server-status', getServerStatus, {
+    invalidateOn: ['server:starting', 'server:ready', 'server:stopped', 'server:error'],
+  });
+  const model = liveQuery('server-info', serverInfo, {
     invalidateOn: ['server:starting', 'server:ready', 'server:stopped', 'server:error'],
   });
   let apiUrl = $state<string | null>(null);
   let checkResult = $state('');
-  let busy = $state<'stop' | 'restart' | 'check' | null>(null);
+  let busy = $state<'unload' | 'load' | 'check' | null>(null);
 
   const url = $derived(apiUrl ?? settings.data?.api_url ?? '');
+  const inMemory = $derived(Boolean(model.data?.model));
   const serverCaption = $derived(
-    !server.data ? '' : !server.data.embedded ? 'This build has no bundled server' : server.data.running ? `Running on port ${server.data.port}` : 'Stopped',
+    !statusQuery.data ? ''
+      : !statusQuery.data.embedded ? 'This build has no bundled server'
+      : statusQuery.data.running && model.data?.model ? `Running · ${model.data.size ?? 'size unknown'} in memory`
+      : statusQuery.data.running ? `Running on port ${statusQuery.data.port}`
+      : statusQuery.data.stopped ? 'Not loaded · loads again on the next dictation or when you press Load now'
+      : 'Starting…',
   );
 
-  async function run(kind: 'stop' | 'restart', action: () => Promise<unknown>) {
-    busy = kind;
+  async function load() {
+    busy = 'load';
     try {
-      await action();
-      await server.refetch();
+      await loadServer();
+      await Promise.all([statusQuery.refetch(), model.refetch()]);
     } catch (error) {
-      toast.show({ message: `Couldn't ${kind} the server. ${(error as { message?: string })?.message ?? error}` });
+      toast.show({ message: `Couldn't load the model. ${(error as { message?: string })?.message ?? error}` });
+    } finally {
+      busy = null;
+    }
+  }
+
+  async function unload() {
+    busy = 'unload';
+    try {
+      await unloadModel();
+      await Promise.all([statusQuery.refetch(), model.refetch()]);
+    } catch (error) {
+      toast.show({ message: `Couldn't unload the model. ${(error as { message?: string })?.message ?? error}` });
     } finally {
       busy = null;
     }
@@ -92,9 +113,12 @@
     <Group>
       <Row kind="control" label="Transcription server" caption={serverCaption}>
         {#snippet trailing()}
-          {#if server.data?.embedded}
-            <Button size={28} busy={busy === 'stop'} disabled={!server.data.running} onclick={() => run('stop', stopWhisperServer)}>Stop</Button>
-            <Button size={28} busy={busy === 'restart'} onclick={() => run('restart', restartWhisperServer)}>Restart</Button>
+          {#if statusQuery.data?.embedded}
+            {#if inMemory}
+              <Button size={28} busy={busy === 'unload'} onclick={unload}>Unload model</Button>
+            {:else if statusQuery.data.stopped}
+              <Button size={28} busy={busy === 'load'} onclick={load}>Load now</Button>
+            {/if}
           {/if}
         {/snippet}
       </Row>

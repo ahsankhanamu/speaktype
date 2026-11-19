@@ -1554,7 +1554,53 @@ pub fn get_server_status(app: AppHandle) -> Result<serde_json::Value, String> {
         "embedded": crate::server::has_embedded_server(&app),
         "running": crate::server::is_running(),
         "port": crate::server::current_port(),
+        "stopped": crate::server::is_stopped(),
     }))
+}
+
+/// What the menu bar has to say about the model: its name and size from the
+/// catalog, or nothing while the server runs or loads.
+#[derive(serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct ServerInfo {
+    pub(crate) model: Option<String>,
+    pub(crate) size: Option<String>,
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn server_info(app: AppHandle) -> Result<ServerInfo, String> {
+    let idle = !crate::server::is_running()
+        && !MODEL_OPERATION_IN_PROGRESS.load(Ordering::SeqCst)
+        && crate::server::has_embedded_server(&app);
+    if !idle {
+        return Ok(ServerInfo {
+            model: None,
+            size: None,
+        });
+    }
+    let model = Settings::load().model;
+    let bytes = crate::format::catalog_model_size_bytes(&model);
+    let name = model.split('.').next().unwrap_or(&model).to_string();
+    Ok(ServerInfo {
+        model: Some(name),
+        size: if bytes > 0 {
+            Some(crate::format::format_byte_size_approx(bytes))
+        } else {
+            None
+        },
+    })
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn unload_model(app: AppHandle) -> Result<(), IpcError> {
+    if !crate::server::has_embedded_server(&app) {
+        return Err(IpcError::new("server", "This build has no bundled server"));
+    }
+    crate::server::unload();
+    let _ = app.emit("server:stopped", json!({}));
+    Ok(())
 }
 
 #[tauri::command]
@@ -1564,12 +1610,42 @@ pub fn stop_whisper_server(app: AppHandle) -> Result<serde_json::Value, String> 
         return Err("No embedded whisper server in this build".to_string());
     }
     let was_running = crate::server::is_running();
-    crate::server::stop_server();
+    crate::server::unload();
     if was_running {
         log_message("[server] Model unloaded from memory (model files unchanged on disk)");
     }
     let _ = app.emit("server:stopped", json!({ "unloaded": was_running }));
     Ok(json!({ "stopped": was_running, "unloaded": was_running }))
+}
+
+/// Load now, after an unload: the one path that clears the unloaded state, so
+/// dictation loads the model lazily from then on.
+#[tauri::command]
+#[specta::specta]
+pub async fn load_server(app: AppHandle, state: State<'_, AppState>) -> Result<(), IpcError> {
+    if !crate::server::has_embedded_server(&app) {
+        return Err(IpcError::new("server", "This build has no bundled server"));
+    }
+    if crate::server::is_running() {
+        return Ok(());
+    }
+    let model = state
+        .settings
+        .lock()
+        .map_err(|e| IpcError::new("server", e.to_string()))?
+        .model
+        .clone();
+    if MODEL_OPERATION_IN_PROGRESS.load(Ordering::SeqCst) {
+        return Err(IpcError::new(
+            "server",
+            "A model operation is already in progress",
+        ));
+    }
+    crate::server::mark_loaded();
+    crate::server::ensure_running(&app, &model)
+        .await
+        .map(|_| ())
+        .map_err(|e| IpcError::new("server", e))
 }
 
 #[tauri::command]
@@ -1598,6 +1674,7 @@ pub async fn restart_whisper_server(
     }
 
     let _ = app.emit("server:starting", json!({}));
+    crate::server::mark_loaded();
     crate::server::stop_server();
     tokio::time::sleep(std::time::Duration::from_millis(600)).await;
 
@@ -1970,7 +2047,6 @@ pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<()
         let url = main_window_url(&window.url().map_err(|e| e.to_string())?, Some(section));
         window.navigate(url).map_err(|e| e.to_string())?;
     }
-
     show_and_focus_window(&window)
 }
 

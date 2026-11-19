@@ -3,7 +3,7 @@ use std::net::TcpListener;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
@@ -13,6 +13,13 @@ static SERVER_INTENTIONAL_STOP: AtomicBool = AtomicBool::new(false);
 static SERVER_CRASH_COUNT: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 const MAX_CRASH_RESTARTS: u32 = 3;
+
+/// A person unloaded the model: it stays unloaded (no lazy load on the next
+/// dictation) until they choose Load now.
+static UNLOADED: AtomicBool = AtomicBool::new(false);
+
+/// No embedded server running, but this build has one to start.
+static SERVER_STOPPED: AtomicBool = AtomicBool::new(false);
 
 const DEFAULT_PORT: u16 = 8002;
 const PORT_RANGE_END: u16 = 8020;
@@ -88,6 +95,8 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
     let data_dir = crate::paths::config_dir_opt()?;
     let model_path = data_dir.join("models").join(format!("ggml-{}.bin", model));
 
+    reap_orphan();
+
     let port = match find_available_port() {
         Some(p) => p,
         None => {
@@ -112,19 +121,12 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
         port,
     ));
 
-    let sidecar_cmd = match app.shell().sidecar("whisper-server") {
-        Ok(cmd) => cmd,
-        Err(e) => {
-            logging::log_message(&format!("[server] Failed to create sidecar command: {}", e));
-            return None;
-        }
-    };
-
-    let mut sidecar_cmd = sidecar_cmd
-        .arg("-m")
-        .arg(model_path.to_string_lossy().to_string())
-        .arg("--port")
-        .arg(port.to_string());
+    let mut args = vec![
+        "-m".to_string(),
+        model_path.to_string_lossy().to_string(),
+        "--port".to_string(),
+        port.to_string(),
+    ];
 
     // Cap decode threads so inference never saturates every core and makes the
     // UI (widget, settings tabs, paste) unresponsive mid-transcription.
@@ -135,7 +137,8 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
             .unwrap_or(6);
         let threads = ncpu.saturating_sub(2).clamp(4, 8) as u32;
         logging::log_message(&format!("[server] Decode threads capped at {}", threads));
-        sidecar_cmd = sidecar_cmd.arg("-t").arg(threads.to_string());
+        args.push("-t".to_string());
+        args.push(threads.to_string());
     }
 
     if let Some(vad_path) = crate::downloader::ensure_vad_model_blocking() {
@@ -143,18 +146,36 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
             "[server] Enabling Silero VAD ({})",
             vad_path.display()
         ));
-        sidecar_cmd = sidecar_cmd
-            .arg("--vad")
-            .arg("--vad-model")
-            .arg(vad_path.to_string_lossy().to_string())
-            .arg("--vad-threshold")
-            .arg("0.45")
-            .arg("--suppress-nst");
+        for arg in [
+            "--vad",
+            "--vad-model",
+            &vad_path.to_string_lossy(),
+            "--vad-threshold",
+            "0.45",
+            "--suppress-nst",
+        ] {
+            args.push(arg.to_string());
+        }
     } else {
         logging::log_message("[server] Silero VAD unavailable — starting without VAD trim");
     }
 
-    match sidecar_cmd.spawn() {
+    // The bundled binary sits in `<Contents/MacOS>/`, the app's own folder and
+    // not on PATH, so the watcher takes its directory and runs it from there.
+    let server_bin = match app.path().resource_dir() {
+        Ok(resources) => resources.join("whisper-server"),
+        Err(e) => {
+            logging::log_message(&format!("[server] No resource directory: {}", e));
+            return None;
+        }
+    };
+    let (program, argv) = watch_command(&server_bin, std::process::id(), &args);
+    let mut watch_cmd = app.shell().command(&program);
+    for arg in &argv {
+        watch_cmd = watch_cmd.arg(arg);
+    }
+
+    match watch_cmd.spawn() {
         Ok((mut rx, child)) => {
             logging::log_message(&format!(
                 "[server] Spawned server (pid={}, port={}, model={})",
@@ -162,6 +183,10 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
                 port,
                 model
             ));
+            let pid = child.pid();
+            if let Some(start_time) = process_spawned(pid) {
+                write_pidfile(&PidRecord { pid, start_time });
+            }
 
             // Log sidecar output and monitor for unexpected termination
             let app_handle_for_monitor = app.clone();
@@ -223,6 +248,7 @@ pub fn start_server(app: &AppHandle, model: &str) -> Option<ServerInfo> {
                 *port_lock = Some(port);
             }
             SERVER_INTENTIONAL_STOP.store(false, Ordering::SeqCst);
+            SERVER_STOPPED.store(false, Ordering::SeqCst);
             Some(ServerInfo {
                 port,
                 model: model.to_string(),
@@ -300,6 +326,9 @@ pub async fn ensure_running(app: &AppHandle, model: &str) -> Result<Option<Serve
             model: model.to_string(),
         }));
     }
+    if UNLOADED.load(Ordering::SeqCst) {
+        return Ok(None);
+    }
 
     if !crate::downloader::is_model_complete(model) {
         return Err(format!("Model '{}' is not fully downloaded", model));
@@ -339,9 +368,232 @@ pub fn should_auto_restart() -> bool {
     SERVER_CRASH_COUNT.load(Ordering::SeqCst) < MAX_CRASH_RESTARTS
 }
 
+/// Settings → Advanced and the menu bar call off a start that is still waiting.
+pub fn is_stopped() -> bool {
+    SERVER_STOPPED.load(Ordering::SeqCst)
+}
+
+/// A person unloaded the model: stop the server and keep it stopped, so the
+/// next dictation does not silently load it again.
+pub fn unload() {
+    UNLOADED.store(true, Ordering::SeqCst);
+    stop_server();
+}
+
+/// The next start serves dictation again (Load now, a restart).
+pub fn mark_loaded() {
+    UNLOADED.store(false, Ordering::SeqCst);
+}
+
+/// A server left behind by a crash or force-quit: pid plus its start time, so a
+/// reused pid is never mistaken for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct PidRecord {
+    pid: u32,
+    start_time: u64,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Process {
+    exe: String,
+    start_time: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Reap {
+    /// No record, a pid that was reused, or the process is gone.
+    Forget,
+    Kill,
+}
+
+/// `sh -c '<watcher>' <server> <app pid> <server argv…>`. Validated as a shell
+/// script before it was written here; the tests run the same text with a fake
+/// server and a fake app so the loop is proven, not just composed.
+fn watch_command(server: &std::path::Path, owner: u32, args: &[String]) -> (String, Vec<String>) {
+    let mut argv = vec![
+        "-c".to_string(),
+        watcher_script(),
+        server.to_string_lossy().into_owned(),
+        owner.to_string(),
+    ];
+    argv.extend(args.iter().cloned());
+    ("/bin/sh".to_string(), argv)
+}
+
+/// The watcher, as `sh`: `$0` is the server binary (found through the bundle's
+/// `MacOS` directory, which is not on PATH), `$1` the app's pid, then the
+/// server's own arguments.
+///
+/// The server gets a closed-off fd 9 (the plugin's pipe) and `/dev/null` stdin,
+/// so it never holds a handle to the app. A subshell closes `sh`'s own copy of
+/// fd 9 after two seconds, so a crash or force-quit surfaces as a closed pipe
+/// at once. The loop then kills the server within a second instead of leaving
+/// it for an hour-long transcription to finish.
+fn watcher_script() -> String {
+    r#"export PATH="$(dirname "$0"):$PATH"
+running() { pid=$(ps -o pid= -p "$1" 2>/dev/null) || return 1
+  [ -n "$pid" ] && [ "$(ps -o state= -p "$1" 2>/dev/null | tr -d ' ')" != Z ]; }
+owner=$1; shift
+"$0" "$@" </dev/null 9>&- &
+srv=$!
+trap 'kill -TERM "$srv" 2>/dev/null; exit 0' TERM HUP
+if [ -e /dev/fd/9 ] || { : >&9; } 2>/dev/null; then ( sleep 2; exec 9>&- ) & fi
+while kill -0 "$srv" 2>/dev/null
+do
+  if ! running "$owner"; then kill -KILL "$srv"; wait "$srv" 2>/dev/null; exit 0; fi
+  sleep 1 &
+  wait $!
+done
+wait "$srv""#
+        .to_string()
+}
+
+fn write_pidfile_at(path: &std::path::Path, record: &PidRecord) {
+    let written = std::fs::write(path, format!("{} {}\n", record.pid, record.start_time));
+    if let Err(e) = written {
+        logging::log_message(&format!(
+            "[server] Could not write {}: {}",
+            path.display(),
+            e
+        ));
+    }
+}
+
+fn read_pidfile_at(path: &std::path::Path) -> Option<PidRecord> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let mut fields = text.split_whitespace();
+    Some(PidRecord {
+        pid: fields.next()?.parse().ok()?,
+        start_time: fields.next()?.parse().ok()?,
+    })
+}
+
+fn remove_pidfile_at(path: &std::path::Path) {
+    if let Err(e) = std::fs::remove_file(path) {
+        if e.kind() != std::io::ErrorKind::NotFound {
+            logging::log_message(&format!(
+                "[server] Could not remove {}: {}",
+                path.display(),
+                e
+            ));
+        }
+    }
+}
+
+fn write_pidfile(record: &PidRecord) {
+    let path = crate::paths::server_pid_path();
+    if let Some(dir) = path.parent() {
+        if let Err(e) = std::fs::create_dir_all(dir) {
+            logging::log_message(&format!(
+                "[server] Could not create {}: {}",
+                dir.display(),
+                e
+            ));
+            return;
+        }
+    }
+    write_pidfile_at(&path, record);
+}
+
+fn remove_pidfile() {
+    remove_pidfile_at(&crate::paths::server_pid_path());
+}
+
+/// Whether `exe` is our server. The app bundle execs its sidecar through the
+/// `.app/Contents/MacOS/` directory that contains the bundled binary, so the
+/// path ends in `MacOS/whisper-server` there and in `binaries/whisper-server`
+/// in a raw build.
+fn is_whisper_server(exe: &str) -> bool {
+    let name = std::path::Path::new(exe).file_name();
+    name.is_some_and(|name| {
+        name == "whisper-server" && exe.ends_with(&format!("MacOS/{}", name.to_string_lossy()))
+    })
+}
+
+fn reap_decision(recorded_pid: Option<u32>, process: Option<Process>, record: &PidRecord) -> Reap {
+    if recorded_pid != Some(record.pid) || process.is_none() {
+        return Reap::Forget;
+    }
+    let process = process.expect("checked above");
+    if !is_whisper_server(&process.exe) || process.start_time > record.start_time {
+        return Reap::Forget;
+    }
+    Reap::Kill
+}
+
+/// Kill the server a crashed launch left behind, before a new one takes a port.
+fn reap_orphan() {
+    let path = crate::paths::server_pid_path();
+    let Some(record) = read_pidfile_at(&path) else {
+        return;
+    };
+    let decision = reap_decision(Some(record.pid), running_process(record.pid), &record);
+    if decision == Reap::Forget {
+        remove_pidfile_at(&path);
+        logging::log_message(&format!(
+            "[server] Ignoring stale pidfile for pid {}: that pid now belongs to another process",
+            record.pid
+        ));
+        return;
+    }
+    logging::log_message(&format!(
+        "[server] Reaping whisper-server (pid {}) left behind by an earlier launch",
+        record.pid
+    ));
+    unsafe { libc::kill(record.pid as i32, libc::SIGTERM) };
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while running_process(record.pid).is_some() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    if running_process(record.pid).is_some() {
+        unsafe { libc::kill(record.pid as i32, libc::SIGKILL) };
+    }
+    remove_pidfile_at(&path);
+}
+
+fn process_spawned(pid: u32) -> Option<u64> {
+    if unsafe { libc::kill(pid as i32, 0) } != 0 {
+        return None;
+    }
+    // `struct kinfo_proc` opens with `kp_proc.p_starttime` (a `timeval`), which
+    // is the first and only 8-byte field of the struct on 64-bit macOS.
+    let name = std::ffi::CString::new(format!("kern.proc.pid.{}", pid)).ok()?;
+    let mut start_time = [0u8; 8];
+    let mut len = start_time.len();
+    let read = unsafe {
+        libc::sysctlbyname(
+            name.as_ptr(),
+            start_time.as_mut_ptr().cast(),
+            &mut len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
+    if read != 0 || len != start_time.len() {
+        return None;
+    }
+    Some(u64::from_ne_bytes(start_time))
+}
+
+fn running_process(pid: u32) -> Option<Process> {
+    let start_time = process_spawned(pid)?;
+    let mut buffer = [0u8; 4096];
+    let len =
+        unsafe { libc::proc_pidpath(pid as i32, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+    if len <= 0 {
+        return None;
+    }
+    Some(Process {
+        exe: String::from_utf8_lossy(&buffer[..len as usize]).into_owned(),
+        start_time,
+    })
+}
+
 pub fn stop_server() {
     SERVER_INTENTIONAL_STOP.store(true, Ordering::SeqCst);
     SERVER_CRASH_COUNT.store(0, Ordering::SeqCst);
+    SERVER_STOPPED.store(true, Ordering::SeqCst);
+    remove_pidfile();
     if let Ok(mut proc) = SERVER_PROCESS.lock() {
         if let Some(child) = proc.take() {
             logging::log_message("[server] Stopping sidecar server");
@@ -351,5 +603,180 @@ pub fn stop_server() {
     }
     if let Ok(mut port) = SERVER_PORT.lock() {
         *port = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pidfile_round_trips_in_the_test_config_dir() {
+        let recorded = PidRecord {
+            pid: 4242,
+            start_time: 1_760_000_000,
+        };
+        let path = crate::paths::config_dir().join("round-trip.pid");
+        write_pidfile_at(&path, &recorded);
+        assert_eq!(read_pidfile_at(&path), Some(recorded));
+        remove_pidfile_at(&path);
+        assert!(!path.exists());
+    }
+
+    fn live(exe: &str, start_time: u64) -> Process {
+        Process {
+            exe: exe.to_string(),
+            start_time,
+        }
+    }
+
+    const WHISPER_SERVER: &str = "/Applications/SpeakType.app/Contents/MacOS/whisper-server";
+
+    use std::os::unix::fs::PermissionsExt;
+
+    /// The watcher runs `whisper-server` from the directory it was given, with
+    /// the server's own arguments, and reports its output.
+    fn run_watcher(server: &std::path::Path, owner: u32) -> std::process::Output {
+        let (program, argv) = watch_command(server, owner, &["-m".to_string(), "ggml".to_string()]);
+        std::process::Command::new(program)
+            .args(argv)
+            .output()
+            .expect("run the watcher")
+    }
+
+    fn fake_server(name: &str, body: &str) -> std::path::PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("speaktype-watch-{}-{}", std::process::id(), name));
+        std::fs::create_dir_all(&dir).expect("tempdir");
+        let path = dir.join("whisper-server");
+        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("fake server");
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        dir
+    }
+
+    #[test]
+    fn the_watcher_runs_the_server_with_its_arguments_and_a_closed_pipe() {
+        let server = fake_server(
+            "argv",
+            "echo \"argv=$*\"; if read _ <&9; then echo pipe-open; fi",
+        )
+        .join("whisper-server");
+        let output = run_watcher(&server, std::process::id());
+        assert_eq!(
+            String::from_utf8_lossy(&output.stdout).trim(),
+            "argv=-m ggml"
+        );
+        assert!(output.status.success());
+    }
+
+    #[test]
+    fn the_watcher_stops_the_server_when_the_app_dies() {
+        let dir = fake_server("orphan", "sleep 30");
+        let server = dir.join("whisper-server");
+        let mut app = std::process::Command::new("/bin/sh")
+            .args(["-c", "sleep 30"])
+            .spawn()
+            .expect("fake app");
+        let pidfile = dir.join("server.pid");
+        std::fs::write(
+            &server,
+            format!(
+                "#!/bin/sh\necho $$ > '{}'\nexec sleep 30\n",
+                pidfile.display()
+            ),
+        )
+        .expect("fake server body");
+        let app_pid = app.id();
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(1500));
+            unsafe { libc::kill(app_pid as i32, libc::SIGKILL) };
+        });
+        let started = Instant::now();
+        let output = run_watcher(&server, app_pid);
+        assert!(output.status.success());
+        assert!(started.elapsed() < Duration::from_secs(15));
+        app.wait().expect("reap the fake app");
+        let server_pid: u32 = std::fs::read_to_string(&pidfile)
+            .expect("fake server pid")
+            .trim()
+            .parse()
+            .expect("pid");
+        assert_eq!(process_spawned(server_pid), None, "server survived the app");
+    }
+
+    /// What a SIGTERM/SIGINT/SIGHUP handler runs before exiting: the server is
+    /// stopped, not a crash to be restarted.
+    #[test]
+    fn the_exit_path_stops_the_server() {
+        SERVER_PORT.lock().expect("port lock").replace(4711);
+        SERVER_INTENTIONAL_STOP.store(false, Ordering::SeqCst);
+        SERVER_CRASH_COUNT.store(2, Ordering::SeqCst);
+        stop_server();
+        assert_eq!(current_port(), None);
+        assert!(SERVER_INTENTIONAL_STOP.load(Ordering::SeqCst));
+        assert_eq!(SERVER_CRASH_COUNT.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn the_catalog_size_is_the_three_gigabytes_the_menu_promises() {
+        assert_eq!(
+            format!(
+                "~{}",
+                crate::format::format_byte_size(crate::format::catalog_model_size_bytes(
+                    "large-v3"
+                ))
+            ),
+            "~3 GB"
+        );
+    }
+
+    #[test]
+    fn unloading_keeps_the_model_unloaded_until_asked_to_load() {
+        mark_loaded();
+        assert!(!UNLOADED.load(Ordering::SeqCst));
+        unload();
+        assert!(UNLOADED.load(Ordering::SeqCst));
+        mark_loaded();
+        assert!(!UNLOADED.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn no_pidfile_means_nothing_to_reap() {
+        remove_pidfile();
+        reap_orphan();
+        assert_eq!(read_pidfile_at(&crate::paths::server_pid_path()), None);
+    }
+
+    #[test]
+    fn reap_decision_never_kills_an_unrelated_process() {
+        let record = PidRecord {
+            pid: 4242,
+            start_time: 1_760_000_000,
+        };
+        assert_eq!(reap_decision(Some(4242), None, &record), Reap::Forget);
+        assert_eq!(
+            reap_decision(
+                Some(4242),
+                Some(live("/usr/bin/python3", 1_759_999_000)),
+                &record
+            ),
+            Reap::Forget
+        );
+        assert_eq!(
+            reap_decision(
+                Some(4242),
+                Some(live(WHISPER_SERVER, 1_760_000_001)),
+                &record
+            ),
+            Reap::Forget
+        );
+        assert_eq!(
+            reap_decision(
+                Some(4242),
+                Some(live(WHISPER_SERVER, 1_760_000_000)),
+                &record
+            ),
+            Reap::Kill
+        );
     }
 }

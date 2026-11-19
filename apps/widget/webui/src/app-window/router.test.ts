@@ -28,6 +28,13 @@ describe('router', () => {
     expect(currentPage.id).toBe('about');
   });
 
+  it('opens the section the menu bar asked for as a route', () => {
+    startRouter();
+    location.hash = '#/history';
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+    expect(currentPage.id).toBe('history');
+  });
+
   it('follows a hash change', () => {
     startRouter();
     location.hash = '#/providers';

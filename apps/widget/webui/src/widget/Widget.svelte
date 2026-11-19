@@ -284,7 +284,7 @@
           {#if panel === 'mic'}
             <MicPicker />
           {:else if panel === 'model'}
-            <ModelMenu trigger="row" onopenproviders={() => openSettings().catch(report)} />
+            <ModelMenu trigger="row" onopenproviders={() => commands.openSettings('providers').catch(report)} />
           {/if}
         </div>
       </Popover>

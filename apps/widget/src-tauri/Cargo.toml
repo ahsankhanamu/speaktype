@@ -40,6 +40,8 @@ tokio = { version = "1", features = ["full", "test-util"] }
 tauri = { version = "2", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
 core-foundation = "0.10"
 core-graphics = "0.24"
 objc2 = "0.6"

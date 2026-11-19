@@ -55,6 +55,10 @@ export const checkServer = commands.checkServer as unknown as (
 export const getServerStatus = commands.getServerStatus as unknown as () => Promise<ServerStatus>;
 export const stopWhisperServer = commands.stopWhisperServer as unknown as () =>
   Promise<ServerCheckResponse>;
+export const unloadModel = commands.unloadModel;
+export const loadServer = commands.loadServer;
+/** Model name and catalog size while it sits in memory; nulls while it runs busy. */
+export const serverInfo = commands.serverInfo;
 export const restartWhisperServer = commands.restartWhisperServer as unknown as () =>
   Promise<ServerRestartResponse>;
 
@@ -202,6 +206,8 @@ export interface ServerRestartResponse {
 export interface ServerStatus {
   embedded: boolean;
   running: boolean;
+  /** After an unload: stopped on purpose, so dictation does not reload it. */
+  stopped: boolean;
   port: number | null;
 }
 

@@ -15,8 +15,8 @@ import History from './pages/History.svelte';
 const ipc = vi.hoisted(() => {
   const fn = () => vi.fn();
   return {
-    getSettings: fn(), saveSettings: fn(), checkServer: fn(), getServerStatus: fn(), stopWhisperServer: fn(),
-    restartWhisperServer: fn(), resetWidgetPosition: fn(), openSystemPane: fn(), openModelsFolder: fn(),
+    getSettings: fn(), saveSettings: fn(), checkServer: fn(), getServerStatus: fn(), unloadModel: fn(),
+    loadServer: fn(), serverInfo: fn(), resetWidgetPosition: fn(), openSystemPane: fn(), openModelsFolder: fn(),
     openRecordingsFolder: fn(), clearHistory: fn(), getHistory: fn(), sessionList: fn(), copyToClipboard: fn(),
     deleteHistoryEntry: fn(), getHistoryAudio: fn(), reprocessHistoryEntry: fn(), getDebugSessions: fn(),
     clearDebugSessions: fn(), deleteDebugSession: fn(), checkPermissions: fn(), openOnboarding: fn(),
@@ -74,7 +74,8 @@ beforeEach(() => {
   ipc.getModels.mockResolvedValue(CATALOG);
   ipc.getInputDevices.mockResolvedValue({ devices: [], default: null });
   ipc.checkPermissions.mockResolvedValue({ microphone: true, accessibility: true });
-  ipc.getServerStatus.mockResolvedValue({ embedded: true, running: true, port: 8002 });
+  ipc.getServerStatus.mockResolvedValue({ embedded: true, running: true, stopped: false, port: 8002 });
+  ipc.serverInfo.mockResolvedValue({ model: null, size: null });
   ipc.getDebugSessions.mockResolvedValue([]);
   ipc.getHistory.mockResolvedValue({ entries: [] });
   ipc.sessionList.mockResolvedValue([]);
@@ -115,6 +116,10 @@ describe('settings pages', () => {
   });
 
   it('Dictation carries every field from the spec', async () => {
+    ipc.getModels.mockResolvedValue({
+      ...CATALOG,
+      available: CATALOG.available.map((model) => (model.id === 'small' ? { ...model, downloaded: false } : model)),
+    });
     render(Dictation);
     await vi.waitFor(() => expect(text()).toContain('Manage models…'));
     expect(labels()).toEqual(
@@ -147,8 +152,32 @@ describe('settings pages', () => {
     await vi.waitFor(() => expect(text()).toContain('1 chunks'));
     button('Check').click();
     await vi.waitFor(() => expect(ipc.checkServer).toHaveBeenCalledWith('http://127.0.0.1:8002/inference'));
-    button('Restart').click();
-    await vi.waitFor(() => expect(ipc.restartWhisperServer).toHaveBeenCalled());
+  });
+
+  it('Advanced unloads the model with the size the menu bar quotes, then loads it now', async () => {
+    let running = true;
+    ipc.getServerStatus.mockImplementation(async () => ({ embedded: true, running, stopped: !running, port: 8002 }));
+    ipc.serverInfo.mockImplementation(async () =>
+      running ? { model: 'small', size: '~500 MB' } : { model: null, size: null },
+    );
+    ipc.unloadModel.mockImplementation(async () => {
+      running = false;
+      return null;
+    });
+    ipc.loadServer.mockImplementation(async () => {
+      running = true;
+      return null;
+    });
+    render(Advanced);
+    await vi.waitFor(() => expect(text()).toContain('Running · ~500 MB in memory'));
+    button('Unload model').click();
+    await vi.waitFor(() => expect(ipc.unloadModel).toHaveBeenCalled());
+    await vi.waitFor(() => expect(button('Load now')).toBeTruthy());
+    expect(text()).toContain('Not loaded');
+    expect(text()).toContain('loads again on the next dictation or when you press Load now');
+    button('Load now').click();
+    await vi.waitFor(() => expect(ipc.loadServer).toHaveBeenCalled());
+    await vi.waitFor(() => expect(button('Unload model')).toBeTruthy());
   });
 
   it('Storage maps the retention choice to history_limit, null meaning forever', async () => {

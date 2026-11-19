@@ -4,7 +4,8 @@
   import ModelMenu from '../lib/app/ModelMenu.svelte';
   import { plainModel } from '../lib/app/models';
   import { runModelAction, useModels } from '../lib/app/models.svelte';
-  import { openSettings, reprocessPreview } from '../lib/ipc';
+  import { commands } from '../lib/bindings';
+  import { reprocessPreview } from '../lib/ipc';
   import Page from './Page.svelte';
   import Paper from './Paper.svelte';
 
@@ -72,7 +73,7 @@
   {/if}
   <div class="model">
     <p class="caption">Speech model</p>
-    <ModelMenu trigger="row" onopenproviders={() => openSettings()} />
+    <ModelMenu trigger="row" onopenproviders={() => commands.openSettings('providers')} />
   </div>
   {#snippet panel()}
     <Paper>

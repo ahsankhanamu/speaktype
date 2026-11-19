@@ -436,26 +436,42 @@ pub fn run() {
             let record_item =
                 MenuItemBuilder::with_id("record", "Start Recording").build(app)?;
             tray::set_record_menu_item(record_item.clone());
-            let about_item =
-                MenuItemBuilder::with_id("about", "About SpeakType").build(app)?;
+            let paste_item =
+                MenuItemBuilder::with_id("paste", "Paste last dictation again").build(app)?;
+            let unload_item = MenuItemBuilder::with_id("unload", tray::NOT_LOADED)
+                .enabled(false)
+                .build(app)?;
+            tray::set_model_menu_item(unload_item.clone());
             let history_item =
                 MenuItemBuilder::with_id("history", "History…").build(app)?;
             let settings_item =
-                MenuItemBuilder::with_id("settings", "Settings").build(app)?;
+                MenuItemBuilder::with_id("settings", "Settings…").build(app)?;
             let show_item =
                 MenuItemBuilder::with_id("show", "Hide Widget").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
+            let about_item =
+                MenuItemBuilder::with_id("about", "About SpeakType").build(app)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Quit SpeakType").build(app)?;
 
             let menu = MenuBuilder::new(app)
                 .item(&record_item)
                 .separator()
+                .item(&paste_item)
+                .item(&unload_item)
                 .item(&history_item)
+                .separator()
                 .item(&settings_item)
                 .item(&show_item)
                 .separator()
                 .item(&about_item)
                 .item(&quit_item)
                 .build()?;
+            // The model item follows the server: Unload while the model sits in
+            // memory, "Speech model not loaded" when nothing is loaded.
+            for event in ["server:ready", "server:starting", "server:error", "server:stopped"] {
+                let tray_app = app.handle().clone();
+                app.handle().listen(event, move |_| tray::refresh_model_item(&tray_app));
+            }
+            tray::refresh_model_item(app.handle());
 
             let tray_icon = match tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")) {
                 Ok(img) => img,
@@ -472,6 +488,24 @@ pub fn run() {
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
                     "record" => commands::toggle_from_tray(app.clone(), record_item.clone()),
+                    "paste" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            let state = app.state::<AppState>();
+                            if let Err(e) = commands::paste_last(app.clone(), state).await {
+                                logging::log_message(&format!("[tray] Nothing to paste: {e}"));
+                            }
+                        });
+                    }
+                    "unload" => {
+                        let app = app.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(e) = commands::unload_model(app.clone()).await {
+                                logging::log_message(&format!("[tray] Could not unload: {e}"));
+                            }
+                            tray::refresh_model_item(&app);
+                        });
+                    }
                     "about" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
@@ -499,7 +533,9 @@ pub fn run() {
                     "settings" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
-                            let _ = commands::open_settings(app, None).await;
+                            if let Err(e) = commands::open_settings(app, None).await {
+                                logging::log_message(&format!("[tray] Could not open Settings: {e}"));
+                            }
                         });
                     }
                     "show" => {
@@ -538,6 +574,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building SpeakType")
         .run(|app, event| {
+            if let tauri::RunEvent::Ready = event {
+                handle_termination_signals(app);
+            }
             match event {
                 tauri::RunEvent::Exit => {
                     // The one app-wide wipe: every registration is about to die
@@ -550,6 +589,10 @@ pub fn run() {
                     server::stop_server();
                     llm_server::stop_llm_server();
                 }
+                // A normal walk through the main thread (⌘Q, the tray's Quit)
+                // still ends with the server stopped. `Exit` alone is not
+                // enough for a signal that unwinds through AppKit.
+                tauri::RunEvent::ExitRequested { .. } => server::stop_server(),
                 // Clicking the dock icon: reveal the floating widget and open
                 // the settings window so the user always has a way back in.
                 #[cfg(target_os = "macos")]
@@ -562,12 +605,73 @@ pub fn run() {
                     }
                     let app_clone = app.clone();
                     tauri::async_runtime::spawn(async move {
-                        let _ = commands::open_settings(app_clone, None).await;
+                        if let Err(e) = commands::open_settings(app_clone, None).await {
+                            logging::log_message(&format!("[dock] Could not open Settings: {e}"));
+                        }
                     });
                 }
                 _ => {}
             }
         });
+}
+
+/// SIGTERM, SIGINT and SIGHUP (logout, `kill`, a dev rebuild's parent) must
+/// stop the server before the process goes.
+///
+/// A signal handler may only call async-signal-safe functions, and Tauri's
+/// `exit()` is not one. So the handler only forwards the signal to the main
+/// thread, which stops the server and asks AppKit to terminate normally. Should
+/// that not end the process within two seconds, it stops the server anyway and
+/// exits outright, so a server never outlives us.
+#[cfg(unix)]
+fn handle_termination_signals(app: &tauri::AppHandle) {
+    use signal_hook::consts::signal::{SIGHUP, SIGINT, SIGTERM};
+
+    let signals = signal_hook::iterator::Signals::new([SIGTERM, SIGINT, SIGHUP]);
+    let mut signals = match signals {
+        Ok(signals) => signals,
+        Err(e) => {
+            logging::log_message(&format!("[signals] Could not watch for termination: {e}"));
+            return;
+        }
+    };
+    let handle = app.clone();
+    MAIN_APP.get_or_init(|| handle);
+    std::thread::spawn(move || {
+        if let Some(signal) = signals.forever().next() {
+            logging::log_message(&format!(
+                "[signals] Received signal {signal} — stopping the server and quitting"
+            ));
+            server::stop_server();
+            terminate_in_place();
+            std::thread::sleep(Duration::from_secs(2));
+            unsafe { libc::_exit(0) };
+        }
+    });
+}
+
+/// The app's handle for the signal thread, the one place without one.
+static MAIN_APP: std::sync::OnceLock<tauri::AppHandle> = std::sync::OnceLock::new();
+
+#[cfg(unix)]
+fn terminate_in_place() {
+    let Some(app) = MAIN_APP.get() else {
+        return;
+    };
+    let queued = app.run_on_main_thread(move || {
+        #[cfg(target_os = "macos")]
+        {
+            use objc2::MainThreadMarker;
+            use objc2_app_kit::NSApplication;
+            let main = MainThreadMarker::new().expect("run_on_main_thread runs on the main thread");
+            NSApplication::sharedApplication(main).terminate(None);
+        }
+        #[cfg(not(target_os = "macos"))]
+        app.exit(0);
+    });
+    if queued.is_err() {
+        app.exit(0);
+    }
 }
 
 /// The temporary Esc shortcut, owned by the app so `remember_dictation` can
@@ -619,6 +723,9 @@ mod ipc_surface {
         "check_server",
         "get_server_status",
         "stop_whisper_server",
+        "unload_model",
+        "load_server",
+        "server_info",
         "restart_whisper_server",
         "load_model",
         "queue_model_download",
@@ -701,6 +808,9 @@ mod ipc_surface {
         "check_server",
         "get_server_status",
         "stop_whisper_server",
+        "unload_model",
+        "load_server",
+        "server_info",
         "restart_whisper_server",
         "get_history",
         "delete_history_entry",
