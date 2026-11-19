@@ -265,6 +265,7 @@ export function modelState(m: ModelInfo, progress: ModelProgress | undefined, ac
 - Settings fields: `session_hotkey: String = "Option+Super+K"`, `live_captions: bool = true`, `keep_session_audio: bool = false`, `widget_corner: String = "bottom_right"`.
 - `set_launch_at_login` also persists `launch_at_login` (single source of truth in Rust).
 - Event `HistoryChanged {}` after add / delete / clear / reprocess.
+- `reprocess_preview(index: u32) -> Result<String, IpcError>` re-transcribes an entry with the active model **without** overwriting it; works for the newest entry even when *Save recording audio* is off (keep the last dictation's audio in memory, replaced on each new dictation). Onboarding's Try it compare uses it (found by U3: `reprocess_history_entry` needs saved audio and overwrites the entry).
 - Windows: `open_about` and the tray About item open the main window at `#/about` (the `about` window is gone); the main window and onboarding use `titleBarStyle: Overlay` with hidden title; onboarding is 960 × 640, centred, not resizable.
 
 - [ ] **Failing tests:** `widget_corner_frames` (pure fn `corner_origin(visible: Rect, size: Size, corner) -> Point` for all four corners), `history_changed_emitted_after_delete`, `launch_at_login_persists`, settings defaults for the new fields, registration test updated. `test_typing` and the permission calls: pure-logic tests plus a manual step recorded for the reviewer.
