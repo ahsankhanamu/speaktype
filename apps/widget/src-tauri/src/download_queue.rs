@@ -254,7 +254,7 @@ async fn run_download(
                     json!({
                         "model": model,
                         "phase": "retrying",
-                        "message": format!("Connection lost — retrying in {}s… ({}/{})", wait, attempt, MAX_ATTEMPTS),
+                        "message": downloader::retry_message(wait, attempt, MAX_ATTEMPTS),
                         "attempt": attempt,
                         "max_attempts": MAX_ATTEMPTS,
                         "bytes_downloaded": have,

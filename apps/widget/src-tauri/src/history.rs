@@ -1,11 +1,20 @@
 use crate::audio;
 use crate::logging::log_message;
 use crate::paths;
+use crate::settings::Settings;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-const MAX_ENTRIES: usize = 100;
+/// How a dictation left the app: pasted into another app, left on the
+/// clipboard because the paste failed, or nothing to paste.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub enum DictationOutcome {
+    Pasted,
+    Copied,
+    PasteFailed,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct HistoryEntry {
@@ -19,6 +28,9 @@ pub struct HistoryEntry {
     pub sample_rate: Option<u32>,
     #[serde(default)]
     pub duration_secs: Option<f64>,
+    /// Missing on entries written before outcomes existed.
+    #[serde(default)]
+    pub outcome: Option<DictationOutcome>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, specta::Type)]
@@ -43,6 +55,32 @@ pub fn new_entry_id() -> String {
     format!("{:x}", nanos)
 }
 
+/// How many dictations are kept; `None` (the setting's "Forever") is every
+/// entry the file can hold.
+pub fn retention_limit(settings: &Settings) -> usize {
+    settings
+        .history_limit
+        .map_or(usize::MAX, |limit| limit as usize)
+}
+
+/// A take's saved WAV, if `save_recordings` kept one.
+#[derive(Debug, Clone)]
+pub struct SavedRecording {
+    pub file: String,
+    pub sample_rate: u32,
+    pub duration_secs: f64,
+}
+
+/// Newest-first trim that also deletes the dropped recordings, so retention
+/// longer than the file's remaining entries is never silently exceeded.
+pub fn trim(entries: &mut Vec<HistoryEntry>, limit: usize) {
+    if entries.len() <= limit {
+        return;
+    }
+    let dropped: Vec<HistoryEntry> = entries.drain(limit..).collect();
+    History::remove_dropped_entries(&dropped);
+}
+
 impl History {
     fn config_dir() -> PathBuf {
         paths::config_dir()
@@ -61,9 +99,12 @@ impl History {
     }
 
     pub fn load() -> Self {
-        let path = Self::history_path();
+        Self::load_from(&Self::history_path())
+    }
+
+    fn load_from(path: &Path) -> Self {
         let mut history = if path.exists() {
-            match fs::read_to_string(&path) {
+            match fs::read_to_string(path) {
                 Ok(content) => match serde_json::from_str::<History>(&content) {
                     Ok(mut history) => {
                         history.migrate_entries();
@@ -71,7 +112,7 @@ impl History {
                     }
                     Err(e) => {
                         let backup = path.with_extension("json.corrupt");
-                        let _ = fs::rename(&path, &backup);
+                        let _ = fs::rename(path, &backup);
                         log_message(&format!(
                             "[history] Corrupt history.json, backed up to history.json.corrupt: {}",
                             e
@@ -88,13 +129,15 @@ impl History {
             Self::default()
         };
 
-        if history.entries.iter().any(|e| e.id.is_empty()) {
+        let had_anonymous = history.entries.iter().any(|e| e.id.is_empty());
+        if had_anonymous {
             history.migrate_entries();
-            let _ = history.save();
         }
-
-        if history.prune_stale_audio_refs() {
-            let _ = history.save();
+        let pruned = history.prune_stale_audio_refs();
+        if had_anonymous || pruned {
+            if let Err(e) = history.save_to(path) {
+                log_message(&format!("[history] Failed to save migrated history: {}", e));
+            }
         }
 
         history
@@ -126,16 +169,28 @@ impl History {
     }
 
     pub fn save(&self) -> Result<(), String> {
-        let dir = Self::config_dir();
-        fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-        let content = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
-        fs::write(Self::history_path(), content).map_err(|e| e.to_string())?;
-        Ok(())
+        self.save_to(&Self::history_path())
     }
 
-    pub fn discard_saved_recording(saved: &Option<(String, f64)>) {
-        if let Some((path, _)) = saved {
-            Self::delete_audio_file(path);
+    fn save_to(&self, path: &Path) -> Result<(), String> {
+        if let Some(dir) = path.parent() {
+            fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+        }
+        let content = serde_json::to_string_pretty(self).map_err(|e| e.to_string())?;
+        fs::write(path, content).map_err(|e| e.to_string())
+    }
+
+    pub fn newest_text(&self) -> Option<String> {
+        self.entries
+            .iter()
+            .map(|entry| entry.text.trim())
+            .find(|text| !text.is_empty())
+            .map(str::to_string)
+    }
+
+    pub fn discard_saved_recording(saved: &Option<SavedRecording>) {
+        if let Some(saved) = saved {
+            Self::delete_audio_file(&saved.file);
         }
     }
 
@@ -163,7 +218,7 @@ impl History {
         id: &str,
         samples: &[f32],
         sample_rate: u32,
-    ) -> Result<(String, f64), String> {
+    ) -> Result<SavedRecording, String> {
         let dir = Self::recordings_dir();
         fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -178,33 +233,35 @@ impl History {
             0.0
         };
 
-        Ok((relative, duration_secs))
-    }
-
-    pub fn add_entry(
-        id: &str,
-        text: &str,
-        audio_file: Option<String>,
-        sample_rate: Option<u32>,
-        duration_secs: Option<f64>,
-    ) -> Result<(), String> {
-        let mut history = Self::load();
-        let entry = HistoryEntry {
-            id: id.to_string(),
-            text: text.to_string(),
-            timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
-            audio_file,
+        Ok(SavedRecording {
+            file: relative,
             sample_rate,
             duration_secs,
-        };
-        history.entries.insert(0, entry);
+        })
+    }
 
-        if history.entries.len() > MAX_ENTRIES {
-            let dropped: Vec<HistoryEntry> = history.entries.drain(MAX_ENTRIES..).collect();
-            Self::remove_dropped_entries(&dropped);
-        }
-
-        history.save()
+    /// Prepend one dictation and apply the retention limit.
+    pub fn add_entry(
+        &mut self,
+        id: &str,
+        text: &str,
+        outcome: DictationOutcome,
+        limit: usize,
+        audio: Option<SavedRecording>,
+    ) {
+        self.entries.insert(
+            0,
+            HistoryEntry {
+                id: id.to_string(),
+                text: text.to_string(),
+                timestamp: chrono::Local::now().format("%Y-%m-%dT%H:%M:%S").to_string(),
+                audio_file: audio.as_ref().map(|a| a.file.clone()),
+                sample_rate: audio.as_ref().map(|a| a.sample_rate),
+                duration_secs: audio.as_ref().map(|a| a.duration_secs),
+                outcome: Some(outcome),
+            },
+        );
+        trim(&mut self.entries, limit);
     }
 
     pub fn update_text(index: usize, text: &str) -> Result<(), String> {
@@ -298,5 +355,93 @@ impl History {
         let path = Self::audio_abs_path(relative);
         let bytes = fs::read(&path).map_err(|e| format!("Failed to read audio: {}", e))?;
         audio::from_wav(&bytes)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+
+    fn entry(id: &str, outcome: Option<DictationOutcome>) -> HistoryEntry {
+        HistoryEntry {
+            id: id.to_string(),
+            text: "hello".to_string(),
+            timestamp: "2026-11-19T10:00:00".to_string(),
+            audio_file: None,
+            sample_rate: None,
+            duration_secs: None,
+            outcome,
+        }
+    }
+
+    #[test]
+    fn outcome_roundtrips_and_old_entries_have_none() {
+        let legacy = r#"{"entries":[{"id":"a","text":"old","timestamp":"2026-01-01T00:00:00"}]}"#;
+        let old: History = serde_json::from_str(legacy).unwrap();
+        assert_eq!(old.entries[0].outcome, None);
+
+        let mut history = History::default();
+        history.add_entry("b", "new", DictationOutcome::PasteFailed, 100, None);
+        let json = serde_json::to_string(&history).unwrap();
+        assert!(json.contains(r#""outcome":"pasteFailed""#), "{json}");
+        let back: History = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.entries[0].outcome, Some(DictationOutcome::PasteFailed));
+    }
+
+    #[test]
+    fn every_outcome_keeps_its_wire_name() {
+        for (outcome, wire) in [
+            (DictationOutcome::Pasted, "pasted"),
+            (DictationOutcome::Copied, "copied"),
+            (DictationOutcome::PasteFailed, "pasteFailed"),
+        ] {
+            assert_eq!(serde_json::to_value(outcome).unwrap(), wire);
+        }
+    }
+
+    #[test]
+    fn history_limit_is_optional_and_forever_is_its_absence() {
+        let mut history = History::default();
+        for i in 0..3 {
+            history.add_entry(&format!("{i}"), "t", DictationOutcome::Pasted, 2, None);
+        }
+        let ids: Vec<_> = history.entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["2", "1"]);
+
+        let forever = Settings {
+            history_limit: None,
+            ..Settings::default()
+        };
+        assert_eq!(retention_limit(&forever), usize::MAX, "None is forever");
+        let custom = Settings {
+            history_limit: Some(7),
+            ..Settings::default()
+        };
+        assert_eq!(retention_limit(&custom), 7);
+        let default = Settings::default();
+        assert_eq!(retention_limit(&default), 100, "new and old files keep 100");
+    }
+
+    #[test]
+    fn newest_text_skips_blank_entries() {
+        let mut history = History::default();
+        let mut blank = entry("a", None);
+        blank.text = "  ".to_string();
+        history.entries.push(blank);
+        let mut latest = entry("b", None);
+        latest.text = " latest line ".to_string();
+        history.entries.push(latest);
+        assert_eq!(history.newest_text().as_deref(), Some("latest line"));
+        assert_eq!(History::default().newest_text(), None);
+    }
+
+    #[test]
+    fn trim_deletes_dropped_recordings() {
+        let mut history = History::default();
+        history.entries.push(entry("a", None));
+        history.entries.push(entry("b", None));
+        trim(&mut history.entries, 1);
+        assert_eq!(history.entries.len(), 1);
     }
 }

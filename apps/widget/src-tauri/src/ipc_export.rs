@@ -57,6 +57,10 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::commands::clear_history,
             crate::commands::get_history_audio,
             crate::commands::reprocess_history_entry,
+            crate::commands::paste_last,
+            crate::commands::delete_model,
+            crate::commands::mic_levels_start,
+            crate::commands::mic_levels_stop,
             crate::commands::get_debug_sessions,
             crate::commands::clear_debug_sessions,
             crate::commands::delete_debug_session,
@@ -94,6 +98,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::session_cmds::SessionItemsDeleted,
             crate::session_cmds::SessionsChanged,
             crate::settings::SettingsChanged,
+            crate::controller::DictationState,
         ])
 }
 

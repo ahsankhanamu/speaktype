@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use tauri::{AppHandle, Manager};
+use tauri::AppHandle;
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 #[cfg(target_os = "macos")]
@@ -54,6 +54,110 @@ pub(crate) fn hotkey_change(current: &AppHotkey, new: &str) -> Result<HotkeyChan
             register: Some(new.to_string()),
         }
     })
+}
+
+/// The shortcut registrations the Esc cancel lifecycle needs. A trait so the
+/// arm/release rule is testable without touching a real keyboard.
+pub trait HotkeyRegistration {
+    fn register(&self, hotkey: &str, is_recording: Arc<AtomicBool>) -> bool;
+    fn unregister_escape(&self) -> Result<(), String>;
+}
+
+/// The app's own registration: `"Escape"` is the cancel shortcut, anything
+/// else is the dictation hotkey.
+pub struct EscRegistration {
+    pub app: AppHandle,
+}
+
+impl HotkeyRegistration for EscRegistration {
+    fn register(&self, hotkey: &str, is_recording: Arc<AtomicBool>) -> bool {
+        if hotkey != "Escape" {
+            return register_app_hotkey(&self.app, hotkey, is_recording);
+        }
+        let app_handle = self.app.clone();
+        match self.app.global_shortcut().on_shortcut(
+            escape_shortcut(),
+            move |_app, _shortcut, event| {
+                if event.state != ShortcutState::Pressed {
+                    return;
+                }
+                let app = app_handle.clone();
+                tauri::async_runtime::spawn_blocking(move || {
+                    crate::commands::cancel_dictation(&app)
+                });
+            },
+        ) {
+            Ok(()) => {
+                crate::logging::log_message("[shortcut] Registered: Escape (cancel dictation)");
+                true
+            }
+            Err(e) => {
+                crate::logging::log_message(&format!("[shortcut] Failed to register Esc: {}", e));
+                false
+            }
+        }
+    }
+
+    fn unregister_escape(&self) -> Result<(), String> {
+        self.app
+            .global_shortcut()
+            .unregister(escape_shortcut())
+            .map_err(|e| e.to_string())
+    }
+}
+
+fn escape_shortcut() -> Shortcut {
+    "Escape"
+        .parse::<Shortcut>()
+        .expect("Escape is a valid global shortcut")
+}
+
+/// Held registration: while it exists, Esc cancels dictation. It is armed on
+/// `recording` and released on every other phase, so Esc keeps its normal
+/// meaning everywhere else.
+pub struct EscShortcut<R: HotkeyRegistration> {
+    registration: R,
+    is_recording: Arc<AtomicBool>,
+    held: bool,
+}
+
+impl<R: HotkeyRegistration> EscShortcut<R> {
+    pub fn new(registration: R, is_recording: Arc<AtomicBool>) -> Self {
+        Self {
+            registration,
+            is_recording,
+            held: false,
+        }
+    }
+
+    pub fn sync(&mut self, recording: bool) {
+        if recording == self.held {
+            return;
+        }
+        self.held = recording;
+        if recording {
+            if self
+                .registration
+                .register("Escape", self.is_recording.clone())
+            {
+                return;
+            }
+            self.held = false;
+            crate::logging::log_message("[shortcut] Could not register Esc to cancel dictation");
+            return;
+        }
+        if let Err(e) = self.registration.unregister_escape() {
+            crate::logging::log_message(&format!("[shortcut] Failed to release Esc: {}", e));
+        }
+    }
+}
+
+impl<R: HotkeyRegistration> Drop for EscShortcut<R> {
+    fn drop(&mut self) {
+        if self.held {
+            let _ = self.registration.unregister_escape();
+        }
+    }
 }
 
 pub fn is_modifier_chord(hotkey: &str) -> bool {
@@ -220,13 +324,7 @@ fn register_global_shortcut(
 }
 
 fn spawn_toggle(app: AppHandle, _is_recording: Arc<AtomicBool>) {
-    let app_main = app.clone();
-    let _ = app.run_on_main_thread(move || {
-        let state = app_main.state::<crate::commands::AppState>();
-        if let Err(e) = crate::commands::toggle_recording_impl(&app_main, &state) {
-            crate::logging::log_message(&format!("[shortcut] toggle_recording error: {}", e));
-        }
-    });
+    crate::commands::press_dictation(&app);
 }
 
 #[cfg(target_os = "macos")]
@@ -454,5 +552,84 @@ mod tests {
             vec!["F9".to_string(), SCREENSHOT.to_string()]
         );
         assert!(registry.unregistered.is_empty());
+    }
+
+    #[derive(Default)]
+    struct Recorder {
+        calls: Arc<Mutex<Vec<&'static str>>>,
+        accept: Arc<AtomicBool>,
+    }
+
+    impl Clone for Recorder {
+        fn clone(&self) -> Self {
+            Self {
+                calls: self.calls.clone(),
+                accept: self.accept.clone(),
+            }
+        }
+    }
+
+    impl Recorder {
+        fn accepting() -> Self {
+            Self {
+                calls: Arc::new(Mutex::new(Vec::new())),
+                accept: Arc::new(AtomicBool::new(true)),
+            }
+        }
+    }
+
+    impl HotkeyRegistration for Recorder {
+        fn register(&self, _hotkey: &str, _is_recording: Arc<AtomicBool>) -> bool {
+            self.calls.lock().unwrap().push("register:esc");
+            self.accept.load(Ordering::SeqCst)
+        }
+
+        fn unregister_escape(&self) -> Result<(), String> {
+            self.calls.lock().unwrap().push("unregister:esc");
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn esc_shortcut_registered_only_while_recording() {
+        let recorder = Recorder::accepting();
+        let mut esc = EscShortcut::new(recorder.clone(), Arc::new(AtomicBool::new(false)));
+
+        // idle -> recording -> transcribing
+        esc.sync(true);
+        esc.sync(true);
+        esc.sync(false);
+
+        assert_eq!(
+            *recorder.calls.lock().unwrap(),
+            vec!["register:esc", "unregister:esc"],
+            "Esc is armed once on recording and released on any other phase"
+        );
+    }
+
+    #[test]
+    fn dropping_while_recording_releases_esc() {
+        let recorder = Recorder::accepting();
+        {
+            let mut esc = EscShortcut::new(recorder.clone(), Arc::new(AtomicBool::new(true)));
+            esc.sync(true);
+        }
+        assert_eq!(
+            recorder.calls.lock().unwrap().last().copied(),
+            Some("unregister:esc")
+        );
+    }
+
+    #[test]
+    fn failed_esc_registration_is_not_held() {
+        let refusing = Recorder::default();
+        let mut esc = EscShortcut::new(refusing.clone(), Arc::new(AtomicBool::new(false)));
+        esc.sync(true);
+        esc.sync(false);
+        assert_eq!(
+            *refusing.calls.lock().unwrap(),
+            vec!["register:esc"],
+            "a refused registration is never released"
+        );
     }
 }

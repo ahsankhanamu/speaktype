@@ -3,6 +3,7 @@ mod capture;
 mod chunk_session;
 mod clipboard;
 mod commands;
+mod controller;
 mod debug;
 mod download_queue;
 mod downloader;
@@ -18,6 +19,7 @@ mod llm;
 #[allow(dead_code)]
 mod llm_server;
 mod logging;
+mod notice;
 mod ocr;
 mod paste;
 mod paths;
@@ -38,7 +40,7 @@ mod window;
 use audio::{AudioRecorder, LevelMonitor};
 use commands::AppState;
 use settings::Settings;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{
@@ -80,6 +82,11 @@ pub fn run() {
             }
         })
         .invoke_handler(specta_builder.invoke_handler())
+        .on_page_load(|window, _payload| {
+            if window.label() == "main" {
+                commands::replay_dictation_state(window.app_handle());
+            }
+        })
         .setup(move |app| {
             logging::init_logging();
             #[cfg(not(test))]
@@ -283,10 +290,14 @@ pub fn run() {
             app.manage(session_muted.clone());
             app.manage(session_store.clone());
 
+            let levels_ui = commands::levels_ui(app.handle());
             let app_state = AppState {
                 settings: Arc::new(Mutex::new(settings.clone())),
                 recorder: Arc::new(Mutex::new(recorder)),
                 level_monitor: Arc::new(Mutex::new(LevelMonitor::new())),
+                mic_levels: Arc::new(Mutex::new(audio::DeviceLevels::new(levels_ui))),
+                dictation: Arc::new(Mutex::new(controller::idle())),
+                model_load_failed: Arc::new(AtomicBool::new(false)),
                 is_recording: is_recording.clone(),
                 is_transcribing: is_transcribing.clone(),
                 target_window: Arc::new(Mutex::new(None)),
@@ -300,6 +311,13 @@ pub fn run() {
             };
 
             app.manage(app_state);
+
+            app.manage(EscHolder(std::sync::Mutex::new(hotkey::EscShortcut::new(
+                hotkey::EscRegistration {
+                    app: app.handle().clone(),
+                },
+                is_recording.clone(),
+            ))));
 
             if server::has_embedded_server(app.handle()) {
                 let _ = app.emit("server:starting", serde_json::json!({}));
@@ -436,24 +454,7 @@ pub fn run() {
                 .menu(&menu)
                 .tooltip("SpeakType")
                 .on_menu_event(move |app, event| match event.id().as_ref() {
-                    "record" => {
-                        let app_clone = app.clone();
-                        let record_item = record_item.clone();
-                        tauri::async_runtime::spawn(async move {
-                            let state = app_clone.state::<AppState>();
-                            if let Err(e) = commands::toggle_recording_impl(
-                                &app_clone,
-                                &state,
-                            ) {
-                                logging::log_message(&format!(
-                                    "[tray] toggle_recording error: {}",
-                                    e
-                                ));
-                            }
-                            let is_rec = app_clone.state::<AppState>().is_recording.load(Ordering::SeqCst);
-                            let _ = record_item.set_text(if is_rec { "Stop Recording" } else { "Start Recording" });
-                        });
-                    }
+                    "record" => commands::toggle_from_tray(app.clone(), record_item.clone()),
                     "about" => {
                         let app = app.clone();
                         tauri::async_runtime::spawn(async move {
@@ -495,6 +496,7 @@ pub fn run() {
             match event {
                 tauri::RunEvent::Exit => {
                     commands::stop_mic_test_for_app(app, "app_exit");
+                    commands::stop_mic_levels(app);
                     server::stop_server();
                     llm_server::stop_llm_server();
                 }
@@ -517,6 +519,10 @@ pub fn run() {
             }
         });
 }
+
+/// The temporary Esc shortcut, owned by the app so `remember_dictation` can
+/// arm and release it from the phase it just published.
+struct EscHolder(std::sync::Mutex<hotkey::EscShortcut<hotkey::EscRegistration>>);
 
 /// Accessibility granted while running must arm the dictation hotkey at once:
 /// the Super+Control tap only exists once macOS allows event taps.

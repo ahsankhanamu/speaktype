@@ -1,23 +1,26 @@
-use crate::audio::{self, AudioRecorder, LevelMonitor};
+use crate::audio::{self, AudioRecorder, DeviceLevels, LevelMonitor};
 use crate::chunk_session::{transcribe_chunked, ChunkSession};
+use crate::controller::{self, DictationPhase, DictationState};
 use crate::download_queue;
 use crate::downloader;
 use crate::format::{catalog_model_size_bytes, format_byte_size, format_byte_size_approx};
-use crate::history::{self, History};
+use crate::history::{self, DictationOutcome, History};
 use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
+use crate::session_cmds::IpcError;
 use crate::settings::Settings;
 use crate::tones::{self, Tone};
 use crate::tray::{self, TrayState};
 use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+use tauri_specta::Event;
 
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_opener::OpenerExt;
 
 static MODEL_OPERATION_IN_PROGRESS: AtomicBool = AtomicBool::new(false);
-static RECORDING_START_IN_FLIGHT: AtomicBool = AtomicBool::new(false);
 
 fn emit_model_progress(app: &AppHandle, model: &str, phase: &str, message: &str) {
     let _ = app.emit(
@@ -34,6 +37,11 @@ pub struct AppState {
     pub settings: Arc<Mutex<Settings>>,
     pub recorder: Arc<Mutex<AudioRecorder>>,
     pub level_monitor: Arc<Mutex<LevelMonitor>>,
+    pub mic_levels: Arc<Mutex<DeviceLevels<LevelsUi>>>,
+    pub dictation: Arc<Mutex<DictationState>>,
+    /// Set when the first press's model load gave up, so "Getting ready…" can
+    /// end in the server error instead of waiting out its bound.
+    pub model_load_failed: Arc<AtomicBool>,
     pub is_recording: Arc<AtomicBool>,
     pub is_transcribing: Arc<AtomicBool>,
     pub target_window: Arc<Mutex<Option<WindowInfo>>>,
@@ -44,74 +52,167 @@ pub struct AppState {
     pub app_hotkey: Arc<Mutex<crate::hotkey::AppHotkey>>,
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn toggle_recording(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    #[allow(unused_variables)] is_recording: bool,
-) -> Result<(), String> {
-    toggle_recording_impl(&app, &state)
+/// Open the microphone and the chunk session. The dictation state is set by
+/// the controller that calls this.
+fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), DictationState> {
+    let (settings, input_device) = state
+        .settings
+        .lock()
+        .map(|s| (s.clone(), s.input_device.clone()))
+        .map_err(|_| controller::mic_unavailable())?;
+
+    // Hard gate (spec §12): without the model, the microphone or Accessibility
+    // there is nothing to record into, so the failing step's notice and
+    // onboarding show instead of a take that cannot land.
+    if !crate::downloader::is_model_complete(&settings.model) {
+        tones::play(Tone::Error);
+        let _ = open_onboarding_window(app);
+        return Err(controller::server_error());
+    }
+    if !crate::permissions::check_microphone() || !crate::permissions::check_accessibility(false) {
+        log_message("[dictation] Requirements not met — opening onboarding");
+        tones::play(Tone::Error);
+        let _ = open_onboarding_window(app);
+        return Err(controller::mic_unavailable());
+    }
+
+    // Dictation owns the input device. A settings-window meter must never be
+    // able to block or race the hotkey, so it is dropped rather than consulted.
+    stop_mic_test_internal(app, state, "recording");
+    stop_mic_levels(app);
+
+    {
+        let last = state
+            .last_active_window
+            .lock()
+            .map_err(|_| controller::mic_unavailable())?;
+        let mut tw = state
+            .target_window
+            .lock()
+            .map_err(|_| controller::mic_unavailable())?;
+        *tw = last.clone();
+    }
+
+    crate::debug::start_session(&settings.model);
+    let mut recorder = state
+        .recorder
+        .lock()
+        .map_err(|_| controller::mic_unavailable())?;
+    let buffer = recorder.buffer();
+    recorder
+        .start_with_input(app.clone(), input_device.as_deref())
+        .map_err(|e| {
+            log_message(&format!("[dictation] Microphone: {}", e));
+            controller::mic_unavailable()
+        })?;
+    let sample_rate = recorder.sample_rate();
+
+    let session = ChunkSession::start(app.clone(), settings, sample_rate, buffer);
+    let mut chunk_session = state
+        .chunk_session
+        .lock()
+        .map_err(|_| controller::mic_unavailable())?;
+    if let Some(old) = chunk_session.take() {
+        old.abort();
+    }
+    *chunk_session = Some(session);
+
+    state.is_recording.store(true, Ordering::SeqCst);
+    tray::set_tray_state(app, TrayState::Recording);
+    tones::play(Tone::RecordingStart);
+    Ok(())
 }
 
-pub fn toggle_recording_impl(app: &AppHandle, state: &AppState) -> Result<(), String> {
-    let currently_recording = state.is_recording.load(Ordering::SeqCst);
-    log_message(&format!(
-        "[toggle_recording] currently_recording={}",
-        currently_recording
-    ));
+fn end_recording(app: &AppHandle, state: &AppState) -> Result<(Vec<f32>, u32), String> {
+    state.is_recording.store(false, Ordering::SeqCst);
+    let (samples, sample_rate) = {
+        let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
+        let take = recorder.stop();
+        if recorder.builtin_fallback() {
+            // The take carries on from the built-in mic; the pill says so as
+            // the preset for this take's outcome.
+            remember_dictation(app, controller::mic_fallback());
+        }
+        take
+    };
+    tray::set_tray_state(app, TrayState::Transcribing);
+    tones::play(Tone::RecordingStop);
+    Ok((samples, sample_rate))
+}
 
-    if currently_recording {
-        state.is_recording.store(false, Ordering::SeqCst);
+fn discard_recording(app: &AppHandle, state: &AppState) {
+    state.is_recording.store(false, Ordering::SeqCst);
+    if let Ok(mut recorder) = state.recorder.lock() {
+        let _ = recorder.stop();
+    }
+    if let Ok(mut session) = state.chunk_session.lock() {
+        if let Some(active) = session.take() {
+            active.abort();
+        }
+    }
+    crate::debug::discard_session();
+    tray::set_tray_state(app, TrayState::Idle);
+    tones::play(Tone::RecordingStop);
+}
 
-        let (samples, sample_rate) = {
-            let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
-            recorder.stop()
-        };
+struct DictationHost<'a> {
+    app: &'a AppHandle,
+    state: &'a AppState,
+}
 
-        let duration_ms = if sample_rate > 0 {
-            (samples.len() as f64 / sample_rate as f64 * 1000.0) as u64
-        } else {
-            0
-        };
+impl crate::controller::DictationHost for DictationHost<'_> {
+    fn state(&self) -> DictationState {
+        self.state
+            .dictation
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_else(|_| controller::idle())
+    }
 
-        let duration_secs = duration_ms as f64 / 1000.0;
-        log_message(&format!(
-            "[toggle_recording] Recording duration: {:.1}s, samples: {}",
-            duration_secs,
-            samples.len()
-        ));
+    fn set_state(&self, next: DictationState) {
+        remember_dictation(self.app, next);
+    }
 
-        tray::set_tray_state(app, TrayState::Transcribing);
-        tones::play(Tone::RecordingStop);
-        let _ = app.emit(
-            "sidecar:recording_stopped",
-            json!({"duration_ms": duration_ms}),
-        );
+    fn start_recording(&self) -> Result<(), DictationState> {
+        begin_recording(self.app, self.state)
+    }
 
-        let settings = {
-            let s = state.settings.lock().map_err(|e| e.to_string())?;
-            s.clone()
-        };
+    fn stop_recording(&self) -> Result<(Vec<f32>, u32), String> {
+        end_recording(self.app, self.state)
+    }
 
-        let chunk_session = {
-            let mut session = state.chunk_session.lock().map_err(|e| e.to_string())?;
-            session.take()
-        };
+    fn cancel_recording(&self) {
+        discard_recording(self.app, self.state);
+    }
 
+    fn transcribe(&self, samples: Vec<f32>, sample_rate: u32) {
+        let settings = self
+            .state
+            .settings
+            .lock()
+            .map(|s| s.clone())
+            .unwrap_or_else(|_| Settings::default());
         let target_window = if settings.paste_mode == "active" {
-            let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
-            last.clone()
+            self.state
+                .last_active_window
+                .lock()
+                .ok()
+                .and_then(|w| w.clone())
         } else {
-            let tw = state.target_window.lock().map_err(|e| e.to_string())?;
-            tw.clone()
+            self.state.target_window.lock().ok().and_then(|w| w.clone())
         };
-
-        let app_clone = app.clone();
-        let is_transcribing = state.is_transcribing.clone();
+        let chunk_session = self
+            .state
+            .chunk_session
+            .lock()
+            .map(|mut s| s.take())
+            .ok()
+            .flatten();
+        let app = self.app.clone();
+        let is_transcribing = self.state.is_transcribing.clone();
         tauri::async_runtime::spawn(async move {
             process_recording(
-                app_clone,
+                app,
                 samples,
                 sample_rate,
                 settings,
@@ -121,113 +222,189 @@ pub fn toggle_recording_impl(app: &AppHandle, state: &AppState) -> Result<(), St
             )
             .await;
         });
-    } else {
-        if state.is_recording.load(Ordering::SeqCst) {
-            return Ok(());
-        }
+    }
+}
 
-        // Hard gate: refuse to record until microphone, accessibility, and a
-        // complete model are all ready. Reopen onboarding on the failing step
-        // instead of starting a recording that would fail abruptly.
-        let model = {
-            let s = state.settings.lock().map_err(|e| e.to_string())?;
-            s.model.clone()
+/// Shared press latch: a second press while the first is starting a take is
+/// dropped, so the hotkey, the tray and the command cannot start two.
+static PRESSING: AtomicBool = AtomicBool::new(false);
+
+/// Run one hotkey press through the controller on the app's runtime: a press
+/// may wait for the model to load, which would stall the caller. The tray, the
+/// hotkey and the command all arrive here, and the latch keeps a rapid double
+/// press from starting two takes.
+pub fn press_dictation(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let Some(state) = app.try_state::<AppState>() else {
+            return;
         };
-        if !requirements_met(&model) {
-            log_message("[toggle_recording] Requirements not met — opening onboarding");
-            tones::play(Tone::Error);
-            let _ = app.emit("sidecar:onboarding_required", json!({}));
-            let _ = open_onboarding_window(app);
-            return Ok(());
-        }
+        let host = DictationHost {
+            app: &app,
+            state: &state,
+        };
+        let gate = ServerGate { app: &app };
+        let mut dictation = controller::Dictation::new(&host, &gate, &PRESSING);
+        dictation.press().await;
+    });
+}
 
-        if state.is_transcribing.load(Ordering::SeqCst) {
-            log_message("[toggle_recording] Currently transcribing, cannot start new recording");
-            tones::play(Tone::Error);
-            let _ = app.emit("sidecar:busy", json!({"reason": "Currently transcribing"}));
-            return Err("Currently transcribing, please wait".to_string());
-        }
+struct ServerGate<'a> {
+    app: &'a AppHandle,
+}
 
-        if crate::server::has_embedded_server(app) && !crate::server::is_running() {
-            if RECORDING_START_IN_FLIGHT
-                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-                .is_err()
-            {
-                log_message("[toggle_recording] Model load already in progress");
-                return Ok(());
-            }
-
-            let app = app.clone();
-            let model = model.clone();
-            tauri::async_runtime::spawn(async move {
-                let state = app.state::<AppState>();
-                let result = async {
-                    match crate::server::ensure_running(&app, &model).await {
-                        Ok(Some(info)) => {
-                            let api_url = format!("http://127.0.0.1:{}/inference", info.port);
-                            if let Ok(mut s) = state.settings.lock() {
-                                s.api_url = api_url;
-                                s.model = info.model.clone();
-                                if let Err(e) = s.save() {
-                                    log_message(&format!(
-                                        "[toggle_recording] Failed to save settings after load: {}",
-                                        e
-                                    ));
-                                }
-                            }
-                            begin_recording(&app, &state)
-                        }
-                        Ok(None) => begin_recording(&app, &state),
-                        Err(e) => Err(e),
-                    }
-                }
-                .await;
-
-                RECORDING_START_IN_FLIGHT.store(false, Ordering::SeqCst);
-
-                if let Err(e) = result {
-                    log_message(&format!("[toggle_recording] Model load failed: {}", e));
-                    tones::play(Tone::Error);
-                    let _ = app.emit("server:error", json!({"reason": e}));
-                }
-            });
-            return Ok(());
-        }
-
-        begin_recording(app, state)?;
+impl crate::controller::ServerGate for ServerGate<'_> {
+    fn ready(&self) -> bool {
+        !crate::server::has_embedded_server(self.app) || crate::server::is_running()
     }
 
+    /// Bounded by the controller's `SERVER_WAIT_MAX`, and it gives up as soon
+    /// as the load task reports a failure, so "Getting ready…" always ends.
+    async fn wait(&self) -> bool {
+        load_model_for_dictation(self.app);
+        let load_failed = || {
+            self.app
+                .try_state::<AppState>()
+                .is_some_and(|state| state.model_load_failed.load(Ordering::SeqCst))
+        };
+        let deadline = tokio::time::Instant::now() + crate::controller::SERVER_WAIT_MAX;
+        loop {
+            if self.ready() {
+                return true;
+            }
+            if load_failed() {
+                log_message("[dictation] Speech model failed to load");
+                return false;
+            }
+            if tokio::time::Instant::now() >= deadline {
+                log_message("[dictation] Speech model still not running after 65 s");
+                return false;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+}
+
+/// Store the state and tell every window. The Esc shortcut follows recording
+/// exactly: armed on recording, released on every other phase.
+pub fn remember_dictation(app: &AppHandle, state: DictationState) {
+    if let Some(app_state) = app.try_state::<AppState>() {
+        if let Ok(mut current) = app_state.dictation.lock() {
+            *current = state.clone();
+        }
+        let _ = state.emit(app);
+    }
+    if let Some(esc) = app.try_state::<crate::EscHolder>() {
+        if let Ok(mut esc) = esc.0.lock() {
+            esc.sync(state.phase.is_recording());
+        }
+    }
+    log_message(&format!("[dictation] {:?}", state.phase));
+}
+
+/// A freshly loaded window missed any event before it mounted; the pill starts
+/// from the current phase instead of waiting for the next press.
+pub fn replay_dictation_state(app: &AppHandle) {
+    let Some(app_state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let state = app_state
+        .dictation
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_else(|_| controller::idle());
+    let _ = state.emit(app);
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn toggle_recording(
+    app: AppHandle,
+    #[allow(unused_variables)] state: State<'_, AppState>,
+    #[allow(unused_variables)] is_recording: bool,
+) -> Result<(), String> {
+    press_dictation(&app);
     Ok(())
 }
 
 #[tauri::command]
 #[specta::specta]
 pub fn cancel_recording(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
-    if !state.is_recording.load(Ordering::SeqCst) {
-        return Ok(());
-    }
-
-    log_message("[cancel_recording] Cancelling active recording");
-    state.is_recording.store(false, Ordering::SeqCst);
-
-    {
-        let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
-        let _ = recorder.stop();
-    }
-
-    {
-        let mut session = state.chunk_session.lock().map_err(|e| e.to_string())?;
-        if let Some(active) = session.take() {
-            active.abort();
-        }
-    }
-
-    crate::debug::discard_session();
-
-    tray::set_tray_state(&app, TrayState::Idle);
-    tones::play(Tone::RecordingStop);
-    let _ = app.emit("sidecar:recording_cancelled", json!({}));
+    let host = DictationHost {
+        app: &app,
+        state: &state,
+    };
+    let gate = ServerGate { app: &app };
+    let mut dictation = controller::Dictation::new(&host, &gate, &PRESSING);
+    dictation.cancel();
     Ok(())
+}
+
+/// Esc while recording (the temporary global shortcut).
+pub fn cancel_dictation(app: &AppHandle) {
+    let Some(state) = app.try_state::<AppState>() else {
+        return;
+    };
+    let host = DictationHost { app, state: &state };
+    let gate = ServerGate { app };
+    let mut dictation = controller::Dictation::new(&host, &gate, &PRESSING);
+    dictation.cancel();
+}
+
+/// The tray's Start/Stop Recording item: press, then label the item for the
+/// phase the take actually reached.
+pub fn toggle_from_tray(app: AppHandle, item: tauri::menu::MenuItem<tauri::Wry>) {
+    tauri::async_runtime::spawn(async move {
+        press_dictation(&app);
+        let recording = app
+            .state::<AppState>()
+            .dictation
+            .lock()
+            .map(|s| s.phase.is_recording())
+            .unwrap_or(false);
+        let _ = item.set_text(if recording {
+            "Stop Recording"
+        } else {
+            "Start Recording"
+        });
+    });
+}
+
+/// Runs while the model server starts on the first press. Mirrors the states
+/// the controller already set, so the pill is honest about a failed load.
+pub fn load_model_for_dictation(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        state.model_load_failed.store(false, Ordering::SeqCst);
+    }
+    let model = app
+        .state::<AppState>()
+        .settings
+        .lock()
+        .map(|s| s.model.clone())
+        .unwrap_or_default();
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        match crate::server::ensure_running(&app, &model).await {
+            Ok(Some(info)) => {
+                if let Ok(mut s) = app.state::<AppState>().settings.lock() {
+                    s.api_url = format!("http://127.0.0.1:{}/inference", info.port);
+                    s.model = info.model.clone();
+                    if let Err(e) = s.save() {
+                        log_message(&format!("[dictation] Failed to save settings: {}", e));
+                    }
+                }
+            }
+            Ok(None) => {}
+            Err(e) => {
+                log_message(&format!("[dictation] Model load failed: {}", e));
+                // A waiting press ends "Getting ready…" from this flag; a
+                // press that already gave up leaves the pill on its error.
+                app.state::<AppState>()
+                    .model_load_failed
+                    .store(true, Ordering::SeqCst);
+            }
+        }
+    });
 }
 
 /// Upper bound on a single microphone check. The frontend releases the monitor
@@ -350,49 +527,6 @@ pub fn copy_to_clipboard(text: String) -> Result<(), String> {
     clipboard.set_text(text).map_err(|e| e.to_string())
 }
 
-fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
-    if state.is_recording.load(Ordering::SeqCst) {
-        return Ok(());
-    }
-
-    // Dictation owns the input device. A settings-window meter must never be
-    // able to block or race the hotkey, so it is dropped rather than consulted.
-    stop_mic_test_internal(app, state, "recording");
-
-    {
-        let mut tw = state.target_window.lock().map_err(|e| e.to_string())?;
-        let last = state.last_active_window.lock().map_err(|e| e.to_string())?;
-        *tw = last.clone();
-    }
-
-    {
-        let (settings, input_device) = {
-            let s = state.settings.lock().map_err(|e| e.to_string())?;
-            (s.clone(), s.input_device.clone())
-        };
-        crate::debug::start_session(&settings.model);
-        let mut recorder = state.recorder.lock().map_err(|e| e.to_string())?;
-        let buffer = recorder.buffer();
-        recorder.start_with_input(app.clone(), input_device.as_deref())?;
-        let sample_rate = recorder.sample_rate();
-
-        let session = ChunkSession::start(app.clone(), settings, sample_rate, buffer);
-        let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
-        if let Some(old) = chunk_session.take() {
-            log_message("[toggle_recording] Aborting stale chunk session before new recording");
-            old.abort();
-        }
-        *chunk_session = Some(session);
-        log_message("[toggle_recording] Chunk session started");
-    }
-
-    state.is_recording.store(true, Ordering::SeqCst);
-    tray::set_tray_state(app, TrayState::Recording);
-    tones::play(Tone::RecordingStart);
-    let _ = app.emit("sidecar:recording_started", json!({}));
-    Ok(())
-}
-
 async fn ensure_settings_api_ready(app: &AppHandle, settings: &mut Settings) -> Result<(), String> {
     let Some(info) = crate::server::ensure_running(app, &settings.model).await? else {
         return Ok(());
@@ -423,6 +557,7 @@ async fn process_recording(
         .is_err()
     {
         log_message("[process] Already transcribing, skipping");
+        remember_dictation(&app, controller::busy());
         return;
     }
 
@@ -430,7 +565,7 @@ async fn process_recording(
         is_transcribing.store(false, Ordering::SeqCst);
     });
 
-    let _ = app.emit("sidecar:transcribing", json!({}));
+    remember_dictation(&app, controller::transcribing());
 
     if let Err(e) = ensure_settings_api_ready(&app, &mut settings).await {
         log_message(&format!(
@@ -440,7 +575,7 @@ async fn process_recording(
         tones::play(Tone::Error);
         tray::flash_error(&app);
         crate::debug::discard_session();
-        let _ = app.emit("sidecar:error", json!({"reason": e}));
+        remember_dictation(&app, controller::server_error());
         return;
     }
 
@@ -452,7 +587,7 @@ async fn process_recording(
             duration_secs
         ));
         let _ = app.emit(
-            "sidecar:long_audio",
+            "dictation:long-audio",
             json!({"duration_secs": duration_secs}),
         );
     }
@@ -462,14 +597,14 @@ async fn process_recording(
         tones::play(Tone::Error);
         tray::flash_error(&app);
         crate::debug::discard_session();
-        let _ = app.emit("sidecar:no_speech", json!({}));
+        remember_dictation(&app, controller::no_speech());
         return;
     }
 
     let entry_id = history::new_entry_id();
     let saved_recording = if settings.save_recordings {
         match History::save_recording(&entry_id, &samples, sample_rate) {
-            Ok((path, duration)) => Some((path, duration)),
+            Ok(saved) => Some(saved),
             Err(e) => {
                 log_message(&format!("[history] Failed to save recording: {}", e));
                 None
@@ -497,7 +632,7 @@ async fn process_recording(
                         log_message(&format!("[process] Transcription error: {}", e));
                         tones::play(Tone::Error);
                         tray::flash_error(&app);
-                        let _ = app.emit("sidecar:error", json!({"message": e}));
+                        remember_dictation(&app, controller::server_error());
                         return;
                     }
                 }
@@ -517,7 +652,7 @@ async fn process_recording(
                 log_message(&format!("[process] Transcription error: {}", e));
                 tones::play(Tone::Error);
                 tray::flash_error(&app);
-                let _ = app.emit("sidecar:error", json!({"message": e}));
+                remember_dictation(&app, controller::server_error());
                 return;
             }
         }
@@ -528,7 +663,7 @@ async fn process_recording(
         log_message("[process] No usable text left after hallucination scoring");
         tones::play(Tone::Error);
         tray::flash_error(&app);
-        let _ = app.emit("sidecar:no_speech", json!({}));
+        remember_dictation(&app, controller::no_speech());
         return;
     }
 
@@ -545,41 +680,35 @@ async fn process_recording(
     .await;
     app_state_pasting.store(false, Ordering::SeqCst);
 
-    match paste_result {
-        Ok(true) => {}
+    let (outcome, state) = controller::finish_outcome(match paste_result {
+        Ok(true) => controller::PasteResult::Pasted,
         Ok(false) => {
             log_message("[process] Paste not delivered — transcript kept on clipboard");
             tones::play(Tone::Error);
             tray::flash_error(&app);
-            let _ = app.emit(
-                "sidecar:error",
-                json!({
-                    "message": "Could not paste — check Accessibility permission. \
-                                The text is on your clipboard."
-                }),
-            );
+            controller::PasteResult::Failed
         }
         Err(e) => {
-            History::discard_saved_recording(&saved_recording);
             log_message(&format!("[process] Paste task error: {}", e));
             tones::play(Tone::Error);
             tray::flash_error(&app);
-            let _ = app.emit("sidecar:error", json!({"message": e.to_string()}));
-            return;
+            controller::PasteResult::Copied
         }
-    }
+    });
 
     let recording_duration_ms = saved_recording
         .as_ref()
-        .map(|(_, duration)| (duration * 1000.0) as i64);
+        .map(|saved| (saved.duration_secs * 1000.0) as i64);
 
-    if let Err(e) = History::add_entry(
+    let mut history = History::load();
+    history.add_entry(
         &entry_id,
         &text,
-        saved_recording.as_ref().map(|(path, _)| path.clone()),
-        saved_recording.as_ref().map(|_| sample_rate),
-        saved_recording.map(|(_, duration)| duration),
-    ) {
+        outcome,
+        history::retention_limit(&settings),
+        saved_recording,
+    );
+    if let Err(e) = history.save() {
         log_message(&format!("[history] Save error: {}", e));
     }
 
@@ -600,7 +729,18 @@ async fn process_recording(
     }
 
     tray::set_tray_state(&app, TrayState::Idle);
-    let _ = app.emit("sidecar:pasted", json!({"text": text}));
+    let _ = app.emit("history:changed", json!({}));
+    let state = app
+        .try_state::<AppState>()
+        .and_then(|current| current.dictation.lock().ok().map(|s| s.clone()))
+        .filter(|s| s.phase == DictationPhase::Done)
+        .map(|s| {
+            // A mic switch happened before the paste, so keep that notice and
+            // take only the outcome from it.
+            DictationState::new(state.phase, s.notice)
+        })
+        .unwrap_or(state);
+    remember_dictation(&app, state);
 }
 
 pub fn emit_permissions(app: &AppHandle) {
@@ -621,14 +761,6 @@ pub fn check_permissions() -> Result<serde_json::Value, String> {
         "accessibility": accessibility,
         "microphone": microphone,
     }))
-}
-
-/// Whether all three launch requirements (mic, accessibility, a complete model)
-/// are satisfied for the given model.
-pub fn requirements_met(model: &str) -> bool {
-    crate::permissions::check_microphone()
-        && crate::permissions::check_accessibility(false)
-        && crate::downloader::is_model_complete(model)
 }
 
 /// Onboarding status used by the onboarding window to drive its serial steps.
@@ -1180,6 +1312,120 @@ pub async fn get_models() -> Result<serde_json::Value, String> {
     }))
 }
 
+/// Remove a downloaded model the user no longer wants; the active model stays.
+#[tauri::command]
+#[specta::specta]
+pub fn delete_model(state: State<'_, AppState>, id: String) -> Result<(), IpcError> {
+    if id.is_empty() {
+        return Err(IpcError::new("download", "Unknown model"));
+    }
+    let active = state
+        .settings
+        .lock()
+        .map_err(|e| IpcError::new("settings", e.to_string()))?
+        .model
+        .clone();
+    downloader::delete_model_file(&id, &active).map_err(|e| match e {
+        downloader::DeleteError::InUse => IpcError::new(
+            "modelInUse",
+            "This model is in use. Switch to another model first.",
+        ),
+        downloader::DeleteError::Failed(message) => IpcError::new("download", message),
+    })
+}
+
+const MIC_LEVELS_EVENT: &str = "mic:levels";
+
+fn emit_mic_levels(app: &AppHandle, levels: &[audio::DeviceLevel]) {
+    let _ = app.emit(MIC_LEVELS_EVENT, json!({ "levels": levels }));
+}
+
+/// Metering streams for every input device while the microphone picker is
+/// open. `start` replaces the round, which is also how the picker's 20 s
+/// keep-alive re-arms the 30 s auto-stop.
+#[tauri::command]
+#[specta::specta]
+pub fn mic_levels_start(app: AppHandle, state: State<'_, AppState>) -> Result<(), IpcError> {
+    let ui = levels_ui(&app);
+    let mut levels = state
+        .mic_levels
+        .lock()
+        .map_err(|e| IpcError::new("audio", e.to_string()))?;
+    *levels = audio::DeviceLevels::new(ui);
+    levels.start();
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn mic_levels_stop(state: State<'_, AppState>) -> Result<(), IpcError> {
+    state
+        .mic_levels
+        .lock()
+        .map_err(|e| IpcError::new("audio", e.to_string()))?
+        .stop();
+    Ok(())
+}
+
+/// Release metering streams from a context with only an `AppHandle` (menu
+/// close, window hide, exit) — the picker cannot call the command then.
+pub fn stop_mic_levels(app: &AppHandle) {
+    if let Some(state) = app.try_state::<AppState>() {
+        if let Ok(mut levels) = state.mic_levels.lock() {
+            levels.stop();
+        }
+    }
+}
+
+pub(crate) fn levels_ui(app: &AppHandle) -> LevelsUi {
+    let emitter = app.clone();
+    LevelsUi {
+        emit: Arc::new(move |levels: &[audio::DeviceLevel]| emit_mic_levels(&emitter, levels)),
+        app: app.clone(),
+    }
+}
+
+type EmitLevels = Arc<dyn Fn(&[audio::DeviceLevel]) + Send + Sync>;
+
+#[derive(Clone)]
+pub(crate) struct LevelsUi {
+    emit: EmitLevels,
+    app: AppHandle,
+}
+
+impl audio::MicLevelsUi for LevelsUi {
+    fn emit_levels(&self, levels: &[audio::DeviceLevel]) {
+        (self.emit)(levels);
+    }
+
+    fn emit_error(&self, message: &str) {
+        let _ = self
+            .app
+            .emit(MIC_LEVELS_EVENT, json!({ "levels": [], "error": message }));
+    }
+
+    fn stop(&self) {
+        stop_mic_levels(&self.app);
+    }
+
+    fn sleep(
+        &self,
+        duration: std::time::Duration,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+        Box::pin(tokio::time::sleep(duration))
+    }
+
+    fn now(&self) -> std::time::Duration {
+        mic_levels_origin().elapsed()
+    }
+}
+
+/// Shared by the round's ticks, which always run on the same async worker.
+fn mic_levels_origin() -> Instant {
+    static ORIGIN: OnceLock<Instant> = OnceLock::new();
+    *ORIGIN.get_or_init(Instant::now)
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn get_model_progress() -> Result<serde_json::Value, String> {
@@ -1339,6 +1585,62 @@ pub async fn restart_whisper_server(
         "api_url": api_url,
         "model": info.model,
     }))
+}
+
+/// Paste again: re-deliver the newest history text into the current app.
+#[tauri::command]
+#[specta::specta]
+pub async fn paste_last(state: State<'_, AppState>) -> Result<(), IpcError> {
+    let Some(text) = History::load().newest_text() else {
+        return Err(IpcError::new("history", "Nothing to paste yet"));
+    };
+    let settings = state
+        .settings
+        .lock()
+        .map_err(|e| IpcError::new("settings", e.to_string()))?
+        .clone();
+    let target = state
+        .last_active_window
+        .lock()
+        .map_err(|e| IpcError::new("paste", e.to_string()))?
+        .clone();
+
+    state.is_pasting.store(true, Ordering::SeqCst);
+    let paste_text = format!(" {}", text);
+    let pasted = tokio::task::spawn_blocking(move || {
+        paste::paste_text(
+            &paste_text,
+            target.as_ref(),
+            settings.post_paste_keys.as_deref(),
+        )
+    })
+    .await
+    .map_err(|e| IpcError::new("paste", e.to_string()))?;
+    state.is_pasting.store(false, Ordering::SeqCst);
+
+    let outcome = if pasted {
+        DictationOutcome::Pasted
+    } else {
+        DictationOutcome::PasteFailed
+    };
+    let mut history = History::load();
+    if let Some(entry) = history.entries.first_mut() {
+        entry.outcome = Some(outcome);
+        if let Err(e) = history.save() {
+            log_message(&format!(
+                "[history] Could not record the re-paste outcome: {}",
+                e
+            ));
+        }
+    }
+    if pasted {
+        Ok(())
+    } else {
+        Err(IpcError::new(
+            "paste",
+            "Could not paste; the text is on your clipboard",
+        ))
+    }
 }
 
 #[tauri::command]

@@ -69,6 +69,17 @@ export const commands = {
 	clearHistory: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_history", undefined, options),
 	getHistoryAudio: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<number[]>("get_history_audio", { index }, options),
 	reprocessHistoryEntry: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<Value>("reprocess_history_entry", { index }, options),
+	/**  Paste again: re-deliver the newest history text into the current app. */
+	pasteLast: (options?: InvokeOptions) => __TAURI_INVOKE<null>("paste_last", undefined, options),
+	/**  Remove a downloaded model the user no longer wants; the active model stays. */
+	deleteModel: (id: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("delete_model", { id }, options),
+	/**
+	 *  Metering streams for every input device while the microphone picker is
+	 *  open. `start` replaces the round, which is also how the picker's 20 s
+	 *  keep-alive re-arms the 30 s auto-stop.
+	 */
+	micLevelsStart: (options?: InvokeOptions) => __TAURI_INVOKE<null>("mic_levels_start", undefined, options),
+	micLevelsStop: (options?: InvokeOptions) => __TAURI_INVOKE<null>("mic_levels_stop", undefined, options),
 	/**  Latest debug sessions (newest first) captured by the Debug panel. */
 	getDebugSessions: (options?: InvokeOptions) => __TAURI_INVOKE<DebugSession[]>("get_debug_sessions", undefined, options),
 	clearDebugSessions: (options?: InvokeOptions) => __TAURI_INVOKE<null>("clear_debug_sessions", undefined, options),
@@ -125,6 +136,7 @@ export const commands = {
 
 /** Events */
 export const events = {
+	dictationState: makeEvent<DictationState, DictationState>("dictation-state"),
 	sessionItemAdded: makeEvent<SessionItemAdded, SessionItemAdded>("session-item-added"),
 	sessionItemUpdated: makeEvent<SessionItemUpdated, SessionItemUpdated>("session-item-updated"),
 	sessionItemsDeleted: makeEvent<SessionItemsDeleted, SessionItemsDeleted>("session-items-deleted"),
@@ -163,6 +175,23 @@ export type DebugSession = {
 	finalText?: string,
 };
 
+/**
+ *  How a dictation left the app: pasted into another app, left on the
+ *  clipboard because the paste failed, or nothing to paste.
+ */
+export type DictationOutcome = "pasted" | "copied" | "pasteFailed";
+
+/**
+ *  The dictation pill's phases (spec §6.1). `preparing` is the "Getting ready…"
+ *  state: the hotkey fired while the model server was still loading.
+ */
+export type DictationPhase = "idle" | "preparing" | "recording" | "transcribing" | "done" | "error";
+
+export type DictationState = {
+	phase: DictationPhase,
+	notice: Notice | null,
+};
+
 export type History = {
 	entries: HistoryEntry[],
 };
@@ -174,6 +203,8 @@ export type HistoryEntry = {
 	audio_file?: string | null,
 	sample_rate?: number | null,
 	duration_secs?: number | null,
+	/**  Missing on entries written before outcomes existed. */
+	outcome?: DictationOutcome | null,
 };
 
 /**  Normalised IPC error (spec §6.1): one `{kind, message}` shape. */
@@ -209,6 +240,13 @@ export type ItemPatch = {
 	text: string | null,
 	caption: string | null,
 };
+
+export type Notice = {
+	kind: NoticeKind,
+	message: string,
+};
+
+export type NoticeKind = "pasted" | "copiedNotPasted" | "noSpeech" | "busy" | "longAudio" | "serverError" | "micUnavailable" | "micFallback" | "providerFallback" | "screenshotLimit";
 
 export type PassEvent = {
 	/**  Chunk this pass belongs to; None for a whole-recording decode. */

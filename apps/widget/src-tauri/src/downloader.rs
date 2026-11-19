@@ -435,6 +435,12 @@ pub fn clear_model_files(model_name: &str) -> Result<(), String> {
     let Some(dir) = crate::paths::config_dir_opt().map(|d| d.join("models")) else {
         return Err("Could not determine config directory".to_string());
     };
+    delete_model_files(&dir, model_name)
+}
+
+/// Every artifact of `model_name` in `dir`: the model, its `.part` and the
+/// segmented state, but never a longer model name (`base` leaves `base.en`).
+pub(crate) fn delete_model_files(dir: &std::path::Path, model_name: &str) -> Result<(), String> {
     for suffix in [
         "bin",
         "bin.part",
@@ -451,6 +457,60 @@ pub fn clear_model_files(model_name: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn retry_message_matches_spec_copy() {
+        assert_eq!(
+            retry_message(8, 2, 5),
+            "Connection lost. Retrying in 8 s (2 of 5)"
+        );
+    }
+
+    #[test]
+    fn delete_model_refuses_active() {
+        let models = crate::paths::config_dir().join("models");
+        std::fs::create_dir_all(&models).unwrap();
+        let active = "zz-test-active-fake";
+        std::fs::write(models.join(format!("ggml-{active}.bin")), b"x").unwrap();
+
+        assert_eq!(delete_model_file(active, active), Err(DeleteError::InUse));
+        assert!(
+            models.join(format!("ggml-{active}.bin")).exists(),
+            "the active model's file is never removed"
+        );
+        delete_model_file(active, "small").unwrap();
+        assert!(!models.join(format!("ggml-{active}.bin")).exists());
+    }
+
+    #[test]
+    fn deleting_removes_every_artifact_of_a_model_file() {
+        let dir = std::env::temp_dir().join(format!("speaktype_delete_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for suffix in [
+            ".bin",
+            ".bin.part",
+            ".bin.incomplete",
+            ".expected",
+            ".parts.json",
+        ] {
+            std::fs::write(dir.join(format!("ggml-base{suffix}")), b"x").unwrap();
+        }
+        std::fs::write(dir.join("ggml-base.en.bin"), b"keep").unwrap();
+
+        delete_model_files(&dir, "base").unwrap();
+
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, vec!["ggml-base.en.bin"], "other models are untouched");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
+
 /// Keep a cancel flag registered while the queue is in a retry backoff sleep.
 pub fn register_active_download(model_name: &str, cancel_flag: Arc<AtomicBool>) {
     if let Ok(mut downloads) = ACTIVE_DOWNLOADS.lock() {
@@ -460,6 +520,34 @@ pub fn register_active_download(model_name: &str, cancel_flag: Arc<AtomicBool>) 
 
 pub fn unregister_active_download(model_name: &str) {
     cleanup_download(model_name);
+}
+
+/// The line a retrying model row shows (spec §6.7, owner copy): the wait, then
+/// which attempt out of how many.
+pub fn retry_message(wait_secs: u64, attempt: u32, max_attempts: u32) -> String {
+    format!(
+        "Connection lost. Retrying in {} s ({} of {})",
+        wait_secs, attempt, max_attempts
+    )
+}
+
+/// Remove one downloaded model the user asked to delete. The model still in
+/// use is refused: the running server holds its file open.
+pub fn delete_model_file(model_name: &str, active_model: &str) -> Result<(), DeleteError> {
+    let dir = crate::paths::config_dir().join("models");
+    if model_name.contains(['/', '\\', '.']) {
+        return Err(DeleteError::Failed("Unknown model".to_string()));
+    }
+    if model_name == active_model {
+        return Err(DeleteError::InUse);
+    }
+    delete_model_files(&dir, model_name).map_err(DeleteError::Failed)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum DeleteError {
+    InUse,
+    Failed(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

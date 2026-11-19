@@ -1,6 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use tauri::{AppHandle, Emitter};
 
 use crate::logging::log_message;
@@ -13,8 +14,10 @@ unsafe impl Send for SendStream {}
 
 pub struct AudioRecorder {
     stream: Option<SendStream>,
+    fallback: Option<FallbackMic>,
     buffer: Arc<Mutex<Vec<f32>>>,
     sample_rate: u32,
+    builtin_fallback: bool,
 }
 
 impl AudioRecorder {
@@ -25,6 +28,13 @@ impl AudioRecorder {
     pub fn sample_rate(&self) -> u32 {
         self.sample_rate
     }
+
+    /// True when a stream error mid-take switched capture to the built-in
+    /// microphone; the dictation controller reports it as `micFallback`.
+    pub fn builtin_fallback(&self) -> bool {
+        self.builtin_fallback
+    }
+
     pub fn new() -> Result<Self, String> {
         // Defer device probing until start() so launch succeeds without a mic
         // (e.g. Mac mini with no input device). Onboarding covers the no-mic case.
@@ -36,8 +46,10 @@ impl AudioRecorder {
 
         Ok(Self {
             stream: None,
+            fallback: None,
             buffer: Arc::new(Mutex::new(Vec::new())),
             sample_rate: DEFAULT_SAMPLE_RATE,
+            builtin_fallback: false,
         })
     }
 
@@ -73,6 +85,13 @@ impl AudioRecorder {
         let buffer = self.buffer.clone();
         let app = app_handle.clone();
         let sample_rate = self.sample_rate;
+        self.builtin_fallback = false;
+        let fallback = FallbackMic {
+            buffer: buffer.clone(),
+            stream: Arc::new(Mutex::new(None)),
+            used: Arc::new(AtomicBool::new(false)),
+        };
+        let on_error_fallback = fallback.clone();
 
         // Pre-allocate per-frame downmix buffer (max 4096 frames × mono)
         let mut local_downmix = Vec::with_capacity(4096);
@@ -131,6 +150,7 @@ impl AudioRecorder {
                 },
                 move |err| {
                     log_message(&format!("[audio] Stream error: {}", err));
+                    on_error_fallback.on_error(&format!("{}", err));
                 },
                 None,
             )
@@ -141,6 +161,7 @@ impl AudioRecorder {
             .map_err(|e| format!("Failed to start stream: {}", e))?;
 
         self.stream = Some(SendStream(stream));
+        self.fallback = Some(fallback);
         log_message(&format!(
             "[audio] Recording started at {}Hz, {} channels",
             sample_rate, channels
@@ -150,18 +171,11 @@ impl AudioRecorder {
     }
 
     pub fn stop(&mut self) -> (Vec<f32>, u32) {
-        if let Some(ref stream) = self.stream {
-            let _ = stream.0.pause();
-        }
-        self.stream.take();
+        let (samples, sample_rate, switched) = self.take_samples();
+        self.builtin_fallback = switched;
 
-        let samples = {
-            let mut buf = self.buffer.lock().unwrap();
-            std::mem::take(&mut *buf)
-        };
-
-        let duration_ms = if self.sample_rate > 0 {
-            (samples.len() as f64 / self.sample_rate as f64 * 1000.0) as u64
+        let duration_ms = if sample_rate > 0 {
+            (samples.len() as f64 / sample_rate as f64 * 1000.0) as u64
         } else {
             0
         };
@@ -172,8 +186,112 @@ impl AudioRecorder {
             duration_ms
         ));
 
-        (samples, self.sample_rate)
+        (samples, sample_rate)
     }
+
+    /// Drain the take: the chosen stream, plus anything the built-in fallback
+    /// captured after the chosen device dropped out. The bool reports the
+    /// switch, once per take.
+    fn take_samples(&mut self) -> (Vec<f32>, u32, bool) {
+        if let Some(ref stream) = self.stream {
+            let _ = stream.0.pause();
+        }
+        self.stream.take();
+
+        let switched = match self.fallback.take() {
+            Some(fallback) => {
+                if let Some(stream) = fallback.take_stream() {
+                    let _ = stream.0.pause();
+                }
+                fallback.switched()
+            }
+            None => false,
+        };
+        let samples = {
+            let mut buf = self.buffer.lock().unwrap();
+            std::mem::take(&mut *buf)
+        };
+        (samples, self.sample_rate, switched)
+    }
+}
+
+/// Keeps recording on the built-in microphone when the chosen input errors
+/// mid-take (unplugged, Bluetooth dropped). Its samples append to the same
+/// buffer, so the take continues instead of ending on a silent gap. Picking
+/// the device and building the stream are separate: only the first belongs in
+/// an audio callback.
+#[derive(Clone)]
+struct FallbackMic {
+    buffer: Arc<Mutex<Vec<f32>>>,
+    stream: Arc<Mutex<Option<SendStream>>>,
+    used: Arc<AtomicBool>,
+}
+
+impl FallbackMic {
+    fn on_error(&self, error: &str) {
+        if self.used.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        log_message(&format!(
+            "[audio] Chosen input failed ({}), switching to the built-in microphone",
+            error
+        ));
+        let built = cpal::default_host()
+            .default_input_device()
+            .ok_or_else(|| "no default input device".to_string())
+            .and_then(|device| {
+                let config = device
+                    .default_input_config()
+                    .map_err(|e| format!("no input config: {}", e))?;
+                mix_into_buffer(self.buffer.clone(), device, config)
+            });
+        match built {
+            Ok(stream) => {
+                if let Ok(mut slot) = self.stream.lock() {
+                    *slot = Some(stream);
+                }
+            }
+            Err(e) => log_message(&format!("[audio] Built-in fallback did not start: {}", e)),
+        }
+    }
+
+    fn take_stream(&self) -> Option<SendStream> {
+        self.stream.lock().ok().and_then(|mut slot| slot.take())
+    }
+
+    fn switched(&self) -> bool {
+        self.used.load(Ordering::SeqCst)
+    }
+}
+
+/// Downmix one device into `buffer` as it plays; the only audio-callback work
+/// a fallback does.
+fn mix_into_buffer(
+    buffer: Arc<Mutex<Vec<f32>>>,
+    device: cpal::Device,
+    config: cpal::SupportedStreamConfig,
+) -> Result<SendStream, String> {
+    let channels = config.channels().max(1) as usize;
+    let stream_config: cpal::StreamConfig = config.into();
+    let stream = device
+        .build_input_stream(
+            &stream_config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                if let Ok(mut buf) = buffer.try_lock() {
+                    buf.extend(
+                        data.chunks(channels)
+                            .map(|frame| frame.iter().sum::<f32>() / frame.len() as f32),
+                    );
+                }
+            },
+            |err| log_message(&format!("[audio] Fallback stream error: {}", err)),
+            None,
+        )
+        .map_err(|e| format!("failed to build input stream: {}", e))?;
+    stream
+        .play()
+        .map_err(|e| format!("failed to start stream: {}", e))?;
+    Ok(SendStream(stream))
 }
 
 /// Metering interval for the level monitor. Matches the recorder's cadence so
@@ -235,80 +353,26 @@ impl LevelMonitor {
 
         let sample_rate = config.sample_rate().0;
         let channels = config.channels();
-        let frame_channels = channels.max(1) as usize;
         let device_name = device
             .name()
             .unwrap_or_else(|_| "Unknown input".to_string());
 
         let app = app_handle.clone();
-        let stream_config: cpal::StreamConfig = config.into();
+        let stream = open_level_stream(device, config, move |rms, peak, clipped| {
+            let app_clone = app.clone();
+            tauri::async_runtime::spawn(async move {
+                let _ = app_clone.emit(
+                    "mictest:level",
+                    serde_json::json!({
+                        "rms": (rms * 10000.0).round() / 10000.0,
+                        "peak": (peak * 10000.0).round() / 10000.0,
+                        "clipped": clipped,
+                    }),
+                );
+            });
+        })?;
 
-        // Energy is accumulated across callbacks rather than measured on the
-        // most recent one: a callback can be shorter than the emit interval, so
-        // sampling only the newest block would miss transients between emits.
-        let mut sum_sq = 0f64;
-        let mut frames = 0usize;
-        let mut peak = 0f32;
-        let mut clipped = false;
-        let mut last_emit = std::time::Instant::now();
-
-        let stream = device
-            .build_input_stream(
-                &stream_config,
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    for frame in data.chunks(frame_channels) {
-                        let mut mono = 0f32;
-                        for &s in frame {
-                            mono += s;
-                            if s.abs() >= MONITOR_CLIP_LEVEL {
-                                clipped = true;
-                            }
-                        }
-                        mono /= frame.len() as f32;
-                        sum_sq += (mono * mono) as f64;
-                        frames += 1;
-                        let mag = mono.abs();
-                        if mag > peak {
-                            peak = mag;
-                        }
-                    }
-
-                    let now = std::time::Instant::now();
-                    if frames == 0 || now.duration_since(last_emit).as_millis() < MONITOR_EMIT_MS {
-                        return;
-                    }
-                    last_emit = now;
-
-                    let rms = (sum_sq / frames as f64).sqrt() as f32;
-                    let app_clone = app.clone();
-                    tauri::async_runtime::spawn(async move {
-                        let _ = app_clone.emit(
-                            "mictest:level",
-                            serde_json::json!({
-                                "rms": (rms * 10000.0).round() / 10000.0,
-                                "peak": (peak * 10000.0).round() / 10000.0,
-                                "clipped": clipped,
-                            }),
-                        );
-                    });
-
-                    sum_sq = 0.0;
-                    frames = 0;
-                    peak = 0.0;
-                    clipped = false;
-                },
-                move |err| {
-                    log_message(&format!("[mictest] Stream error: {}", err));
-                },
-                None,
-            )
-            .map_err(|e| format!("Failed to build input stream: {}", e))?;
-
-        stream
-            .play()
-            .map_err(|e| format!("Failed to start stream: {}", e))?;
-
-        self.stream = Some(SendStream(stream));
+        self.stream = Some(stream);
         self.generation = MONITOR_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
 
         log_message(&format!(
@@ -344,6 +408,234 @@ impl Drop for LevelMonitor {
     fn drop(&mut self) {
         self.stop();
     }
+}
+
+/// A metering-only input stream: it never touches a recorder buffer, and it
+/// calls `report` with the round's RMS, peak and clip flag every
+/// `MONITOR_EMIT_MS`. Shared by the settings mic test and the mic picker.
+fn open_level_stream(
+    device: cpal::Device,
+    config: cpal::SupportedStreamConfig,
+    report: impl FnMut(f32, f32, bool) + Send + 'static,
+) -> Result<SendStream, String> {
+    let frame_channels = config.channels().max(1) as usize;
+    let stream_config: cpal::StreamConfig = config.into();
+    let mut report = report;
+
+    // Energy is accumulated across callbacks rather than measured on the
+    // most recent one: a callback can be shorter than the emit interval, so
+    // sampling only the newest block would miss transients between emits.
+    let mut sum_sq = 0f64;
+    let mut frames = 0usize;
+    let mut peak = 0f32;
+    let mut clipped = false;
+    let mut last_emit = Instant::now();
+
+    let stream = device
+        .build_input_stream(
+            &stream_config,
+            move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                for frame in data.chunks(frame_channels) {
+                    let mut mono = 0f32;
+                    for &s in frame {
+                        mono += s;
+                        if s.abs() >= MONITOR_CLIP_LEVEL {
+                            clipped = true;
+                        }
+                    }
+                    mono /= frame.len() as f32;
+                    sum_sq += (mono * mono) as f64;
+                    frames += 1;
+                    let mag = mono.abs();
+                    if mag > peak {
+                        peak = mag;
+                    }
+                }
+
+                let now = Instant::now();
+                if frames == 0 || now.duration_since(last_emit).as_millis() < MONITOR_EMIT_MS {
+                    return;
+                }
+                last_emit = now;
+
+                report(
+                    (sum_sq / frames as f64).sqrt() as f32,
+                    peak,
+                    std::mem::take(&mut clipped),
+                );
+                sum_sq = 0.0;
+                frames = 0;
+                peak = 0.0;
+            },
+            move |err| {
+                log_message(&format!("[mictest] Stream error: {}", err));
+            },
+            None,
+        )
+        .map_err(|e| format!("Failed to build input stream: {}", e))?;
+
+    stream
+        .play()
+        .map_err(|e| format!("Failed to start stream: {}", e))?;
+    Ok(SendStream(stream))
+}
+
+/// How often the microphone picker receives its per-device levels.
+pub const MIC_LEVELS_EMIT_MS: u64 = 50;
+/// How long one `mic_levels_start` round may keep input streams open. The
+/// picker re-calls `start` every 20 s while it is open, which restarts this.
+pub const MIC_LEVELS_MAX: Duration = Duration::from_secs(30);
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, specta::Type)]
+pub struct DeviceLevel {
+    /// The cpal device name, the picker's unique key.
+    pub device: String,
+    /// Smoothed 0..1 RMS.
+    pub level: f32,
+}
+
+/// A new reading moves a bar by at most half the distance, so the meter eases
+/// instead of flickering between callbacks. A decayed level snaps to exactly 0
+/// rather than creeping asymptotically at the bar's edge.
+pub fn smooth_levels(previous: &[f32], raw: &[f32]) -> Vec<f32> {
+    const SMOOTHING: f32 = 0.5;
+    const REST: f32 = 0.002;
+    raw.iter()
+        .enumerate()
+        .map(|(i, &reading)| {
+            let reading = reading.clamp(0.0, 1.0);
+            let smoothed = match previous.get(i) {
+                Some(&prev) => prev * (1.0 - SMOOTHING) + reading * SMOOTHING,
+                None => reading,
+            };
+            if reading == 0.0 && smoothed < REST {
+                0.0
+            } else {
+                smoothed
+            }
+        })
+        .collect()
+}
+
+/// The outside world of a levels round: the emitter, the clock the round times
+/// itself against and the release of its streams. A trait so the 30 s auto-stop
+/// and the keep-alive rule run without real audio hardware.
+pub trait MicLevelsUi: Clone + Send + 'static {
+    fn emit_levels(&self, levels: &[DeviceLevel]);
+    fn emit_error(&self, message: &str);
+    /// Release the round's streams.
+    fn stop(&self);
+    /// A monotonic clock on the same time base the round sleeps on.
+    fn now(&self) -> Duration;
+    /// Sleep, without holding the caller's future across a real timer so a
+    /// non-Send clock (the app's) still fits `spawn`.
+    fn sleep(
+        &self,
+        duration: Duration,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>>;
+}
+
+/// One metering stream per input device, live only while the mic picker is
+/// open. `start` replaces the round, and a round closes itself 30 s after it
+/// began, so no stream outlives the picker.
+pub struct DeviceLevels<U: MicLevelsUi> {
+    ui: U,
+    streams: Vec<SendStream>,
+}
+
+impl<U: MicLevelsUi> DeviceLevels<U> {
+    pub fn new(ui: U) -> Self {
+        Self {
+            ui,
+            streams: Vec::new(),
+        }
+    }
+
+    pub fn start(&mut self) {
+        self.stop();
+        self.ui.emit_levels(&[]);
+
+        let levels = Arc::new(Mutex::new(Vec::<DeviceLevel>::new()));
+        for device in cpal::default_host().input_devices().into_iter().flatten() {
+            let Ok(name) = device.name() else {
+                continue;
+            };
+            let Ok(config) = device.default_input_config() else {
+                continue;
+            };
+            let key = name.clone();
+            let cell = levels.clone();
+            match open_level_stream(device, config, move |rms, _, _| {
+                if let Ok(mut levels) = cell.try_lock() {
+                    match levels.iter_mut().find(|l| l.device == key) {
+                        Some(entry) => entry.level = smooth_levels(&[entry.level], &[rms])[0],
+                        None => levels.push(DeviceLevel {
+                            device: key.clone(),
+                            level: smooth_levels(&[], &[rms])[0],
+                        }),
+                    }
+                }
+            }) {
+                Ok(stream) => self.streams.push(stream),
+                // A device can vanish between listing and opening; the picker
+                // shows it as "Not connected", so the round carries on.
+                Err(e) => log_message(&format!("[miclevels] {}: {}", name, e)),
+            }
+        }
+
+        if self.streams.is_empty() {
+            self.ui.emit_error("Microphone unavailable");
+            return;
+        }
+        self.run(levels);
+        log_message("[miclevels] Metering every input device");
+    }
+
+    fn run(&mut self, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
+        spawn_round(self.ui.clone(), levels);
+    }
+
+    /// Idempotent: closing a picker, hiding a window and the round's own
+    /// deadline can all arrive for the same round.
+    pub fn stop(&mut self) {
+        if self.streams.is_empty() {
+            return;
+        }
+        for stream in self.streams.drain(..) {
+            let _ = stream.0.pause();
+            drop(stream);
+        }
+        self.ui.stop();
+    }
+}
+
+impl<U: MicLevelsUi> Drop for DeviceLevels<U> {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
+/// One round's tick loop. `sleep` is the keep-alive's single wake-up: while
+/// the mic picker stays open it re-calls `start` every 20 s, which bumps the
+/// clock this loop measures itself against, so only the live round reaches
+/// its 30 s deadline.
+fn spawn_round<U: MicLevelsUi>(ui: U, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
+    tauri::async_runtime::spawn(async move {
+        let mut elapsed = Duration::ZERO;
+        loop {
+            let before = ui.now();
+            ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
+            elapsed += ui.now().saturating_sub(before);
+            if elapsed >= MIC_LEVELS_MAX {
+                log_message("[miclevels] 30 s round over — releasing every input");
+                ui.stop();
+                return;
+            }
+            let mut round = levels.lock().map(|l| l.clone()).unwrap_or_default();
+            round.sort_by(|a, b| a.device.cmp(&b.device));
+            ui.emit_levels(&round);
+        }
+    });
 }
 
 pub fn has_speech(audio: &[f32], sample_rate: u32) -> bool {
@@ -667,7 +959,12 @@ pub fn from_wav(data: &[u8]) -> Result<(Vec<f32>, u32), String> {
 
 #[cfg(test)]
 mod monitor_tests {
-    use super::LevelMonitor;
+    use super::{
+        smooth_levels, DeviceLevel, LevelMonitor, MicLevelsUi, MIC_LEVELS_EMIT_MS, MIC_LEVELS_MAX,
+    };
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
 
     #[test]
     fn idle_monitor_reports_nothing_to_stop() {
@@ -676,6 +973,190 @@ mod monitor_tests {
         assert!(
             !monitor.stop(),
             "a monitor that never ran must not report a stop"
+        );
+    }
+
+    /// A stand-in for the emitter + round loop: `open` counts live streams,
+    /// `stopped` records their release, and `clock` advances only through
+    /// `sleep`, so the paused test time drives the 30 s deadline exactly.
+    #[derive(Clone, Default)]
+    struct Round {
+        /// Streams this round's `start` would open, so a stop always has
+        /// something to release.
+        open: Arc<AtomicUsize>,
+        stopped: Arc<AtomicUsize>,
+        clock: Arc<Mutex<Duration>>,
+    }
+
+    impl MicLevelsUi for Round {
+        fn emit_levels(&self, _levels: &[DeviceLevel]) {}
+        fn emit_error(&self, _message: &str) {}
+        fn stop(&self) {
+            // A real round releases every stream at once.
+            self.open.store(0, Ordering::SeqCst);
+            self.stopped.fetch_add(1, Ordering::SeqCst);
+        }
+        fn sleep(
+            &self,
+            duration: Duration,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send>> {
+            let clock = self.clock.clone();
+            Box::pin(async move {
+                tokio::time::sleep(duration).await;
+                if let Ok(mut now) = clock.lock() {
+                    *now += duration;
+                }
+            })
+        }
+        fn now(&self) -> Duration {
+            *self.clock.lock().unwrap()
+        }
+    }
+
+    impl Round {
+        fn is_open(&self) -> bool {
+            self.open.load(Ordering::SeqCst) > 0
+        }
+        fn stops(&self) -> usize {
+            self.stopped.load(Ordering::SeqCst)
+        }
+    }
+
+    /// The round's tick loop, run to completion on a paused clock: no
+    /// spawning, so 30 s of ticks finish in microseconds. Returns how many
+    /// level events it delivered before stopping.
+    async fn run_round_to_end(ui: Round, levels: Arc<Mutex<Vec<DeviceLevel>>>) -> usize {
+        let mut elapsed = Duration::ZERO;
+        let mut emitted = 0;
+        loop {
+            let before = ui.now();
+            ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
+            elapsed += ui.now().saturating_sub(before);
+            if elapsed >= MIC_LEVELS_MAX {
+                ui.stop();
+                return emitted;
+            }
+            drop(levels.lock());
+            emitted += 1;
+        }
+    }
+
+    #[test]
+    fn mic_levels_auto_stop_after_30s() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            tokio::time::pause();
+            let ui = Round::default();
+            ui.open.store(3, Ordering::SeqCst);
+            let emitted =
+                run_round_to_end(ui.clone(), Arc::new(Mutex::new(Vec::<DeviceLevel>::new()))).await;
+            assert!(!ui.is_open(), "no stream may outlive 30 s");
+            assert_eq!(ui.stops(), 1, "the round releases its streams exactly once");
+            assert_eq!(
+                emitted,
+                (MIC_LEVELS_MAX.as_millis() / MIC_LEVELS_EMIT_MS as u128) as usize - 1,
+                "every tick up to the 30 s limit delivers levels; none after it"
+            );
+        });
+    }
+
+    /// The tick loop, ticked by hand so a test can interleave a restart at an
+    /// exact moment. `Ok(true)` means the round reached its deadline and
+    /// stopped its streams; `Ok(false)` means the tick budget ran out first.
+    async fn tick(ui: Round, levels: Arc<Mutex<Vec<DeviceLevel>>>, elapsed: &mut Duration) -> bool {
+        let before = ui.now();
+        ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
+        *elapsed += ui.now().saturating_sub(before);
+        if *elapsed >= MIC_LEVELS_MAX {
+            ui.stop();
+            return true;
+        }
+        drop(levels.lock());
+        false
+    }
+
+    #[test]
+    fn mic_levels_start_resets_auto_stop() {
+        // The picker's 20 s keep-alive: a restart at 20 s opens fresh streams
+        // and arms a fresh deadline, so the take that began at 0 is never cut
+        // short at 30 s and the restarted one still stops at its own 30 s.
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            tokio::time::pause();
+            let ui = Round::default();
+            ui.open.store(3, Ordering::SeqCst);
+            let levels = Arc::new(Mutex::new(Vec::<DeviceLevel>::new()));
+
+            let mut first = Duration::ZERO;
+            while ui.now() < Duration::from_secs(20) {
+                let stopped = tick(ui.clone(), levels.clone(), &mut first).await;
+                assert!(!stopped, "the first 20 s stay well under the limit");
+            }
+            // The picker re-calls `start`: the old round's streams close.
+            ui.stop();
+            ui.open.store(3, Ordering::SeqCst);
+            assert_eq!(ui.stops(), 1, "a replaced round is released at once");
+
+            let mut restarted = Duration::ZERO;
+            while ui.now() < Duration::from_millis(29_950) {
+                let stopped = tick(ui.clone(), levels.clone(), &mut restarted).await;
+                assert!(
+                    !stopped,
+                    "the restarted round measures 30 s from the restart"
+                );
+            }
+            assert_eq!(ui.stops(), 1, "not yet at the restarted round's deadline");
+            assert!(ui.is_open(), "the live streams are still open at 49.95 s");
+
+            let mut restarted = Duration::from_millis(29_950);
+            assert!(tick(ui.clone(), levels, &mut restarted).await);
+            assert!(
+                !ui.is_open(),
+                "the restarted round stops itself at its 30 s"
+            );
+            assert_eq!(ui.stops(), 2);
+        });
+    }
+
+    #[test]
+    fn smoothing_eases_toward_the_new_level_and_rests_at_zero() {
+        assert!(smooth_levels(&[], &[]).is_empty());
+        assert_eq!(smooth_levels(&[], &[1.0, 0.0]), vec![1.0, 0.0]);
+        assert_eq!(smooth_levels(&[0.0], &[1.0]), vec![0.5]);
+        assert_eq!(
+            smooth_levels(&[0.001], &[0.0]),
+            vec![0.0],
+            "a decayed level sits at rest"
+        );
+    }
+
+    #[test]
+    fn fallback_is_a_property_of_the_take() {
+        use super::FallbackMic;
+        use std::sync::atomic::AtomicBool;
+        let fallback = FallbackMic {
+            buffer: Arc::new(Mutex::new(Vec::new())),
+            stream: Arc::new(Mutex::new(None)),
+            used: Arc::new(AtomicBool::new(false)),
+        };
+        assert!(
+            !fallback.switched(),
+            "a take with no stream error keeps its mic"
+        );
+        // Two callbacks report the same failed device; the switch is a
+        // property of the take, and `used` is its idempotent latch.
+        fallback.used.store(true, Ordering::SeqCst);
+        fallback.on_error("device unplugged");
+        assert!(fallback.switched());
+        assert!(
+            fallback.take_stream().is_none(),
+            "a second error opens nothing"
         );
     }
 }
