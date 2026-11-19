@@ -40,6 +40,7 @@ verify: ## Every check a change must pass before review (Rust + webui + design s
 	npm run -ws --if-present lint
 	npm run -ws --if-present test
 	npm -w @speaktype/ui run visual
+	npm -w speaktype-webui run visual
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 
