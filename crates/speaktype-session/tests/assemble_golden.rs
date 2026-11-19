@@ -81,7 +81,8 @@ fn fixture() -> SessionDetail {
 }
 
 fn golden(name: &str) -> String {
-    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    // Read at run time: a shared target dir may hold a binary built in another worktree.
+    let path = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo test"))
         .join("tests")
         .join("golden")
         .join(name);

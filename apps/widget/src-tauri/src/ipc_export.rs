@@ -102,9 +102,12 @@ mod tests {
     use super::*;
     use specta_typescript::Typescript;
 
-    /// The committed bindings the webui imports.
-    const BINDINGS_PATH: &str =
-        concat!(env!("CARGO_MANIFEST_DIR"), "/../webui/src/lib/bindings.ts");
+    /// The committed bindings the webui imports. Resolved at run time: a shared
+    /// target dir may hold a test binary compiled in another worktree.
+    fn bindings_path() -> std::path::PathBuf {
+        std::path::PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("set by cargo test"))
+            .join("../webui/src/lib/bindings.ts")
+    }
 
     #[test]
     fn export_bindings() {
@@ -117,7 +120,7 @@ mod tests {
             .expect("export bindings");
         let generated = std::fs::read_to_string(&out).expect("read generated");
         let committed =
-            std::fs::read_to_string(BINDINGS_PATH).expect("committed bindings.ts is missing");
+            std::fs::read_to_string(bindings_path()).expect("committed bindings.ts is missing");
         assert_eq!(
             generated, committed,
             "apps/widget/webui/src/lib/bindings.ts is stale — regenerate with \
@@ -128,7 +131,7 @@ mod tests {
 
     #[test]
     fn session_events_are_registered_in_bindings() {
-        let bindings = std::fs::read_to_string(BINDINGS_PATH).expect("bindings");
+        let bindings = std::fs::read_to_string(bindings_path()).expect("bindings");
         for name in [
             "\"session-state\"",
             "\"session-item-added\"",
@@ -143,7 +146,7 @@ mod tests {
 
     #[test]
     fn stt_commands_are_registered_in_bindings() {
-        let bindings = std::fs::read_to_string(BINDINGS_PATH).expect("bindings");
+        let bindings = std::fs::read_to_string(bindings_path()).expect("bindings");
         for name in [
             "sttSetProvider",
             "sttSetApiKey",
@@ -163,7 +166,7 @@ mod tests {
     #[ignore = "writer variant: regenerate apps/widget/webui/src/lib/bindings.ts"]
     fn export_bindings_write() {
         builder()
-            .export(Typescript::default(), BINDINGS_PATH)
+            .export(Typescript::default(), bindings_path())
             .expect("export bindings");
     }
 }
