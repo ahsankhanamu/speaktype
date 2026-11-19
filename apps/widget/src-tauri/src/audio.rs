@@ -608,17 +608,29 @@ impl<U: MicLevelsUi> Drop for DeviceLevels<U> {
 fn spawn_round<U: MicLevelsUi>(ui: U, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
     tauri::async_runtime::spawn(async move {
         let mut elapsed = Duration::ZERO;
+        // The loudest level each input reached, so the log shows whether any
+        // audio arrived (a device that only ever reads 0 delivered silence).
+        let mut loudest = std::collections::BTreeMap::<String, f32>::new();
         loop {
             let before = ui.now();
             ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
             elapsed += ui.now().saturating_sub(before);
             if elapsed >= MIC_LEVELS_MAX {
-                log_message("[miclevels] 30 s round over — releasing every input");
+                let summary: Vec<String> =
+                    loudest.iter().map(|(d, l)| format!("{d}={l:.4}")).collect();
+                log_message(&format!(
+                    "[miclevels] 30 s round over — releasing every input (loudest: {})",
+                    summary.join(", ")
+                ));
                 ui.stop();
                 return;
             }
             let mut round = levels.lock().map(|l| l.clone()).unwrap_or_default();
             round.sort_by(|a, b| a.device.cmp(&b.device));
+            for level in &round {
+                let max = loudest.entry(level.device.clone()).or_default();
+                *max = max.max(level.level);
+            }
             ui.emit_levels(&round);
         }
     });

@@ -3,6 +3,7 @@
   import { RadioGroup } from 'bits-ui';
   import { liveQuery, useEvent } from '../data';
   import { getInputDevices, getSettings, saveSettings } from '../ipc';
+  import { litBars } from './meter';
   import { micLevelsStart, micLevelsStop } from './micLevels';
 
   const METER_BARS = 5;
@@ -40,7 +41,6 @@
     await saveSettings({ ...(await getSettings()), input_device: value || null });
   }
 
-  const lit = (level: number) => Math.round(Math.min(1, Math.sqrt(level)) * METER_BARS);
 </script>
 
 <RadioGroup.Root value={selected} onValueChange={choose} class="mic-list" aria-label="Microphone">
@@ -53,7 +53,7 @@
       </span>
       <span class="meter" role="meter" aria-label="Input level" aria-valuemin="0" aria-valuemax="1" aria-valuenow={choice.level}>
         {#each { length: METER_BARS } as _, bar}
-          <span class="bar" class:on={bar < lit(choice.level)} style:height="{6 + bar * 2.5}px"></span>
+          <span class="bar" class:on={bar < litBars(choice.level, METER_BARS)} style:height="{6 + bar * 2.5}px"></span>
         {/each}
       </span>
     </RadioGroup.Item>
