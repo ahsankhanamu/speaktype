@@ -26,14 +26,17 @@ All of it is built from `@speaktype/ui`, `lib/data` and `bindings.ts`, with no l
 
 ## Waves and ownership
 
+> Model choice (2026-11-19, from Phase 0 cost/quality data): Rust → DeepSeek-V4.1-Flash (F4b: $0.29, caught a real bug and asked rather than guessed), escalate to GLM-5.3 when stuck; UI surfaces → Claude Sonnet 5.5 (best visual fidelity on F2). Fresh session per task; no subagents.
+
+
 | WS | Model | Tasks | Owns (may edit) |
 |---|---|---|---|
 | **P1-R1** shell and settings | DeepSeek-V4.1-Flash | 1 | `src-tauri/src/settings.rs`, `src-tauri/src/lib.rs` (permission poll and plugin registration), `src-tauri/tauri.conf.json` (CSP only), `src-tauri/Cargo.toml`, `src-tauri/capabilities/*`, `bindings.ts` |
-| **P1-R2** dictation notices and mics | GLM-5.3 | 2 | `src-tauri/src/{audio,commands,paste,history,hotkey}.rs`, new `src-tauri/src/notice.rs`, `bindings.ts` |
-| **P1-U1** shared app components and harness | Kimi-K3.1-Pro | 3 | `webui/src/lib/app/**`, `webui/tests/visual/**`, `webui/playwright.config.ts`, `webui/package.json` |
-| **P1-U2** widget | Kimi-K3.1-Pro | 4 | `webui/src/widget/**` |
-| **P1-U3** onboarding | Kimi-K3.1-Pro | 5 | `webui/src/onboarding/**`, `webui/onboarding.html` |
-| **P1-U4** main window | Kimi-K3.1-Pro | 6 | `webui/src/settings/**` (renamed to `webui/src/app-window/**`), `webui/settings.html`, `webui/src/about/**` (folded in), `webui/src/lib/settings.css` (deleted), `webui/src/lib/ModelGrid.svelte` / `StSelect.svelte` / `InfoPopover.svelte` / `ThemeTabs.svelte` / `SettingsFooter.svelte` (deleted) |
+| **P1-R2** dictation notices and mics | DeepSeek-V4.1-Flash (escalate to GLM-5.3 only if it stalls) | 2 | `src-tauri/src/{audio,commands,paste,history,hotkey}.rs`, new `src-tauri/src/notice.rs`, `bindings.ts` |
+| **P1-U1** shared app components and harness | Claude Sonnet 5.5 (Claude Code agent, worktree) | 3 | `webui/src/lib/app/**`, `webui/tests/visual/**`, `webui/playwright.config.ts`, `webui/package.json` |
+| **P1-U2** widget | Claude Sonnet 5.5 | 4 | `webui/src/widget/**` |
+| **P1-U3** onboarding | Claude Sonnet 5.5 | 5 | `webui/src/onboarding/**`, `webui/onboarding.html` |
+| **P1-U4** main window | Claude Sonnet 5.5 | 6 | `webui/src/settings/**` (renamed to `webui/src/app-window/**`), `webui/settings.html`, `webui/src/about/**` (folded in), `webui/src/lib/settings.css` (deleted), `webui/src/lib/ModelGrid.svelte` / `StSelect.svelte` / `InfoPopover.svelte` / `ThemeTabs.svelte` / `SettingsFooter.svelte` (deleted) |
 
 **Order:**
 
