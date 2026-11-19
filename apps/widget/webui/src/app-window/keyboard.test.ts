@@ -145,14 +145,14 @@ describe('Settings → Keyboard', () => {
 
   it('Restore defaults asks first, and resets only after Restore', async () => {
     await open();
-    button('Restore defaults').click();
+    button('Restore defaults…').click();
     await vi.waitFor(() => expect(text()).toContain('Restore default shortcuts?'));
     expect(api.shortcutsReset).not.toHaveBeenCalled();
     button('Cancel').click();
     await vi.waitFor(() => expect(text()).not.toContain('Restore default shortcuts?'));
     expect(api.shortcutsReset).not.toHaveBeenCalled();
 
-    button('Restore defaults').click();
+    button('Restore defaults…').click();
     await vi.waitFor(() => expect(text()).toContain('Restore default shortcuts?'));
     button('Restore').click();
     await vi.waitFor(() => expect(api.shortcutsReset).toHaveBeenCalledTimes(1));

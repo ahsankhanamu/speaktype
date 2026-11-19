@@ -9,8 +9,10 @@
   import HistoryRow from './history/HistoryRow.svelte';
   import VirtualList from './history/VirtualList.svelte';
 
-  const HEADER_PX = 32;
-  const ROW_PX = 66;
+  const HEADER_PX = 28;
+  const ROW_PX = 46;
+  /** A session row also shows its first line, under the title. */
+  const SESSION_ROW_PX = 62;
 
   const settings = useSettings();
   const history = liveQuery('history', getHistory, { invalidateOn: ['dictation-state', 'settings-changed'] });
@@ -69,7 +71,8 @@
       {:else if !entries.length}
         <EmptyState title="No matches" message="Nothing in your history matches that." />
       {:else}
-        <VirtualList items={rows} label="History" height={(row) => (row.kind === 'header' ? HEADER_PX : ROW_PX)}>
+        <VirtualList items={rows} label="History" height={(row) =>
+          row.kind === 'header' ? HEADER_PX : row.kind === 'session' && row.session.snippet ? SESSION_ROW_PX : ROW_PX}>
           {#snippet row(item)}
             {#if item.kind === 'header'}
               <h3>{item.label}</h3>
@@ -115,7 +118,7 @@
   }
   h3 {
     margin: 0;
-    padding: 10px 20px 0;
+    padding: 10px 16px 2px;
     color: var(--st-text-secondary);
     font-size: var(--st-font-caption);
     font-weight: 600;

@@ -63,7 +63,7 @@ for (const theme of ['dark', 'light']) {
 
     test('keyboard, restore defaults confirms first', async ({ page }) => {
       await open(page, 'keyboard', theme);
-      await page.getByRole('button', { name: 'Restore defaults' }).click();
+      await page.getByRole('button', { name: 'Restore defaults…' }).click();
       await expect(page.getByText('Restore default shortcuts?')).toBeVisible();
       expect(await calls(page)).not.toContain('shortcuts_reset');
       await expect(page).toHaveScreenshot(`app-window-keyboard-restore-${theme}.png`);
@@ -140,7 +140,7 @@ test('1,000 history entries render a window of rows, not all of them', async ({ 
   await open(page, 'history', 'dark', 'app-window-many');
   await expect(page.getByRole('button', { name: /Dictation number 0 with/ })).toBeVisible();
   expect(await page.locator('[role=listitem]').count()).toBeLessThan(40);
-  await page.getByRole('list', { name: 'History' }).evaluate((el) => (el.scrollTop = 40_000));
+  await page.getByRole('list', { name: 'History' }).evaluate((el) => (el.scrollTop = 30_000));
   await expect(page.getByRole('button', { name: /Dictation number 6\d\d with/ }).first()).toBeVisible();
   expect(await page.locator('[role=listitem]').count()).toBeLessThan(40);
 });

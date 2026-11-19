@@ -11,7 +11,7 @@
 
 <button type="button" class="row" class:selected aria-current={selected ? 'true' : undefined} onclick={onselect}>
   <span class="tile">
-    {#if item.kind === 'dictation'}<Mic size={16} aria-hidden="true" />{:else}<Pencil size={16} aria-hidden="true" />{/if}
+    {#if item.kind === 'dictation'}<Mic size={13} aria-hidden="true" />{:else}<Pencil size={13} aria-hidden="true" />{/if}
   </span>
   <span class="text">
     <span class="title" use:truncate={{ mode: 'tail', full: title }}></span>
@@ -24,13 +24,13 @@
   .row {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     box-sizing: border-box;
     width: 100%;
     height: 100%;
-    padding: 0 12px;
+    padding: 0 8px;
     border: 0;
-    border-radius: var(--st-radius-card);
+    border-radius: var(--st-radius-selection);
     background: none;
     color: var(--st-text);
     font: inherit;
@@ -52,9 +52,9 @@
     display: grid;
     flex: none;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
     background: var(--st-control);
     color: var(--st-text-secondary);
   }
@@ -71,7 +71,7 @@
   }
   .title {
     font-size: var(--st-font-body);
-    font-weight: 600;
+    font-weight: 500;
   }
   .snippet,
   .meta {

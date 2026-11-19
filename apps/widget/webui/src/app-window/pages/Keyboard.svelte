@@ -95,25 +95,27 @@
         <Row kind="control" {label} {caption}>
           {#snippet trailing()}
             {@render useAnyway(action)}
-            <ShortcutField
-              bind:value={keys.get, keys.set}
-              bind:recording={() => recording === action, (on) => (recording = on ? action : null)}
-              conflict={refusals[action]?.message}
-            />
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger>
-                {#snippet child({ props })}
-                  <Button {...props} size={28} aria-label="Change {label}"><ChevronDown size={12} aria-hidden="true" /></Button>
-                {/snippet}
-              </DropdownMenu.Trigger>
+            <span class="split">
+              <ShortcutField
+                bind:value={keys.get, keys.set}
+                bind:recording={() => recording === action, (on) => (recording = on ? action : null)}
+                conflict={refusals[action]?.message}
+              />
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger>
+                  {#snippet child({ props })}
+                    <button {...props} type="button" class="more" aria-label="Change {label}"><ChevronDown size={12} aria-hidden="true" /></button>
+                  {/snippet}
+                </DropdownMenu.Trigger>
               <DropdownMenu.Content>
                 <DropdownMenu.RadioGroup value={shortcuts.keys(action)} onValueChange={(next) => save(action, next)}>
                   {#each presets as preset (preset.keys)}<MenuItem value={preset.keys} label={preset.label} />{/each}
                 </DropdownMenu.RadioGroup>
                 <MenuSeparator />
-                <MenuItem label="Record a shortcut…" onSelect={() => (recording = action)} />
-              </DropdownMenu.Content>
-            </DropdownMenu.Root>
+                  <MenuItem label="Record a shortcut…" onSelect={() => (recording = action)} />
+                </DropdownMenu.Content>
+              </DropdownMenu.Root>
+            </span>
           {/snippet}
         </Row>
       {/each}
@@ -146,7 +148,7 @@
     </Group>
   </Section>
 
-  <div class="restore"><Button size={28} onclick={restore}>Restore defaults</Button></div>
+  <div class="restore"><Button size={28} onclick={restore}>Restore defaults…</Button></div>
 </Page>
 
 <style>
@@ -158,7 +160,40 @@
     color: var(--st-warning);
     font-size: var(--st-font-caption);
   }
+  /* As in System Settings: one Restore button, bottom right of the pane. */
   .restore {
     display: flex;
+    justify-content: flex-end;
+  }
+  /* The shortcut and its menu read as one control: a split button. */
+  .split {
+    display: inline-flex;
+    align-items: flex-start;
+  }
+  .split :global(.st-shortcut .field) {
+    border-radius: 14px 0 0 14px;
+  }
+  .more {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    width: 26px;
+    height: var(--st-h-panel-control);
+    padding: 0 2px 0 0;
+    border: 0;
+    border-left: 0.5px solid var(--st-separator);
+    border-radius: 0 14px 14px 0;
+    background: var(--st-inset);
+    box-shadow: inset 0 0 0 0.5px var(--st-edge);
+    color: var(--st-text-secondary);
+    cursor: default;
+  }
+  .more:hover {
+    background: var(--st-fill-hover);
+  }
+  .more:focus-visible,
+  .more[data-state='open'] {
+    outline: none;
+    box-shadow: var(--st-focus-ring);
   }
 </style>

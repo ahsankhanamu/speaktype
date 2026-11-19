@@ -240,7 +240,7 @@
     },
     {
       "action": "drawKey",
-      "keys": "RightOption"
+      "keys": "right_option"
     }
   ]
 }
