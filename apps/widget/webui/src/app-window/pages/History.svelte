@@ -102,7 +102,6 @@
     box-sizing: border-box;
     width: 300px;
     border-right: 0.5px solid var(--st-separator);
-    background: var(--st-sidebar);
   }
   .tools {
     display: flex;

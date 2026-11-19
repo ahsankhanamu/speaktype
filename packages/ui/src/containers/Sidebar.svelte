@@ -14,8 +14,13 @@
     gap: 8px;
     box-sizing: border-box;
     width: 220px;
+    /* macOS Tahoe: a floating panel inset from the window, with its own edge. */
+    margin: 8px 0 8px 8px;
     padding: 10px;
+    border-radius: 16px;
     background: var(--st-sidebar);
+    box-shadow: 0 0 0 0.5px var(--st-separator), 0 1px 3px var(--st-shadow);
+    overflow-y: auto;
     font-family: var(--st-font-family);
   }
 </style>

@@ -129,7 +129,8 @@
     font-family: var(--st-font-family);
   }
   .window :global(.st-sidebar) {
-    padding-top: var(--titlebar-h);
+    /* The panel starts 8 pt down; the traffic lights sit inside its top. */
+    padding-top: calc(var(--titlebar-h) - 8px);
   }
   /* macOS sidebar search is a compact 28 pt field. */
   .window :global(.st-sidebar .st-field) {
