@@ -23,7 +23,7 @@
 
   $effect(() => {
     if (current === undefined && settings.data) {
-      current = Math.min(LAST, (settings.data as Settings & { onboarding_step?: number }).onboarding_step ?? 0);
+      current = Math.min(LAST, settings.data.onboarding_step ?? 0);
     }
   });
 
