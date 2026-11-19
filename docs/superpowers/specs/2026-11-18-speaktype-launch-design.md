@@ -93,6 +93,26 @@ Menu-bar menu: header "SpeakType" + state ("Ready · Balanced model"); Start dic
 
 **Key names:** UI says **Return** (↩) per Apple's style guide, never "Enter" (that's the keypad key); internal setting values (`enter`, `enter+enter`) stay as they are. **Shortcut field:** 32 pt capsule recorder with one 24 pt keycap per key (13 pt glyph, raised gradient + 1 px base shadow), hover outline, trailing ✕ to clear; click to record. **Shortcut notation:** always Apple's modifier order ⌃ ⌥ ⇧ ⌘ (e.g. ⌃⌘, ⌥⌘K), as glyphs, in keycaps where a shortcut is the subject.
 
+### Keyboard shortcuts (single registry, owner decision 2026-11-19)
+
+Every shortcut lives in **one registry** (`shortcuts.rs` + one `shortcuts` settings map), registered and re-registered in one place, so changing one never drops another. The owner may revise defaults later, and **people can change every global shortcut** in **Settings → Keyboard** (one row per action: name, `ShortcutField`, conflict message, plus **Restore defaults**). Existing values migrate as they are (the owner's dictation hotkey is **F8** — keep, never reset).
+
+| Action | Default | Scope | Changeable | Notes |
+|---|---|---|---|---|
+| Start / stop dictation | `⌃⌘` (`Super+Control`; owner uses **F8**) | global | yes — presets ⌃⌘ / F9 / F8 + record | modifier-only chords use the event tap; others the global-shortcut plugin |
+| Start / stop a session | `⌥⌘K` | global | yes | also ends a draw-started session |
+| Take a screenshot | `⌥⌘S` | global | yes | joins or starts a session |
+| Draw (hold) | Right ⌥ | global, hold | yes — Right ⌥ / Right ⌘ / Fn | listen-only tap; "Draw anytime" switch in Sessions |
+| Cancel recording | `Esc` | global **only while recording** | no | temporary registration |
+| Undo last stroke | `⌘Z` | while drawing | no | |
+| Pen mode (sticky draw) | HUD button | — | no | Esc exits |
+| Copy prompt | `⌘↵` | quick review / Result | no | in-window |
+| Open History | `⌘Y` | menu bar menu | no | menu key equivalent |
+| Open Settings | `⌘,` | menu bar menu | no | menu key equivalent |
+| Quit | `⌘Q` | menu bar menu | no | |
+
+**Conflict rules (Settings → Keyboard):** a shortcut can't equal another SpeakType shortcut (amber "Already used for <action>", Save refused); known system shortcuts (⌘Space, ⌘Tab, ⌘Q, ⌘W, ⌘H, ⌘M, ⌃Space, ⌘⇧3/4/5) warn "macOS uses this for <name>" and need a second confirm; a registration the OS rejects shows "Couldn't use this shortcut. Another app may own it." and keeps the previous one. Displayed in Apple modifier order ⌃ ⌥ ⇧ ⌘ as keycaps everywhere (widget tooltip, onboarding, menus).
+
 **Core principle (owner, design review 2026-11-18): people stay in their work.** Nothing after a session or dictation pulls them into a SpeakType window. Copying, quick fixes and re-sending happen from the HUD and its quick review panel, in place. The History window is an archive people open on purpose, for past work and debugging, never automatically.
 
 ## 6. Experience design
