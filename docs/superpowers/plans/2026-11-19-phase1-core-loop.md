@@ -254,6 +254,22 @@ export function modelState(m: ModelInfo, progress: ModelProgress | undefined, ac
 
 ---
 
+### Task 7 (P1-R3, DeepSeek-V4.1-Flash, after R1+R2 merge): window and command gaps found by U3/U4
+
+**Files:** `commands.rs` (window creation), `window.rs`, `tray.rs`, `settings.rs`, `history.rs`, `permissions.rs`, new `widget_cmds.rs`, `bindings.ts`.
+
+**Contracts (UI stand-ins in `webui/src/app-window/pending.ts` and the onboarding cast are removed in the same PR):**
+- `test_typing() -> Result<(), IpcError>` posts the keystrokes for "SpeakType test" to the focused element (CGEvent unicode keystrokes; needs Accessibility; `IpcError{kind:'accessibility'}` without it).
+- `screen_recording_status() -> bool` (`CGPreflightScreenCaptureAccess`), plus `request_screen_recording()` (`CGRequestScreenCaptureAccess`).
+- `set_widget_corner(corner: "bottom_right" | "bottom_center" | "top_right" | "bottom_left")` positions the widget on the active display's visible frame with a 16 pt inset and stores `widget_corner`; dragging sets `widget_corner = "custom"` ("Where I last dragged it").
+- Settings fields: `session_hotkey: String = "Option+Super+K"`, `live_captions: bool = true`, `keep_session_audio: bool = false`, `widget_corner: String = "bottom_right"`.
+- `set_launch_at_login` also persists `launch_at_login` (single source of truth in Rust).
+- Event `HistoryChanged {}` after add / delete / clear / reprocess.
+- Windows: `open_about` and the tray About item open the main window at `#/about` (the `about` window is gone); the main window and onboarding use `titleBarStyle: Overlay` with hidden title; onboarding is 960 × 640, centred, not resizable.
+
+- [ ] **Failing tests:** `widget_corner_frames` (pure fn `corner_origin(visible: Rect, size: Size, corner) -> Point` for all four corners), `history_changed_emitted_after_delete`, `launch_at_login_persists`, settings defaults for the new fields, registration test updated. `test_typing` and the permission calls: pure-logic tests plus a manual step recorded for the reviewer.
+- [ ] **Implement**, regenerate bindings, remove the UI stand-ins, `make verify`, commit `feat(app): window chrome, About route, test typing, screen recording status, widget corners, history events`.
+
 ## Phase 1 exit (Claude)
 
 - [ ] Every workstream has been reviewed (code plus screenshots against the boards) and merged.
