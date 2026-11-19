@@ -19,7 +19,7 @@
     padding: 10px;
     border-radius: 16px;
     background: var(--st-sidebar);
-    box-shadow: 0 0 0 0.5px var(--st-separator), 0 1px 3px var(--st-shadow);
+    box-shadow: 0 0 0 1px var(--st-sidebar-edge), 0 1px 3px var(--st-shadow);
     overflow-y: auto;
     font-family: var(--st-font-family);
   }

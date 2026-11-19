@@ -31,7 +31,7 @@
     gap: 8px;
     box-sizing: border-box;
     width: 100%;
-    height: 28px;
+    height: 32px;
     padding: 0 8px;
     border: 0;
     border-radius: var(--st-radius-selection);
@@ -62,6 +62,8 @@
     width: 20px;
     height: 20px;
     border-radius: 5px;
+    /* A faint rim keeps dark tiles visible on the sidebar, as macOS does. */
+    box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.18);
     color: #fff;
   }
   .label {

@@ -1,11 +1,12 @@
 :root {
   color-scheme: dark;
 
-  --st-window: #1e1e1e;
-  --st-group: #2a2a2c;
-  --st-control: #3a3a3c;
-  --st-sidebar: #262628;
-  --st-popover: #2c2c2e;
+  --st-window: #28282b;
+  --st-group: #313134;
+  --st-control: #3d3d40;
+  --st-sidebar: #1e1e20;
+  --st-sidebar-edge: rgba(255, 255, 255, 0.1);
+  --st-popover: #333336;
   --st-inset: #1c1c1e;
   --st-track: #4a4a4d;
   --st-shadow: rgba(0, 0, 0, 0.5);
@@ -40,6 +41,7 @@
   --st-group: #ffffff;
   --st-control: #e5e5ea;
   --st-sidebar: #ececef;
+  --st-sidebar-edge: rgba(0, 0, 0, 0.1);
   --st-popover: #ffffff;
   --st-inset: #ececf0;
   --st-track: #d1d1d6;
@@ -76,6 +78,7 @@
     --st-group: #ffffff;
     --st-control: #e5e5ea;
     --st-sidebar: #ececef;
+    --st-sidebar-edge: rgba(0, 0, 0, 0.1);
     --st-popover: #ffffff;
     --st-inset: #ececf0;
     --st-track: #d1d1d6;
