@@ -7,6 +7,14 @@ use std::path::PathBuf;
 /// still holding it means On this Mac.
 pub(crate) const DEFAULT_API_URL: &str = "http://127.0.0.1:8002/inference";
 
+/// The app's own whisper-server picks a free local port at each launch
+/// (`server.rs`), so any `http://127.0.0.1:<port>/inference` is On this Mac.
+fn is_app_managed_url(url: &str) -> bool {
+    url.strip_prefix("http://127.0.0.1:")
+        .and_then(|rest| rest.strip_suffix("/inference"))
+        .is_some_and(|port| port.parse::<u16>().is_ok())
+}
+
 /// Keychain account for the AI-writing key, moved out of settings.json.
 pub(crate) const LLM_KEY_ACCOUNT: &str = "llm.api_key";
 
@@ -290,7 +298,7 @@ impl Settings {
         let mut changed = false;
 
         if settings.stt_provider.is_none() {
-            settings.stt_provider = Some(if settings.api_url == DEFAULT_API_URL {
+            settings.stt_provider = Some(if is_app_managed_url(&settings.api_url) {
                 ProviderConfig::Local {
                     model: settings.model.clone(),
                 }
@@ -426,6 +434,18 @@ mod tests {
                 model: "large-v3".to_string()
             }
         );
+    }
+
+    #[test]
+    fn settings_migrates_app_managed_port_to_local() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, _) =
+            Settings::from_json(&legacy_json("http://127.0.0.1:8004/inference", ""), &store)
+                .expect("legacy settings must parse");
+        assert!(matches!(
+            settings.active_provider(),
+            ProviderConfig::Local { .. }
+        ));
     }
 
     #[test]

@@ -30,6 +30,8 @@ mkdir -p apps/widget/src-tauri/binaries && cp /Users/ahsan/Desktop/speaktype/app
   - Every new dependency gets a one-line reason in the report.
 - Before reporting, run `make verify` from the worktree root. It must exit 0.
 
+**Never launch the app** (`make dev`, `cargo tauri dev`, or opening the built `.app`). It uses the owner's real settings and history, and replaces the copy they're running. Launching and checking the real app is the reviewer's job; say in your report what you need checked.
+
 **No subagents.** Don't spawn subagents or a second-model review, because review is the reviewer's job and it doubles the cost. Run tests and `make verify` yourself, in your own pane.
 
 **Report:** write `.handoff/<WS>/REPORT.md` and commit it with `git add -f`. It contains:

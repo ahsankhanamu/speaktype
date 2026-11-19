@@ -98,6 +98,9 @@ fn now_ms() -> i64 {
 
 /// Where the user-facing bundles live (spec §6.5).
 pub(crate) fn sessions_root() -> PathBuf {
+    if cfg!(test) {
+        return crate::paths::config_dir().join("Sessions");
+    }
     dirs::document_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("SpeakType")
