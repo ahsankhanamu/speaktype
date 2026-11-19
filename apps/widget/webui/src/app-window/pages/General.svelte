@@ -2,7 +2,8 @@
   import { Button, Group, Row, Switch, toast } from '@speaktype/ui';
   import { resetWidgetPosition } from '../../lib/ipc';
   import Page from '../Page.svelte';
-  import { setLaunchAtLogin } from '../pending';
+  import { commands } from '../../lib/bindings';
+  const { setLaunchAtLogin } = commands;
   import Section from '../Section.svelte';
   import { useSettings } from '../settings.svelte';
 
@@ -12,8 +13,8 @@
 
   async function setLaunch(on: boolean) {
     try {
+      // Rust stores the setting and emits settings-changed, which refreshes this page.
       await setLaunchAtLogin(on);
-      launch.value = on;
     } catch (error) {
       toast.show({ message: `Couldn't change launch at login. ${(error as { message?: string })?.message ?? error}` });
     }

@@ -4,7 +4,8 @@
   import ModelMenu from '../../../lib/app/ModelMenu.svelte';
   import { copyToClipboard, deleteHistoryEntry, getHistoryAudio, reprocessHistoryEntry } from '../../../lib/ipc';
   import { navigate } from '../../router.svelte';
-  import { pasteLast } from '../../pending';
+  import { commands } from '../../../lib/bindings';
+  const { pasteLast } = commands;
   import { detailMetaOf, titleOf, type Dictation, type Entry } from './history';
 
   const COPIED_MS = 1500;

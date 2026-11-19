@@ -24,7 +24,7 @@
   } as const;
   type Ink = keyof typeof INK_NAMES;
   const swatches = (Object.keys(INK_NAMES) as Ink[]).map((name) => ({ value: `var(--st-ink-${name})`, name: INK_NAMES[name] }));
-  const toSwatch = (name: Ink) => `var(--st-ink-${name})`;
+  const toSwatch = (name: string) => `var(--st-ink-${name})`;
   const fromSwatch = (swatch: string) => swatch.slice('var(--st-ink-'.length, -1) as Ink;
 </script>
 

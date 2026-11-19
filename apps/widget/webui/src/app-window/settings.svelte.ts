@@ -1,7 +1,7 @@
 import { toast } from '@speaktype/ui';
 import { liveQuery } from '../lib/data';
 import { getSettings, saveSettings, type Settings } from '../lib/ipc';
-import type { SettingsV2 } from './pending';
+import type { Settings as SettingsV2 } from '../lib/ipc';
 
 /** The settings file as a live query: the widget changing a setting updates every page. */
 export function useSettings() {

@@ -103,11 +103,14 @@ describe('settings pages', () => {
     await vi.waitFor(() => expect(ipc.resetWidgetPosition).toHaveBeenCalled());
   });
 
-  it('Launch at login goes through the autostart command, then the setting', async () => {
+  it('Launch at login goes only through the autostart command', async () => {
     render(General);
     await vi.waitFor(() => expect(switchFor('Launch at login')).not.toBeNull());
     switchFor('Launch at login').click();
-    await vi.waitFor(() => expect(tauri.invoke).toHaveBeenCalledWith('set_launch_at_login', { on: true }));
+    await vi.waitFor(() =>
+      expect(tauri.invoke.mock.calls.some(([cmd, args]) => cmd === 'set_launch_at_login' && (args as { on: boolean }).on)).toBe(true),
+    );
+    expect(ipc.saveSettings).not.toHaveBeenCalledWith(expect.objectContaining({ launch_at_login: true }));
   });
 
   it('Dictation carries every field from the spec', async () => {

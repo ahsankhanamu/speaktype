@@ -7,7 +7,8 @@
     checkPermissions, openOnboarding, openSystemPane, startMicTest, stopMicTest,
   } from '../../lib/ipc';
   import Page from '../Page.svelte';
-  import { testTyping } from '../pending';
+  import { commands } from '../../lib/bindings';
+  const { testTyping } = commands;
   import Section from '../Section.svelte';
   import LevelMeter from './LevelMeter.svelte';
 

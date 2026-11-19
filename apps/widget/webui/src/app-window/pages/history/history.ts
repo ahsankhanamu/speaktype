@@ -1,5 +1,5 @@
 import type { HistoryEntry, SessionSummary } from '../../../lib/ipc';
-import type { HistoryEntryV2 } from '../../pending';
+import type { HistoryEntry as HistoryEntryV2 } from '../../../lib/bindings';
 
 export interface Dictation {
   kind: 'dictation';
