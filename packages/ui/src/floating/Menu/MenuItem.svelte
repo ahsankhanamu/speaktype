@@ -16,7 +16,7 @@
 
 {#snippet layout(checked: boolean)}
   <span class="check">{#if checked}<Check size={12} strokeWidth={2.2} aria-hidden="true" />{/if}</span>
-  <span class="icon">{@render icon?.()}</span>
+  {#if icon}<span class="icon">{@render icon()}</span>{/if}
   <span class="text" data-st-label>{label}</span>
 {/snippet}
 
@@ -35,13 +35,13 @@
     display: grid;
     flex: none;
     place-items: center;
-    width: var(--menu-check-col, 12px);
+    width: var(--menu-check-col, 14px);
   }
   .icon {
     display: inline-flex;
     flex: none;
     align-items: center;
-    width: var(--menu-icon-col, 22px);
+    width: var(--menu-icon-col, 18px);
   }
   .text {
     flex: 1;

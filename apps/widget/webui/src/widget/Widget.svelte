@@ -3,7 +3,7 @@
   import { fade } from 'svelte/transition';
   import { AudioLines, Check, EyeOff, History, Mic, Settings, X } from '@lucide/svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
-  import { Button, DropdownMenu, Halo, Keycap, LayerRoot, MenuItem, MenuSeparator, Popover, Spinner, StatusDot, Tooltip, formatShortcut } from '@speaktype/ui';
+  import { Button, DropdownMenu, Halo, MicGlyph, Keycap, LayerRoot, MenuItem, MenuSeparator, Popover, Spinner, StatusDot, Tooltip, formatShortcut } from '@speaktype/ui';
   import MicPicker from '../lib/app/MicPicker.svelte';
   import ModelMenu from '../lib/app/ModelMenu.svelte';
   import { liveQuery, useEvent } from '../lib/data';
@@ -286,7 +286,7 @@
                 <Tooltip label="Dictate" shortcut={(settings.data?.shortcuts?.dictation ?? 'Super+Control').split('+')}>
                   {#snippet children(tooltipProps)}
                     <button type="button" {...tooltipProps} class="mic" aria-label="Dictate" onclick={mic}>
-                      <Mic size={18} strokeWidth={2} aria-hidden="true" />
+                      <MicGlyph size={20} />
                     </button>
                   {/snippet}
                 </Tooltip>

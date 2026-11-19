@@ -17,7 +17,7 @@
       {#snippet child({ props, wrapperProps, open })}
         {#if open}
           <div {...wrapperProps}>
-            <div {...props} class="st-menu" style:min-width="var(--bits-select-anchor-width)" transition:pop={{ placement: 'below' }}>
+            <div {...props} class="st-menu" style:max-height="min(360px, var(--bits-floating-available-height, 360px))" style:min-width="var(--bits-select-anchor-width)" transition:pop={{ placement: 'below' }}>
               {@render children()}
             </div>
           </div>

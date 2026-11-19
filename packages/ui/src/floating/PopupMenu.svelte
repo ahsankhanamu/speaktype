@@ -31,7 +31,7 @@
       {#snippet child({ props, open })}
         {#if open}
           <div class="st-aligned" use:alignTo={trigger}>
-            <div {...props} class="st-menu" style="--menu-item-height: 30px" transition:pop={{ placement: 'aligned' }}>
+            <div {...props} class="st-menu" transition:pop={{ placement: 'aligned' }}>
               <DropdownMenu.RadioGroup bind:value>
                 {#each items as item (item.value)}
                   {#if item.separatorBefore}<MenuSeparator />{/if}

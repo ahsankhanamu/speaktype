@@ -107,7 +107,7 @@ describe('Settings → Keyboard', () => {
 
   it('picks a dictation preset from the pop-up beside the field', async () => {
     await open();
-    (document.querySelector('[aria-label="Shortcut presets"]') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    (document.querySelector('[aria-label="Change Start / stop dictation"]') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
     const items = await vi.waitFor(() => {
       const found = [...document.querySelectorAll('[role=menuitemradio], [role=menuitem]')];
       expect(found.length).toBe(4);
@@ -116,6 +116,18 @@ describe('Settings → Keyboard', () => {
     expect(items.map((el) => el.textContent?.trim())).toEqual(['⌃⌘ (default)', 'F9', 'F8', 'Record a shortcut…']);
     (items[1] as HTMLElement).click();
     await vi.waitFor(() => expect(api.shortcutSet).toHaveBeenCalledWith('dictation', 'F9', false));
+  });
+
+  it('changes the session and screenshot shortcuts the same way as dictation', async () => {
+    await open();
+    (document.querySelector('[aria-label="Change Start / stop a session"]') as HTMLElement).dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    const items = await vi.waitFor(() => {
+      const found = [...document.querySelectorAll('[role=menuitemradio], [role=menuitem]')];
+      expect(found.length).toBe(2);
+      return found;
+    });
+    expect(items.map((el) => el.textContent?.trim())).toEqual(['⌥⌘K (default)', 'Record a shortcut…']);
+    expect(document.querySelector('[aria-label="Change Take a screenshot"]')).not.toBeNull();
   });
 
   it('sets the draw key from its pop-up', async () => {

@@ -75,6 +75,7 @@
       type="button"
       class="record"
       aria-label={recording ? 'Press a shortcut' : 'Record shortcut'}
+      title={recording ? undefined : 'Click to record a new shortcut'}
       onclick={() => (recording = true)}
     >
       {#if recording}
@@ -107,6 +108,9 @@
     border-radius: 16px;
     background: var(--st-inset);
     box-shadow: inset 0 0 0 0.5px var(--st-edge);
+  }
+  .field:hover:not(.recording) {
+    background: var(--st-fill-hover);
   }
   .field:has(:focus-visible) {
     box-shadow: var(--st-focus-ring);

@@ -22,7 +22,29 @@
 
   const shortcuts = useShortcuts();
   let refusals = $state<Partial<Record<ShortcutAction, Refusal>>>({});
-  let recording = $state(false);
+  /** The row whose shortcut is being recorded. */
+  let recording = $state<ShortcutAction | null>(null);
+
+  type Editable = { action: Exclude<ShortcutAction, 'drawKey'>; label: string; caption?: string; presets: { keys: string; label: string }[] };
+  const EDITABLE: Editable[] = [
+    {
+      action: 'dictation',
+      label: 'Start / stop dictation',
+      caption: 'Press once to start, again to stop',
+      presets: [
+        { keys: 'Super+Control', label: '⌃⌘ (default)' },
+        { keys: 'F9', label: 'F9' },
+        { keys: 'F8', label: 'F8' },
+      ],
+    },
+    { action: 'session', label: 'Start / stop a session', presets: [{ keys: 'Option+Super+K', label: '⌥⌘K (default)' }] },
+    {
+      action: 'screenshot',
+      label: 'Take a screenshot',
+      caption: 'Joins the current session or starts one',
+      presets: [{ keys: 'Super+Option+S', label: '⌥⌘S (default)' }],
+    },
+  ];
 
   async function save(action: ShortcutAction, keys: string, force = false) {
     try {
@@ -41,9 +63,6 @@
       if (keys.length) void save(action, keys.join('+'));
     },
   });
-  const dictation = field('dictation');
-  const session = field('session');
-  const screenshot = field('screenshot');
 
   async function restore() {
     const confirmed = await confirmAlert({
@@ -71,40 +90,33 @@
 <Page title="Keyboard">
   <Section title="Shortcuts">
     <Group>
-      <Row kind="control" label="Start / stop dictation" caption="Press once to start, again to stop">
-        {#snippet trailing()}
-          {@render useAnyway('dictation')}
-          <ShortcutField bind:value={dictation.get, dictation.set} bind:recording conflict={refusals.dictation?.message} />
-          <DropdownMenu.Root>
-            <DropdownMenu.Trigger>
-              {#snippet child({ props })}
-                <Button {...props} size={28} aria-label="Shortcut presets"><ChevronDown size={13} aria-hidden="true" /></Button>
-              {/snippet}
-            </DropdownMenu.Trigger>
-            <DropdownMenu.Content>
-              <DropdownMenu.RadioGroup value={shortcuts.keys('dictation')} onValueChange={(next) => save('dictation', next)}>
-                <MenuItem value="Super+Control" label="⌃⌘ (default)" />
-                <MenuItem value="F9" label="F9" />
-                <MenuItem value="F8" label="F8" />
-              </DropdownMenu.RadioGroup>
-              <MenuSeparator />
-              <MenuItem label="Record a shortcut…" onSelect={() => (recording = true)} />
-            </DropdownMenu.Content>
-          </DropdownMenu.Root>
-        {/snippet}
-      </Row>
-      <Row kind="control" label="Start / stop a session">
-        {#snippet trailing()}
-          {@render useAnyway('session')}
-          <ShortcutField bind:value={session.get, session.set} conflict={refusals.session?.message} />
-        {/snippet}
-      </Row>
-      <Row kind="control" label="Take a screenshot" caption="Joins the current session or starts one">
-        {#snippet trailing()}
-          {@render useAnyway('screenshot')}
-          <ShortcutField bind:value={screenshot.get, screenshot.set} conflict={refusals.screenshot?.message} />
-        {/snippet}
-      </Row>
+      {#each EDITABLE as { action, label, caption, presets } (action)}
+        {@const keys = field(action)}
+        <Row kind="control" {label} {caption}>
+          {#snippet trailing()}
+            {@render useAnyway(action)}
+            <ShortcutField
+              bind:value={keys.get, keys.set}
+              bind:recording={() => recording === action, (on) => (recording = on ? action : null)}
+              conflict={refusals[action]?.message}
+            />
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger>
+                {#snippet child({ props })}
+                  <Button {...props} size={28} aria-label="Change {label}"><ChevronDown size={12} aria-hidden="true" /></Button>
+                {/snippet}
+              </DropdownMenu.Trigger>
+              <DropdownMenu.Content>
+                <DropdownMenu.RadioGroup value={shortcuts.keys(action)} onValueChange={(next) => save(action, next)}>
+                  {#each presets as preset (preset.keys)}<MenuItem value={preset.keys} label={preset.label} />{/each}
+                </DropdownMenu.RadioGroup>
+                <MenuSeparator />
+                <MenuItem label="Record a shortcut…" onSelect={() => (recording = action)} />
+              </DropdownMenu.Content>
+            </DropdownMenu.Root>
+          {/snippet}
+        </Row>
+      {/each}
       <Row kind="control" label="Draw (hold)" caption="Let go to click and scroll normally">
         {#snippet trailing()}
           {#if refusals.drawKey}<span class="note">{refusals.drawKey.message}</span>{/if}
@@ -122,7 +134,7 @@
     </Group>
   </Section>
 
-  <Section title="In SpeakType">
+  <Section title="In SpeakType" note="Standard Mac shortcuts. They work while SpeakType is in front or its menu is open, and can't be changed.">
     <Group>
       {#each FIXED as { label, caption, keys } (label)}
         <Row kind="control" label={label} caption={caption}>

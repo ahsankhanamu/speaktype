@@ -1,8 +1,8 @@
 <script lang="ts">
   import { onMount, tick, type Component } from 'svelte';
-  import { Mic } from '@lucide/svelte';
   import { getVersion } from '@tauri-apps/api/app';
-  import { Alert, LayerRoot, SearchField, Sidebar, SidebarGroup, SidebarItem, Toast } from '@speaktype/ui';
+  import { Mic } from '@lucide/svelte';
+  import { Alert, LayerRoot, MicGlyph, SearchField, Sidebar, SidebarGroup, SidebarItem, Toast } from '@speaktype/ui';
   import { liveQuery } from '../lib/data';
   import { applyTheme } from '../lib/theme';
   import About from './pages/About.svelte';
@@ -57,7 +57,7 @@
     <Sidebar label="SpeakType">
       <SearchField bind:value={query} />
       <button type="button" class="app" onclick={() => navigate('about')}>
-        <span class="icon"><Mic size={16} strokeWidth={2.2} aria-hidden="true" /></span>
+        <span class="icon"><MicGlyph size={18} /></span>
         <span class="text">
           <strong>SpeakType</strong>
           <span>{version.data ? `Version ${version.data}` : ''}</span>
@@ -103,6 +103,14 @@
 </LayerRoot>
 
 <style>
+  /* Only the page scrolls. On macOS 26 the webview runs under the title bar, so a scrolled
+     document would slide the sidebar beneath the traffic lights. */
+  :global(html),
+  :global(body) {
+    height: 100%;
+    /* clip, not hidden: focus and scrollIntoView can still scroll a hidden box. */
+    overflow: clip;
+  }
   :global(body) {
     margin: 0;
     -webkit-font-smoothing: antialiased;

@@ -52,7 +52,7 @@
       {#snippet child({ props, wrapperProps, open })}
         {#if open}
           <div {...wrapperProps}>
-            <div {...props} class="st-menu" style:min-width="var(--bits-combobox-anchor-width)" transition:pop={{ placement: 'below' }}>
+            <div {...props} class="st-menu" style:max-height="min(360px, var(--bits-floating-available-height, 360px))" style:min-width="var(--bits-combobox-anchor-width)" transition:pop={{ placement: 'below' }}>
               {#each matches as item (item.value)}
                 {@const { before, bold, after } = parts(item.label)}
                 <Combobox.Item value={item.value} label={item.label} class="st-menu-item">

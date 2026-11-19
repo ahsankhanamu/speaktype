@@ -1,12 +1,12 @@
 <script lang="ts">
-  import { Mic } from '@lucide/svelte';
+  import { MicGlyph } from '@speaktype/ui';
   import Page from './Page.svelte';
   import Paper from './Paper.svelte';
 </script>
 
 <Page title="Welcome to SpeakType.">
   {#snippet eyebrow()}
-    <span class="tile"><Mic size={22} strokeWidth={2} aria-hidden="true" /></span>
+    <span class="tile"><MicGlyph size={24} /></span>
   {/snippet}
   <p>Talk instead of typing, anywhere on your Mac. When words aren't enough, draw on your screen while you explain.</p>
   <p class="caption note">Takes about a minute. Everything stays on this Mac.</p>

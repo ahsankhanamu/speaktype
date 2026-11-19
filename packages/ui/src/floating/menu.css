@@ -21,12 +21,12 @@
   padding: 5px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--st-popover);
   box-shadow: var(--st-elevation-popover);
   color: var(--st-text);
   font-family: var(--st-font-family);
-  font-size: var(--st-font-info);
+  font-size: var(--st-font-body);
   outline: none;
   z-index: var(--st-z-popover);
 }
@@ -34,11 +34,12 @@
 .st-menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  /* macOS menu metrics: 24 pt rows, a narrow check column, text close to it. */
+  gap: 6px;
   box-sizing: border-box;
-  min-height: var(--menu-item-height, 40px);
-  padding: 0 10px;
-  border-radius: 8px;
+  min-height: var(--menu-item-height, 24px);
+  padding: 0 8px;
+  border-radius: 5px;
   color: var(--st-text);
   user-select: none;
   outline: none;
@@ -59,7 +60,7 @@
 
 .st-menu-separator {
   height: 0.5px;
-  margin: 5px 10px;
+  margin: 5px 8px;
   background: var(--st-separator);
 }
 

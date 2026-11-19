@@ -42,3 +42,4 @@ export { default as ThumbnailPicker } from './containers/ThumbnailPicker.svelte'
 export { default as SwatchRow } from './containers/SwatchRow.svelte';
 export { default as ProBadge } from './containers/ProBadge.svelte';
 export { default as Halo } from './containers/Halo.svelte';
+export { default as MicGlyph } from './icons/MicGlyph.svelte';

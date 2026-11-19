@@ -1,11 +1,11 @@
 <script lang="ts">
-  import { Mic } from '@lucide/svelte';
+  import { MicGlyph } from '@speaktype/ui';
 
   let { px }: { px: number } = $props();
 </script>
 
 <span class="desk">
-  <span class="mic" style:width="{px}px" style:height="{px}px"><Mic size={px * 0.42} strokeWidth={2} aria-hidden="true" /></span>
+  <span class="mic" style:width="{px}px" style:height="{px}px"><MicGlyph size={px * 0.46} /></span>
 </span>
 
 <style>

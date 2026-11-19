@@ -557,6 +557,48 @@ fn reap_orphan() {
     remove_pidfile_at(&path);
 }
 
+/// The processes `parent` started (the watcher's one child is the server).
+#[cfg(target_os = "macos")]
+fn child_pids(parent: u32) -> Vec<u32> {
+    let mut pids = [0 as libc::pid_t; 16];
+    let size = std::mem::size_of_val(&pids) as libc::c_int;
+    let bytes =
+        unsafe { libc::proc_listchildpids(parent as libc::pid_t, pids.as_mut_ptr().cast(), size) };
+    let count = (bytes.max(0) as usize / std::mem::size_of::<libc::pid_t>()).min(pids.len());
+    pids[..count]
+        .iter()
+        .filter(|&&pid| pid > 0)
+        .map(|&pid| pid as u32)
+        .collect()
+}
+
+#[cfg(not(target_os = "macos"))]
+fn child_pids(_parent: u32) -> Vec<u32> {
+    Vec::new()
+}
+
+/// How long the server gets to exit on SIGTERM before it is killed.
+const STOP_GRACE: Duration = Duration::from_secs(2);
+
+/// Stop the watcher and the server it runs. SIGTERM lets the watcher's trap stop
+/// the server; SIGKILL would skip the trap and leave the server running with no
+/// parent, so the server is waited for and killed directly if it lingers.
+fn stop_watched(watcher: u32) {
+    let servers = child_pids(watcher);
+    unsafe { libc::kill(watcher as i32, libc::SIGTERM) };
+    let alive = |pid: u32| process_spawned(pid).is_some();
+    let deadline = Instant::now() + STOP_GRACE;
+    while servers.iter().any(|&pid| alive(pid)) && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(25));
+    }
+    for &pid in servers.iter().filter(|&&pid| alive(pid)) {
+        logging::log_message(&format!(
+            "[server] Server {pid} ignored SIGTERM; killing it"
+        ));
+        unsafe { libc::kill(pid as i32, libc::SIGKILL) };
+    }
+}
+
 fn process_spawned(pid: u32) -> Option<u64> {
     if unsafe { libc::kill(pid as i32, 0) } != 0 {
         return None;
@@ -603,6 +645,7 @@ pub fn stop_server() {
     if let Ok(mut proc) = SERVER_PROCESS.lock() {
         if let Some(child) = proc.take() {
             logging::log_message("[server] Stopping sidecar server");
+            stop_watched(child.pid());
             let _ = child.kill();
             logging::log_message("[server] Server stopped");
         }
@@ -623,6 +666,7 @@ mod tests {
             start_time: 1_760_000_000,
         };
         let path = crate::paths::config_dir().join("round-trip.pid");
+        std::fs::create_dir_all(crate::paths::config_dir()).expect("test config dir");
         write_pidfile_at(&path, &recorded);
         assert_eq!(read_pidfile_at(&path), Some(recorded));
         remove_pidfile_at(&path);
@@ -708,6 +752,46 @@ mod tests {
             .parse()
             .expect("pid");
         assert_eq!(process_spawned(server_pid), None, "server survived the app");
+    }
+
+    /// Quitting stops the server itself, not just the watcher shell around it.
+    #[test]
+    fn stopping_the_watcher_stops_the_server_it_runs() {
+        let dir = fake_server("stop", "sleep 30");
+        let server = dir.join("whisper-server");
+        let pidfile = dir.join("server.pid");
+        std::fs::write(
+            &server,
+            format!(
+                "#!/bin/sh\necho $$ > '{}'\nexec sleep 30\n",
+                pidfile.display()
+            ),
+        )
+        .expect("fake server body");
+        let (program, argv) = watch_command(&server, std::process::id(), &["-m".to_string()]);
+        let mut watcher = std::process::Command::new(program)
+            .args(argv)
+            .spawn()
+            .expect("watcher");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let server_pid = loop {
+            if let Some(pid) = std::fs::read_to_string(&pidfile)
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+            {
+                break pid;
+            }
+            assert!(Instant::now() < deadline, "the fake server never started");
+            std::thread::sleep(Duration::from_millis(20));
+        };
+        stop_watched(watcher.id());
+        watcher.wait().expect("reap the watcher");
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(
+            process_spawned(server_pid),
+            None,
+            "the server outlived stop_server"
+        );
     }
 
     /// What a SIGTERM/SIGINT/SIGHUP handler runs before exiting: the server is

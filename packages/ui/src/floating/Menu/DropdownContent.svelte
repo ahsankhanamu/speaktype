@@ -12,7 +12,7 @@
     {#snippet child({ props, wrapperProps, open })}
       {#if open}
         <div {...wrapperProps}>
-          <div {...props} class="st-menu" style="--menu-item-height: 30px" transition:pop>
+          <div {...props} class="st-menu" transition:pop>
             {@render children()}
           </div>
         </div>
