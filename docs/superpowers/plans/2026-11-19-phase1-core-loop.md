@@ -89,7 +89,9 @@ All of it is built from `@speaktype/ui`, `lib/data` and `bindings.ts`, with no l
 - **`preparing`** is emitted when the hotkey fires while the model server is loading. That is the "Getting ready…" state.
 - **Commands:**
   - `paste_last() -> Result<(), IpcError>`: re-pastes the newest history text.
-  - `mic_levels_start() -> Result<(), IpcError>` and `mic_levels_stop()`.
+  - `mic_levels_start() -> Result<(), IpcError>` and `mic_levels_stop()`. Each `mic_levels_start` call resets the 30 s auto-stop timer (the picker re-calls it every 20 s while open).
+  - `delete_model(id: String) -> Result<(), IpcError>`: removes the model file; refuses the active model (`IpcError{kind:'modelInUse'}`).
+  - Download retry message copy becomes the spec's "Connection lost. Retrying in 8 s (2 of 5)" (`downloader.rs`/`download_queue.rs`).
   - While started, the event `MicLevels { levels: Vec<{ device: String, level: f32 /* 0..1 RMS, smoothed */ }> }` fires every 50 ms, one short-lived input stream per device. They stop automatically after 30 s with no restart.
 - **History** entries gain `outcome: "pasted" | "copied" | "pasteFailed"`, with `None` for old entries.
 - **Esc during recording** cancels. A temporary global Esc shortcut is registered on `recording` and removed on any other phase.
@@ -121,13 +123,14 @@ All of it is built from `@speaktype/ui`, `lib/data` and `bindings.ts`, with no l
 
 ### Task 2 (P1-R2): dictation state, notices, mic levels, Esc, fallback, outcome
 
-**Files:** `notice.rs` (new), `commands.rs`, `audio.rs`, `paste.rs`, `history.rs`, `hotkey.rs`, `bindings.ts`.
+**Files:** `notice.rs` (new), `commands.rs`, `audio.rs`, `paste.rs`, `history.rs`, `hotkey.rs`, `downloader.rs`/`download_queue.rs` (retry copy only), `bindings.ts`.
 
 - [ ] **Failing tests:**
   - `notice_copy_matches_spec`: each kind maps to its exact message.
   - `dictation_emits_preparing_then_recording_when_server_loading`: inject a fake server-ready signal. The phases come out as `preparing → recording`, and the press is not lost.
   - `paste_failure_records_outcome_and_notice`: `paste_text` returning false gives `outcome = pasteFailed` and the notice `copiedNotPasted`.
   - `mic_levels_auto_stop_after_30s`: with tokio paused time, no stream remains after 30 s.
+  - `mic_levels_start_resets_auto_stop`, `delete_model_refuses_active`, `retry_message_matches_spec_copy`.
   - `esc_shortcut_registered_only_while_recording`: registration calls are recorded for the phase sequence idle → recording → transcribing.
 - [ ] **Implement.** Per-device streams reuse the `LevelMonitor` code in `audio.rs:196-283`. Fallback rules:
   - On a stream error mid-recording, re-open the default built-in input and continue appending samples.

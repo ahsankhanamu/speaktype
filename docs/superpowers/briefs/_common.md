@@ -7,6 +7,7 @@
 
 **Fresh worktree setup** (run once, from the worktree root; both artifacts are git-ignored):
 ```bash
+export CARGO_TARGET_DIR=/Users/ahsan/Desktop/speaktype-ws/.target   # shared build output: one ~10 GB tree for all worktrees (disk is tight); keep it exported for every cargo/make call
 npm ci
 npm --prefix apps/widget/webui run build
 mkdir -p apps/widget/src-tauri/binaries && cp /Users/ahsan/Desktop/speaktype/apps/widget/src-tauri/binaries/* apps/widget/src-tauri/binaries/
