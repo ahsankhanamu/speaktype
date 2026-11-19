@@ -29,6 +29,7 @@ mod segmented_download;
 mod server;
 mod session_cmds;
 mod settings;
+mod shortcuts;
 mod stt_cmds;
 #[allow(dead_code)]
 mod templates;
@@ -49,6 +50,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Emitter, Listener, Manager, WindowEvent,
 };
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn object_setClass(
@@ -121,13 +123,18 @@ pub fn run() {
                             has_acc,
                         ) {
                             let state = app_handle.state::<commands::AppState>();
-                            if let Ok(mut live) = state.app_hotkey.lock() {
-                                hotkey::rearm_after_accessibility_grant(
-                                    &app_handle,
-                                    &mut live,
-                                    state.is_recording.clone(),
-                                );
-                            }
+                            let keys = state
+                                .settings
+                                .lock()
+                                .map(|s| s.shortcut(shortcuts::ShortcutAction::Dictation))
+                                .unwrap_or_default();
+                            hotkey::rearm_dictation(
+                                &hotkey::AppShortcuts {
+                                    app: app_handle.clone(),
+                                    is_recording: state.is_recording.clone(),
+                                },
+                                &keys,
+                            );
                             logging::log_message(
                                 "[permissions] Accessibility granted — hotkey re-armed",
                             );
@@ -303,10 +310,7 @@ pub fn run() {
                 last_active_window,
                 chunk_session: Arc::new(Mutex::new(None)),
                 is_pasting: Arc::new(AtomicBool::new(false)),
-                app_hotkey: Arc::new(Mutex::new(hotkey::AppHotkey {
-                    hotkey: Some(settings.hotkey.clone()),
-                    shortcut: None,
-                })),
+                shortcuts: Arc::new(Mutex::new(shortcuts::LiveShortcuts::default())),
             };
 
             app.manage(app_state);
@@ -407,16 +411,27 @@ pub fn run() {
             let is_rec_for_shortcut = is_recording.clone();
 
             {
+                let platform = hotkey::AppShortcuts {
+                    app: app.handle().clone(),
+                    is_recording: is_rec_for_shortcut,
+                };
                 let state = app.state::<AppState>();
-                let mut live = state.app_hotkey.lock().map_err(|e| e.to_string())?;
-                hotkey::arm_initial_hotkey(app.handle(), &mut live, is_rec_for_shortcut);
+                let mut live = state.shortcuts.lock().map_err(|e| e.to_string())?;
+                for (action, keys) in &settings.shortcuts {
+                    if !shortcuts::ShortcutsPlatform::arm(&platform, *action, keys) {
+                        logging::log_message(&format!(
+                            "[shortcut] Could not arm {:?} {:?} at startup",
+                            action, keys
+                        ));
+                        continue;
+                    }
+                    if !shortcuts::uses_modifier_tap(*action, keys) {
+                        live.set_armed(*action, keys);
+                    }
+                }
             }
 
             clipboard::spawn_clipboard_monitor(app.handle().clone());
-            let _ = clipboard::register_scribe_screenshot_hotkey(
-                app.handle(),
-                &settings.scribe_screenshot_hotkey,
-            );
 
             let record_item =
                 MenuItemBuilder::with_id("record", "Start Recording").build(app)?;
@@ -525,6 +540,11 @@ pub fn run() {
         .run(|app, event| {
             match event {
                 tauri::RunEvent::Exit => {
+                    // The one app-wide wipe: every registration is about to die
+                    // with the process, and a partial registry cannot survive.
+                    if let Err(e) = app.global_shortcut().unregister_all() {
+                        logging::log_message(&format!("[shortcut] Exit wipe failed: {e}"));
+                    }
                     commands::stop_mic_test_for_app(app, "app_exit");
                     commands::stop_mic_levels(app);
                     server::stop_server();
@@ -593,7 +613,9 @@ mod ipc_surface {
         "get_settings",
         "save_settings",
         "set_launch_at_login",
-        "update_hotkey",
+        "shortcuts_get",
+        "shortcut_set",
+        "shortcuts_reset",
         "check_server",
         "get_server_status",
         "stop_whisper_server",
@@ -618,6 +640,10 @@ mod ipc_surface {
         "clear_history",
         "get_history_audio",
         "reprocess_history_entry",
+        "paste_last",
+        "delete_model",
+        "mic_levels_start",
+        "mic_levels_stop",
         "get_debug_sessions",
         "clear_debug_sessions",
         "delete_debug_session",
@@ -669,7 +695,9 @@ mod ipc_surface {
         "get_settings",
         "save_settings",
         "set_launch_at_login",
-        "update_hotkey",
+        "shortcuts_get",
+        "shortcut_set",
+        "shortcuts_reset",
         "check_server",
         "get_server_status",
         "stop_whisper_server",

@@ -112,9 +112,9 @@
             label="Draw (hold)"
             bind:value={() => shortcuts.keys('drawKey'), (next) => save('drawKey', next)}
             items={[
-              { value: 'RightOption', label: 'Right ⌥' },
-              { value: 'RightCommand', label: 'Right ⌘' },
-              { value: 'Fn', label: 'Fn' },
+              { value: 'right_option', label: 'Right ⌥' },
+              { value: 'right_command', label: 'Right ⌘' },
+              { value: 'fn', label: 'Fn' },
             ]}
           />
         {/snippet}

@@ -44,7 +44,18 @@ export const commands = {
 	getSettings: (options?: InvokeOptions) => __TAURI_INVOKE<Settings>("get_settings", undefined, options),
 	saveSettings: (settings: Settings, options?: InvokeOptions) => __TAURI_INVOKE<null>("save_settings", { settings }, options),
 	setLaunchAtLogin: (on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("set_launch_at_login", { on }, options),
-	updateHotkey: (hotkey: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("update_hotkey", { hotkey }, options),
+	/**  The registry's rows for Settings → Keyboard. */
+	shortcutsGet: (options?: InvokeOptions) => __TAURI_INVOKE<ShortcutBinding[]>("shortcuts_get", undefined, options),
+	/**
+	 *  Change one shortcut: validate, re-register only that action, then persist
+	 *  and tell every window. A refused change leaves the saved value alone.
+	 */
+	shortcutSet: (action: ShortcutAction, keys: string, force: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("shortcut_set", { action, keys, force }, options),
+	/**
+	 *  Back to the spec's defaults, keeping any key another action holds; returns
+	 *  the rows and re-registers every action that changed.
+	 */
+	shortcutsReset: (options?: InvokeOptions) => __TAURI_INVOKE<ShortcutBinding[]>("shortcuts_reset", undefined, options),
 	checkServer: (apiUrl: string, options?: InvokeOptions) => __TAURI_INVOKE<Value>("check_server", { apiUrl }, options),
 	getServerStatus: (options?: InvokeOptions) => __TAURI_INVOKE<Value>("get_server_status", undefined, options),
 	stopWhisperServer: (options?: InvokeOptions) => __TAURI_INVOKE<Value>("stop_whisper_server", undefined, options),
@@ -161,6 +172,7 @@ export const events = {
 	sessionState: makeEvent<SessionState, SessionState>("session-state"),
 	sessionsChanged: makeEvent<SessionsChanged, SessionsChanged>("sessions-changed"),
 	settingsChanged: makeEvent<SettingsChanged, SettingsChanged>("settings-changed"),
+	shortcutsChanged: makeEvent<ShortcutsChanged, ShortcutsChanged>("shortcuts-changed"),
 	widgetCornerChanged: makeEvent<WidgetCornerChanged, WidgetCornerChanged>("widget-corner-changed"),
 };
 
@@ -386,7 +398,6 @@ export type SessionSummary = {
 export type SessionsChanged = Record<string, never>;
 
 export type Settings = {
-	hotkey: string,
 	api_url: string,
 	model: string,
 	language: string,
@@ -428,8 +439,11 @@ export type Settings = {
 	 *  input (which jumps around as Bluetooth/iPhone/mic connect and disconnect).
 	 */
 	input_device?: string | null,
-	/**  Scribe: hotkey that triggers a screenshot capture into the active session. */
-	scribe_screenshot_hotkey?: string,
+	/**
+	 *  The registry's values, migrated from the old `hotkey`,
+	 *  `scribe_screenshot_hotkey`, `session_hotkey` and `draw_key`.
+	 */
+	shortcuts?: Partial<{ [key in ShortcutAction]: string }>,
 	/**
 	 *  Scribe: master mode switch. When enabled, dictation, clipboard copies,
 	 *  and screenshots are captured into an auto-started session. The toggle is
@@ -477,8 +491,6 @@ export type Settings = {
 	ink_color?: string,
 	/**  "thin" | "regular" | "bold" */
 	ink_thickness?: string,
-	/**  "right_option" | "right_command" | "fn" */
-	draw_key?: string,
 	/**  Always-on drawing; Phase 2 reads it. */
 	draw_anytime?: boolean,
 	/**  Kept history entries; None = forever. */
@@ -486,8 +498,6 @@ export type Settings = {
 	launch_at_login?: boolean,
 	/**  Last onboarding step reached, for resume. */
 	onboarding_step?: number,
-	/**  Hotkey that starts a Show & Tell session. */
-	session_hotkey?: string,
 	/**  Show the latest transcribed line under the HUD during a session. */
 	live_captions?: boolean,
 	/**  Keep a session's audio on disk. */
@@ -504,6 +514,21 @@ export type Settings = {
  *  settings window, the widget's context menus). Windows refetch on it.
  */
 export type SettingsChanged = Record<string, never>;
+
+/**
+ *  The four shortcuts people can change (spec §5). Serialized camelCase so the
+ *  settings map keys and the IPC values read `drawKey`.
+ */
+export type ShortcutAction = "dictation" | "session" | "screenshot" | "drawKey";
+
+/**  One row of Settings → Keyboard, in the stored spelling (`Option+Super+K`). */
+export type ShortcutBinding = {
+	action: ShortcutAction,
+	keys: string,
+};
+
+/**  Settings → Keyboard refetches its rows on this. */
+export type ShortcutsChanged = Record<string, never>;
 
 /**  What `stt_test` reports back. */
 export type SttTestResult = {

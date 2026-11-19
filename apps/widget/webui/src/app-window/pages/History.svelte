@@ -33,7 +33,7 @@
     if (!selected && entries.length) selectedKey = entries[0].key;
   });
 
-  const hotkey = $derived(formatShortcut((settings.data?.hotkey ?? 'Super+Control').split('+')));
+  const hotkey = $derived(formatShortcut((settings.data?.shortcuts?.dictation ?? 'Super+Control').split('+')));
 </script>
 
 {#if loaded && !items.length}

@@ -3,7 +3,7 @@
     "model": "base",
     "language": "auto",
     "input_device": "MacBook Pro Microphone",
-    "hotkey": "Super+Control",
+    "shortcuts": { "dictation": "Super+Control", "session": "Option+Super+K", "screenshot": "Option+Super+S", "drawKey": "right_option" },
     "onboarding_step": 1
   },
   "get_onboarding_status": {

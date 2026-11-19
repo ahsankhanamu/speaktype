@@ -47,7 +47,6 @@ export const logFrontend = commands.logFrontend;
 export const getSettings = commands.getSettings as unknown as () => Promise<Settings>;
 export const saveSettings = commands.saveSettings as unknown as (settings: Settings) =>
   Promise<void>;
-export const updateHotkey = commands.updateHotkey;
 
 // Server
 export const checkServer = commands.checkServer as unknown as (

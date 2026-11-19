@@ -1,10 +1,12 @@
 use serde::{Deserialize, Serialize};
 use speaktype_stt::{ProviderConfig, SecretStore};
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 use tauri_specta::Event;
 
 use crate::session_cmds::IpcError;
+use crate::shortcuts::{self, ShortcutAction};
 
 /// The whisper-server address the app writes on every start; an `api_url`
 /// still holding it means On this Mac.
@@ -23,7 +25,6 @@ pub(crate) const LLM_KEY_ACCOUNT: &str = "llm.api_key";
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct Settings {
-    pub hotkey: String,
     pub api_url: String,
     pub model: String,
     pub language: String,
@@ -73,9 +74,10 @@ pub struct Settings {
     /// input (which jumps around as Bluetooth/iPhone/mic connect and disconnect).
     #[serde(default)]
     pub input_device: Option<String>,
-    /// Scribe: hotkey that triggers a screenshot capture into the active session.
-    #[serde(default = "default_scribe_screenshot_hotkey")]
-    pub scribe_screenshot_hotkey: String,
+    /// The registry's values, migrated from the old `hotkey`,
+    /// `scribe_screenshot_hotkey`, `session_hotkey` and `draw_key`.
+    #[serde(default)]
+    pub shortcuts: BTreeMap<ShortcutAction, String>,
     /// Scribe: master mode switch. When enabled, dictation, clipboard copies,
     /// and screenshots are captured into an auto-started session. The toggle is
     /// a mode switch — the mic stays the only recording control.
@@ -130,9 +132,6 @@ pub struct Settings {
     /// "thin" | "regular" | "bold"
     #[serde(default = "default_ink_thickness")]
     pub ink_thickness: String,
-    /// "right_option" | "right_command" | "fn"
-    #[serde(default = "default_draw_key")]
-    pub draw_key: String,
     /// Always-on drawing; Phase 2 reads it.
     #[serde(default = "default_draw_anytime")]
     pub draw_anytime: bool,
@@ -144,9 +143,6 @@ pub struct Settings {
     /// Last onboarding step reached, for resume.
     #[serde(default)]
     pub onboarding_step: u8,
-    /// Hotkey that starts a Show & Tell session.
-    #[serde(default = "default_session_hotkey")]
-    pub session_hotkey: String,
     /// Show the latest transcribed line under the HUD during a session.
     #[serde(default = "default_live_captions")]
     pub live_captions: bool,
@@ -157,11 +153,6 @@ pub struct Settings {
     /// "custom" (where the user last dragged it).
     #[serde(default = "default_widget_corner")]
     pub widget_corner: String,
-}
-
-/// "Option+Super+K", in the app's modifier order (⌥⌘K).
-pub(crate) fn default_session_hotkey() -> String {
-    "Option+Super+K".to_string()
 }
 
 fn default_live_captions() -> bool {
@@ -218,8 +209,49 @@ fn default_quality_compression_ratio() -> f32 {
     2.4
 }
 
-fn default_scribe_screenshot_hotkey() -> String {
+/// A file written before the registry kept these four outside `shortcuts`.
+#[derive(Deserialize)]
+struct LegacyShortcuts {
+    hotkey: String,
+    #[serde(default = "default_legacy_screenshot")]
+    scribe_screenshot_hotkey: String,
+    #[serde(default = "default_session_hotkey")]
+    session_hotkey: String,
+    #[serde(default = "default_legacy_draw_key")]
+    draw_key: String,
+}
+
+fn default_legacy_screenshot() -> String {
     "Super+Option+S".to_string()
+}
+
+fn default_legacy_draw_key() -> String {
+    "right_option".to_string()
+}
+
+/// "Option+Super+K", in the app's modifier order (⌥⌘K).
+pub(crate) fn default_session_hotkey() -> String {
+    "Option+Super+K".to_string()
+}
+
+impl LegacyShortcuts {
+    /// Keyed by the action's camelCase nickname, which is also how serde reads
+    /// the enum in `shortcuts`.
+    fn into_map(self) -> BTreeMap<ShortcutAction, String> {
+        [
+            (ShortcutAction::Dictation, self.hotkey),
+            (ShortcutAction::Session, self.session_hotkey),
+            (ShortcutAction::Screenshot, self.scribe_screenshot_hotkey),
+            (ShortcutAction::DrawKey, self.draw_key),
+        ]
+        .into_iter()
+        .map(|(action, keys)| {
+            let stored = shortcuts::store(action, &keys)
+                .unwrap_or_else(|| action.default_keys().to_string());
+            (action, stored)
+        })
+        .collect()
+    }
 }
 
 fn default_scribe_enabled() -> bool {
@@ -278,10 +310,6 @@ fn default_ink_thickness() -> String {
     "regular".to_string()
 }
 
-fn default_draw_key() -> String {
-    "right_option".to_string()
-}
-
 fn default_draw_anytime() -> bool {
     true
 }
@@ -293,7 +321,6 @@ fn default_history_limit() -> Option<u32> {
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            hotkey: "Super+Control".to_string(),
             api_url: DEFAULT_API_URL.to_string(),
             model: "medium".to_string(),
             language: "auto".to_string(),
@@ -315,7 +342,6 @@ impl Default for Settings {
             quality_avg_logprob: default_quality_avg_logprob(),
             quality_compression_ratio: default_quality_compression_ratio(),
             input_device: None,
-            scribe_screenshot_hotkey: default_scribe_screenshot_hotkey(),
             scribe_enabled: default_scribe_enabled(),
             scribe_clipboard_monitor: default_scribe_clipboard_monitor(),
             scribe_max_screenshots: default_scribe_max_screenshots(),
@@ -333,15 +359,14 @@ impl Default for Settings {
             widget_visibility: default_widget_visibility(),
             ink_color: default_ink_color(),
             ink_thickness: default_ink_thickness(),
-            draw_key: default_draw_key(),
             draw_anytime: default_draw_anytime(),
             history_limit: default_history_limit(),
             launch_at_login: false,
             onboarding_step: 0,
-            session_hotkey: default_session_hotkey(),
             live_captions: default_live_captions(),
             keep_session_audio: false,
             widget_corner: default_widget_corner(),
+            shortcuts: shortcuts::default_bindings(&BTreeMap::new()),
         }
     }
 }
@@ -405,18 +430,6 @@ impl Settings {
         Self::config_dir().join("settings.json")
     }
 
-    /// Map legacy cross-platform modifiers to Super (Command on macOS, Windows key on Windows).
-    pub fn normalize_hotkey(hotkey: &str) -> String {
-        hotkey
-            .split('+')
-            .map(|part| match part.trim() {
-                "CmdOrCtrl" | "CommandOrControl" | "Command" | "Meta" => "Super".to_string(),
-                other => other.to_string(),
-            })
-            .collect::<Vec<_>>()
-            .join("+")
-    }
-
     pub fn load() -> Self {
         let path = Self::config_path();
         let read = if path.exists() {
@@ -438,7 +451,7 @@ impl Settings {
             Some(content) => Ok(Some(content.as_str())),
             None => Ok(None),
         };
-        let (mut settings, mut changed) = match Self::load_from(file, &keychain) {
+        let (mut settings, changed) = match Self::load_from(file, &keychain) {
             Ok(migrated) => migrated,
             Err(e) => {
                 crate::logging::log_message(&format!(
@@ -450,11 +463,6 @@ impl Settings {
             }
         };
 
-        let normalized = Self::normalize_hotkey(&settings.hotkey);
-        if normalized != settings.hotkey {
-            settings.hotkey = normalized;
-            changed = true;
-        }
         if changed {
             if let Err(e) = settings.save() {
                 crate::logging::log_message(&format!("[settings] Failed to save migration: {}", e));
@@ -474,7 +482,8 @@ impl Settings {
         file: Result<Option<&str>, String>,
         secrets: &dyn SecretStore,
     ) -> Result<(Self, bool), String> {
-        let (mut settings, mut changed) = match file? {
+        let json = file?;
+        let (mut settings, mut changed) = match json {
             Some(json) => {
                 let settings: Settings = serde_json::from_str(json).map_err(|e| e.to_string())?;
                 let changed = !file_has_version(json);
@@ -484,6 +493,14 @@ impl Settings {
         };
         if settings.version < 2 {
             settings.version = 2;
+            changed = true;
+        }
+        if settings.shortcuts.is_empty() {
+            if let Some(json) = json {
+                let legacy: LegacyShortcuts =
+                    serde_json::from_str(json).map_err(|e| e.to_string())?;
+                settings.shortcuts = legacy.into_map();
+            }
             changed = true;
         }
         if settings.stt_provider.is_none() {
@@ -518,6 +535,14 @@ impl Settings {
         self.stt_provider.clone().unwrap_or(ProviderConfig::Local {
             model: self.model.clone(),
         })
+    }
+
+    /// The action's key, or its default when the file predates the migration.
+    pub fn shortcut(&self, action: ShortcutAction) -> String {
+        self.shortcuts
+            .get(&action)
+            .cloned()
+            .unwrap_or_else(|| shortcuts::store(action, action.default_keys()).expect("defaults"))
     }
 
     fn resolve_provider(&mut self) {
@@ -692,12 +717,12 @@ mod tests {
         assert_eq!(settings.widget_visibility, "always");
         assert_eq!(settings.ink_color, "orange");
         assert_eq!(settings.ink_thickness, "regular");
-        assert_eq!(settings.draw_key, "right_option");
+        assert_eq!(settings.shortcut(ShortcutAction::DrawKey), "right_option");
         assert!(settings.draw_anytime);
         assert_eq!(settings.history_limit, Some(100));
         assert!(!settings.launch_at_login);
         assert_eq!(settings.onboarding_step, 0);
-        assert_eq!(settings.session_hotkey, "Option+Super+K");
+        assert_eq!(settings.shortcut(ShortcutAction::Session), "Option+Super+K");
         assert!(settings.live_captions);
         assert!(!settings.keep_session_audio);
         assert_eq!(settings.widget_corner, "bottom_right");
@@ -707,7 +732,7 @@ mod tests {
     fn settings_reads_the_session_and_widget_fields_from_an_existing_file() {
         let store = speaktype_stt::MemoryStore::new();
         let json = serde_json::to_string_pretty(&Settings {
-            session_hotkey: "Option+Super+J".to_string(),
+            shortcuts: BTreeMap::from([(ShortcutAction::Session, "Option+Super+J".to_string())]),
             live_captions: false,
             keep_session_audio: true,
             widget_corner: "custom".to_string(),
@@ -717,7 +742,7 @@ mod tests {
 
         let (settings, _) = Settings::load_from(Ok(Some(&json)), &store).expect("parse");
 
-        assert_eq!(settings.session_hotkey, "Option+Super+J");
+        assert_eq!(settings.shortcut(ShortcutAction::Session), "Option+Super+J");
         assert!(!settings.live_captions);
         assert!(settings.keep_session_audio);
         assert_eq!(settings.widget_corner, "custom");
@@ -726,7 +751,7 @@ mod tests {
     #[test]
     fn settings_roundtrip_session_and_widget_fields() {
         let settings = Settings {
-            session_hotkey: "Option+Super+J".to_string(),
+            shortcuts: BTreeMap::from([(ShortcutAction::Session, "Option+Super+J".to_string())]),
             live_captions: false,
             keep_session_audio: true,
             widget_corner: "top_right".to_string(),
@@ -736,7 +761,10 @@ mod tests {
         let parsed: Settings =
             serde_json::from_str(&serde_json::to_string(&settings).unwrap()).expect("deserialize");
 
-        assert_eq!(parsed.session_hotkey, settings.session_hotkey);
+        assert_eq!(
+            parsed.shortcut(ShortcutAction::Session),
+            settings.shortcut(ShortcutAction::Session)
+        );
         assert!(!parsed.live_captions);
         assert!(parsed.keep_session_audio);
         assert_eq!(parsed.widget_corner, "top_right");
@@ -768,7 +796,7 @@ mod tests {
             widget_visibility: "active".to_string(),
             ink_color: "blue".to_string(),
             ink_thickness: "bold".to_string(),
-            draw_key: "fn".to_string(),
+            shortcuts: BTreeMap::from([(ShortcutAction::DrawKey, "fn".to_string())]),
             draw_anytime: false,
             history_limit: None,
             launch_at_login: true,
@@ -785,11 +813,129 @@ mod tests {
         assert_eq!(parsed.widget_visibility, "active");
         assert_eq!(parsed.ink_color, "blue");
         assert_eq!(parsed.ink_thickness, "bold");
-        assert_eq!(parsed.draw_key, "fn");
+        assert_eq!(parsed.shortcut(ShortcutAction::DrawKey), "fn");
         assert!(!parsed.draw_anytime);
         assert_eq!(parsed.history_limit, None);
         assert!(parsed.launch_at_login);
         assert_eq!(parsed.onboarding_step, 3);
+    }
+
+    /// The owner's real file: dictation on F8, and every other shortcut changed
+    /// from its default. Migration must keep all four values as they are.
+    const OWNER_JSON: &str = r#"{
+        "hotkey": "F8",
+        "api_url": "http://127.0.0.1:8002/inference",
+        "model": "small",
+        "language": "auto",
+        "scribe_screenshot_hotkey": "Super+Shift+Digit4",
+        "session_hotkey": "Option+Super+J",
+        "draw_key": "fn"
+    }"#;
+
+    fn shortcuts(settings: &Settings) -> Vec<(ShortcutAction, &str)> {
+        settings
+            .shortcuts
+            .iter()
+            .map(|(action, keys)| (*action, keys.as_str()))
+            .collect()
+    }
+
+    #[test]
+    fn migration_keeps_existing_values() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, changed) = load_legacy(OWNER_JSON, &store);
+        assert!(changed, "a file without a shortcuts map is migrated");
+
+        assert_eq!(
+            shortcuts(&settings),
+            vec![
+                (ShortcutAction::Dictation, "F8"),
+                (ShortcutAction::Session, "Option+Super+J"),
+                (ShortcutAction::Screenshot, "Shift+Super+Digit4"),
+                (ShortcutAction::DrawKey, "fn"),
+            ],
+            "the owner's F8 and every other changed value survive"
+        );
+    }
+
+    #[test]
+    fn a_migrated_file_is_written_without_the_old_fields() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, _) = load_legacy(OWNER_JSON, &store);
+
+        let written = serde_json::to_value(&settings).expect("serialize");
+
+        assert_eq!(written["shortcuts"]["dictation"], "F8");
+        for old in [
+            "hotkey",
+            "scribe_screenshot_hotkey",
+            "session_hotkey",
+            "draw_key",
+        ] {
+            assert!(written.get(old).is_none(), "{old} is gone from the struct");
+        }
+    }
+
+    #[test]
+    fn an_unreadable_legacy_shortcut_falls_back_to_that_actions_default() {
+        let store = speaktype_stt::MemoryStore::new();
+        let json = OWNER_JSON.replace(r#""hotkey": "F8""#, r#""hotkey": "Hyper+F8""#);
+
+        let (settings, _) = load_legacy(&json, &store);
+
+        assert_eq!(
+            settings.shortcut(ShortcutAction::Dictation),
+            "Super+Control",
+            "only the unreadable value resets"
+        );
+        assert_eq!(settings.shortcut(ShortcutAction::Session), "Option+Super+J");
+    }
+
+    #[test]
+    fn a_file_that_already_has_shortcuts_is_not_migrated_again() {
+        let store = speaktype_stt::MemoryStore::new();
+        let json = serde_json::to_string_pretty(&Settings {
+            shortcuts: BTreeMap::from([
+                (ShortcutAction::Dictation, "F9".to_string()),
+                (ShortcutAction::Session, "Option+Super+J".to_string()),
+                (ShortcutAction::Screenshot, "Super+Option+S".to_string()),
+                (ShortcutAction::DrawKey, "fn".to_string()),
+            ]),
+            ..Settings::default()
+        })
+        .expect("serialize");
+
+        let (settings, _) = Settings::load_from(Ok(Some(&json)), &store).expect("parse");
+
+        assert_eq!(settings.shortcuts[&ShortcutAction::Dictation], "F9");
+        assert_eq!(settings.shortcuts[&ShortcutAction::DrawKey], "fn");
+    }
+
+    #[test]
+    fn a_new_install_gets_the_spec_defaults() {
+        assert_eq!(
+            shortcuts(&Settings::default()),
+            vec![
+                (ShortcutAction::Dictation, "Super+Control"),
+                (ShortcutAction::Session, "Option+Super+K"),
+                (ShortcutAction::Screenshot, "Option+Super+S"),
+                (ShortcutAction::DrawKey, "right_option"),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_missing_action_in_the_map_reads_back_its_default() {
+        let settings = Settings {
+            shortcuts: BTreeMap::from([(ShortcutAction::Dictation, "F8".to_string())]),
+            ..Settings::default()
+        };
+
+        assert_eq!(settings.shortcut(ShortcutAction::Dictation), "F8");
+        assert_eq!(
+            settings.shortcut(ShortcutAction::Screenshot),
+            "Option+Super+S"
+        );
     }
 
     #[test]

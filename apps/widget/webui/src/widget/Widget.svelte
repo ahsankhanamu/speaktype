@@ -219,7 +219,7 @@
       <Halo tone={halo}>
         <div class="pill {view.kind}" class:haloed={halo !== null} class:round={view.kind === 'idle' || view.kind === 'pasted'}>
           {#if view.kind === 'idle'}
-            <Tooltip label="Dictate" shortcut={settings.data?.hotkey.split('+')}>
+            <Tooltip label="Dictate" shortcut={(settings.data?.shortcuts?.dictation ?? 'Super+Control').split('+')}>
               {#snippet children(tooltipProps)}
                 <button type="button" {...tooltipProps} class="mic" aria-label="Dictate" onclick={mic}>
                   <Mic size={18} strokeWidth={2} aria-hidden="true" />

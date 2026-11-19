@@ -32,7 +32,9 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::commands::get_settings,
             crate::commands::save_settings,
             crate::commands::set_launch_at_login,
-            crate::commands::update_hotkey,
+            crate::commands::shortcuts_get,
+            crate::commands::shortcut_set,
+            crate::commands::shortcuts_reset,
             crate::commands::check_server,
             crate::commands::get_server_status,
             crate::commands::stop_whisper_server,
@@ -107,6 +109,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::history::HistoryChanged,
             crate::widget_cmds::MicDevicesChanged,
             crate::widget_cmds::WidgetCornerChanged,
+            crate::shortcuts::ShortcutsChanged,
         ])
 }
 

@@ -1,6 +1,6 @@
 {
   "get_settings": {
-    "hotkey": "Super+Control",
+    "shortcuts": { "dictation": "Super+Control", "session": "Option+Super+K", "screenshot": "Option+Super+S", "drawKey": "right_option" },
     "api_url": "http://127.0.0.1:8002/inference",
     "model": "small",
     "language": "auto",
@@ -18,7 +18,6 @@
     "quality_avg_logprob": -1,
     "quality_compression_ratio": 2.4,
     "input_device": "MacBook Pro Microphone",
-    "scribe_screenshot_hotkey": "Super+Option+S",
     "scribe_clipboard_monitor": true,
     "stt_provider": {
       "kind": "cloud",
@@ -32,7 +31,6 @@
     "widget_visibility": "always",
     "ink_color": "orange",
     "ink_thickness": "regular",
-    "draw_key": "right_option",
     "draw_anytime": true,
     "history_limit": 100,
     "launch_at_login": false,

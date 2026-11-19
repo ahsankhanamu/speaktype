@@ -83,7 +83,7 @@
             {:else if current === 3}
               <SpeechModel {models} />
             {:else}
-              <TryIt hotkey={settings.data?.hotkey ?? ''} />
+              <TryIt hotkey={settings.data?.shortcuts?.dictation ?? ''} />
             {/if}
           </div>
         {/key}

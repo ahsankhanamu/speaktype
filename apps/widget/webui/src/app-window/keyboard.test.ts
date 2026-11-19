@@ -13,7 +13,7 @@ const DEFAULTS = [
   { action: 'dictation', keys: 'F8' },
   { action: 'session', keys: 'Option+Super+K' },
   { action: 'screenshot', keys: 'Option+Super+S' },
-  { action: 'drawKey', keys: 'RightOption' },
+  { action: 'drawKey', keys: 'right_option' },
 ];
 
 let bus: FakeBus;
@@ -128,7 +128,7 @@ describe('Settings → Keyboard', () => {
     });
     expect(items.map((el) => el.textContent?.trim())).toEqual(['Right ⌥', 'Right ⌘', 'Fn']);
     (items[1] as HTMLElement).click();
-    await vi.waitFor(() => expect(api.shortcutSet).toHaveBeenCalledWith('drawKey', 'RightCommand', false));
+    await vi.waitFor(() => expect(api.shortcutSet).toHaveBeenCalledWith('drawKey', 'right_command', false));
   });
 
   it('Restore defaults asks first, and resets only after Restore', async () => {

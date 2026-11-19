@@ -35,7 +35,7 @@ describe('ipc.ts command surface', () => {
     await ipc.requestMicrophoneAccess();
     await ipc.getSettings();
     await ipc.saveSettings({} as import('./ipc').Settings);
-    await ipc.updateHotkey('Super+Control');
+    await ipc.commands.shortcutSet('dictation', 'F8', false);
     await ipc.checkServer('http://127.0.0.1:8002/inference');
     await ipc.getServerStatus();
     await ipc.stopWhisperServer();
@@ -85,7 +85,7 @@ describe('ipc.ts command surface', () => {
       'request_microphone_access',
       'get_settings',
       'save_settings',
-      'update_hotkey',
+      'shortcut_set',
       'check_server',
       'get_server_status',
       'stop_whisper_server',
@@ -136,8 +136,8 @@ describe('ipc.ts command surface', () => {
     await ipc.checkServer('http://127.0.0.1:8002/inference');
     expect(invoke.mock.calls[3][1]).toEqual({ apiUrl: 'http://127.0.0.1:8002/inference' });
 
-    await ipc.updateHotkey('Super+Control');
-    expect(invoke.mock.calls[4][1]).toEqual({ hotkey: 'Super+Control' });
+    await ipc.commands.shortcutSet('dictation', 'F8', false);
+    expect(invoke.mock.calls[4][1]).toEqual({ action: 'dictation', keys: 'F8', force: false });
 
     await ipc.openSystemPane('com.apple.preference.security');
     expect(invoke.mock.calls[5][1]).toEqual({ pane: 'com.apple.preference.security' });

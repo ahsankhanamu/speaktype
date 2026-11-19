@@ -9,6 +9,7 @@ use crate::logging::log_message;
 use crate::paste::{self, WindowInfo};
 use crate::session_cmds::IpcError;
 use crate::settings::Settings;
+use crate::shortcuts::{self, ShortcutAction, ShortcutBinding, ShortcutsChanged};
 use crate::tones::{self, Tone};
 use crate::tray::{self, TrayState};
 use serde_json::json;
@@ -54,8 +55,8 @@ pub struct AppState {
     pub last_active_window: Arc<Mutex<Option<WindowInfo>>>,
     pub chunk_session: Arc<Mutex<Option<ChunkSession<tauri::Wry>>>>,
     pub is_pasting: Arc<AtomicBool>,
-    /// The dictation hotkey currently armed, so a change touches only it.
-    pub app_hotkey: Arc<Mutex<crate::hotkey::AppHotkey>>,
+    /// Each action's live registration, so a change touches only its own.
+    pub shortcuts: Arc<Mutex<shortcuts::LiveShortcuts>>,
 }
 
 /// Kept in memory because *Save recording audio* may be off: the newest
@@ -896,7 +897,7 @@ pub async fn finish_onboarding(app: AppHandle, state: State<'_, AppState>) -> Re
     }
     let hotkey = {
         let s = state.settings.lock().map_err(|e| e.to_string())?;
-        s.hotkey.clone()
+        s.shortcut(ShortcutAction::Dictation)
     };
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -970,26 +971,11 @@ pub fn save_settings(
     state: State<'_, AppState>,
     mut settings: Settings,
 ) -> Result<(), String> {
-    settings.hotkey = Settings::normalize_hotkey(&settings.hotkey);
-
     settings.theme = match settings.theme.as_str() {
         "light" | "dark" | "auto" => settings.theme.clone(),
         _ => "auto".to_string(),
     };
-
-    let old_hotkey = {
-        let current = state.settings.lock().map_err(|e| e.to_string())?;
-        current.hotkey.clone()
-    };
-    let old_scribe_hotkey = {
-        let current = state.settings.lock().map_err(|e| e.to_string())?;
-        current.scribe_screenshot_hotkey.clone()
-    };
     let theme = settings.theme.clone();
-    let hotkey_changed = settings.hotkey != old_hotkey;
-    let new_hotkey = settings.hotkey.clone();
-    let scribe_hotkey_changed = settings.scribe_screenshot_hotkey != old_scribe_hotkey;
-    let new_scribe_hotkey = settings.scribe_screenshot_hotkey.clone();
 
     settings.save()?;
     {
@@ -999,38 +985,96 @@ pub fn save_settings(
     crate::settings::emit_settings_changed(&app);
 
     let _ = app.emit("theme:changed", json!({ "theme": theme }));
-
-    if hotkey_changed {
-        let ok = arm_dictation_hotkey(&app, state.inner(), new_hotkey.clone());
-        let _ = app.emit(
-            "hotkey:registered",
-            json!({ "hotkey": new_hotkey, "success": ok }),
-        );
-    } else if scribe_hotkey_changed {
-        if let Err(e) =
-            crate::clipboard::register_scribe_screenshot_hotkey(&app, &new_scribe_hotkey)
-        {
-            log_message(&format!("[scribe] Screenshot hotkey update failed: {}", e));
-        }
-    }
-
     Ok(())
 }
 
-/// Arm `hotkey`, touching only the previous dictation shortcut.
-fn arm_dictation_hotkey(app: &AppHandle, state: &AppState, hotkey: String) -> bool {
-    match state.app_hotkey.lock() {
-        Ok(mut live) => crate::hotkey::reregister_app_hotkey(
-            app,
-            &mut live,
-            &hotkey,
-            state.is_recording.clone(),
-        ),
-        Err(e) => {
-            log_message(&format!("[shortcut] Hotkey state poisoned: {}", e));
-            false
+/// The registry's rows for Settings → Keyboard.
+#[tauri::command]
+#[specta::specta]
+pub fn shortcuts_get(state: State<'_, AppState>) -> Result<Vec<ShortcutBinding>, String> {
+    let settings = state.settings.lock().map_err(|e| e.to_string())?;
+    Ok(shortcuts::bindings(&settings.shortcuts))
+}
+
+/// Change one shortcut: validate, re-register only that action, then persist
+/// and tell every window. A refused change leaves the saved value alone.
+#[tauri::command]
+#[specta::specta]
+pub fn shortcut_set(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    action: ShortcutAction,
+    keys: String,
+    force: bool,
+) -> Result<(), IpcError> {
+    let platform = crate::hotkey::AppShortcuts {
+        app: app.clone(),
+        is_recording: state.is_recording.clone(),
+    };
+    let mut live = state.shortcuts.lock().map_err(|e| storage(e.to_string()))?;
+    let mut settings = state.settings.lock().map_err(|e| storage(e.to_string()))?;
+    let stored = shortcuts::apply(
+        &platform,
+        &mut live,
+        &settings.shortcuts,
+        action,
+        &keys,
+        force,
+    )?;
+    settings.shortcuts.insert(action, stored);
+    settings.save().map_err(storage)?;
+    drop(settings);
+    drop(live);
+    crate::settings::emit_settings_changed(&app);
+    ShortcutsChanged {}
+        .emit(&app)
+        .map_err(|e| storage(e.to_string()))?;
+    Ok(())
+}
+
+/// Back to the spec's defaults, keeping any key another action holds; returns
+/// the rows and re-registers every action that changed.
+#[tauri::command]
+#[specta::specta]
+pub fn shortcuts_reset(
+    app: AppHandle,
+    state: State<'_, AppState>,
+) -> Result<Vec<ShortcutBinding>, IpcError> {
+    let platform = crate::hotkey::AppShortcuts {
+        app: app.clone(),
+        is_recording: state.is_recording.clone(),
+    };
+    let mut live = state.shortcuts.lock().map_err(|e| storage(e.to_string()))?;
+    let mut settings = state.settings.lock().map_err(|e| storage(e.to_string()))?;
+    let restored = shortcuts::default_bindings(&settings.shortcuts);
+    for action in ShortcutAction::ALL {
+        let keys = restored[&action].clone();
+        if settings.shortcuts.get(&action) == Some(&keys) {
+            continue;
         }
+        shortcuts::apply(
+            &platform,
+            &mut live,
+            &settings.shortcuts,
+            action,
+            &keys,
+            true,
+        )?;
+        settings.shortcuts.insert(action, keys);
     }
+    settings.save().map_err(storage)?;
+    let rows = shortcuts::bindings(&settings.shortcuts);
+    drop(settings);
+    drop(live);
+    crate::settings::emit_settings_changed(&app);
+    ShortcutsChanged {}
+        .emit(&app)
+        .map_err(|e| storage(e.to_string()))?;
+    Ok(rows)
+}
+
+fn storage(message: impl Into<String>) -> IpcError {
+    IpcError::new("storage", message.into())
 }
 
 #[tauri::command]
@@ -1050,34 +1094,38 @@ pub fn set_launch_at_login(
     Ok(())
 }
 
-#[tauri::command]
-#[specta::specta]
-pub fn update_hotkey(
-    app: AppHandle,
-    state: State<'_, AppState>,
-    hotkey: String,
-) -> Result<(), String> {
-    let normalized = Settings::normalize_hotkey(&hotkey);
-    let old_hotkey = {
-        let settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.hotkey.clone()
+/// The session shortcut: start a session, or stop the one that is running.
+pub(crate) fn press_session(app: &AppHandle) {
+    let active = app
+        .state::<Arc<speaktype_session::Store>>()
+        .active_session();
+    let result = match active {
+        Ok(Some(_)) => {
+            crate::session_cmds::session_stop(app.clone(), app.state(), app.state()).map(|_| ())
+        }
+        Ok(None) => crate::session_cmds::session_start(
+            None,
+            app.clone(),
+            app.state(),
+            app.state(),
+            app.state(),
+        )
+        .map(|_| ()),
+        Err(e) => Err(e.into()),
     };
-    if normalized == old_hotkey {
-        return Ok(());
+    if let Err(e) = result {
+        log_message(&format!("[session] Shortcut: {}", e.message));
     }
+}
 
-    {
-        let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.hotkey = normalized.clone();
-        settings.save()?;
-    }
-
-    let ok = arm_dictation_hotkey(&app, &state, normalized.clone());
-    let _ = app.emit(
-        "hotkey:registered",
-        json!({ "hotkey": normalized, "success": ok }),
-    );
-    Ok(())
+/// The screenshot shortcut: capture into the active session.
+pub(crate) fn press_screenshot(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = crate::session_cmds::capture_screenshot(app).await {
+            log_message(&format!("[capture] Screenshot shortcut: {}", e.message));
+        }
+    });
 }
 
 async fn restart_server_with_model(

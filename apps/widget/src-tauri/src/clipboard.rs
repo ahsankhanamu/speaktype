@@ -4,7 +4,6 @@ use crate::paste;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tauri::{AppHandle, Manager};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 /// Poll the clipboard and capture user copies into the active session.
 ///
@@ -147,39 +146,4 @@ fn clipboard_matches_recent_dictation(
             .any(|i| i.text.as_deref() == Some(text)),
         Err(_) => false,
     }
-}
-
-/// Register the Scribe screenshot hotkey. Returns Err if the modifier is
-/// unsupported or the shortcut collides with an existing one. Safe to call
-/// repeatedly (a previously registered scribe shortcut is replaced).
-pub fn register_scribe_screenshot_hotkey(app: &AppHandle, hotkey: &str) -> Result<(), String> {
-    let manager = app.global_shortcut();
-    let shortcut = parse_shortcut(hotkey)?;
-    let _ = manager.unregister(shortcut);
-
-    let _app_clone = app.clone();
-    if let Err(e) = manager.on_shortcut(shortcut, move |app, _shortcut, event| {
-        if event.state() == ShortcutState::Pressed {
-            let app_for_cmd = app.clone();
-            tauri::async_runtime::spawn(async move {
-                if let Err(e) = crate::session_cmds::capture_screenshot(app_for_cmd).await {
-                    log_message(&format!("[capture] Screenshot hotkey: {}", e));
-                }
-            });
-        }
-    }) {
-        return Err(format!("Failed to register screenshot hotkey: {}", e));
-    }
-    log_message(&format!(
-        "[scribe] Screenshot hotkey registered: {}",
-        hotkey
-    ));
-    Ok(())
-}
-
-fn parse_shortcut(hotkey: &str) -> Result<Shortcut, String> {
-    let normalized = crate::settings::Settings::normalize_hotkey(hotkey);
-    normalized
-        .parse::<Shortcut>()
-        .map_err(|e| format!("Invalid screenshot hotkey {:?}: {}", hotkey, e))
 }

@@ -50,7 +50,7 @@ const button = (name: string) => [...document.querySelectorAll('button')].find((
 const shown = (name: string) => vi.waitFor(() => expect(button(name)).toBeDefined());
 const at = (label: string) => vi.waitFor(() => expect(text()).toContain(label));
 const start = (settings = {}, status = {}) => {
-  ipc.getSettings.mockResolvedValue({ model: 'base', language: 'auto', input_device: null, hotkey: 'Super+Control', onboarding_step: 0, ...settings });
+  ipc.getSettings.mockResolvedValue({ model: 'base', language: 'auto', input_device: null, shortcuts: { dictation: 'Super+Control' }, onboarding_step: 0, ...settings });
   ipc.getOnboardingStatus.mockResolvedValue({ ...granted, ...status });
   app = mount(Onboarding, { target: document.body });
 };
@@ -248,7 +248,7 @@ describe('downloads', () => {
 
 describe('Try it', () => {
   it('shows the configured hotkey as keycaps', async () => {
-    start({ onboarding_step: 4, hotkey: 'Super+Control' });
+    start({ onboarding_step: 4, shortcuts: { dictation: 'Super+Control' } });
     await vi.waitFor(() => expect([...document.querySelectorAll('kbd .glyph')].map((k) => k.textContent?.trim())).toEqual(['⌃', '⌘']));
     expect([...document.querySelectorAll('kbd .word')].map((k) => k.textContent)).toEqual(['control', 'command']);
   });
@@ -290,7 +290,7 @@ describe('Try it', () => {
       await at('That worked');
     };
     const switchTo = async (model: string) => {
-      ipc.getSettings.mockResolvedValue({ model, language: 'auto', input_device: null, hotkey: 'Super+Control', onboarding_step: 4 });
+      ipc.getSettings.mockResolvedValue({ model, language: 'auto', input_device: null, shortcuts: { dictation: 'Super+Control' }, onboarding_step: 4 });
       bus.emit('settings-changed', {});
     };
 
