@@ -2020,7 +2020,7 @@ pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<()
 
     let (saved_x, saved_y, width, height) = settings_window_geometry(&app);
 
-    let window = hidden_title_bar(WebviewWindowBuilder::new(
+    let builder = hidden_title_bar(WebviewWindowBuilder::new(
         &app,
         "settings",
         WebviewUrl::App("settings.html".into()),
@@ -2028,9 +2028,12 @@ pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<()
     .title("SpeakType")
     .inner_size(width, height)
     .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
-    .resizable(true)
-    .build()
-    .map_err(|e| e.to_string())?;
+    .resizable(true);
+    // macOS Tahoe: the traffic lights sit inside the floating sidebar, lined up
+    // with its search field (the sidebar is inset 8 pt, padded 10 pt).
+    #[cfg(target_os = "macos")]
+    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(22.0, 26.0));
+    let window = builder.build().map_err(|e| e.to_string())?;
 
     // A position the clamp rejects falls back to the widget's top-right corner,
     // which is meaningless for a window this size — centre it instead.

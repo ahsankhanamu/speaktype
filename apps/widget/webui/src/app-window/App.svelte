@@ -121,7 +121,7 @@
     z-index: 1;
   }
   .window {
-    --titlebar-h: 44px;
+    --titlebar-h: 56px;
     display: flex;
     height: 100vh;
     background: var(--st-window);
