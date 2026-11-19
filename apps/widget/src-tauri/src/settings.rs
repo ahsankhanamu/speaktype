@@ -138,6 +138,9 @@ pub struct Settings {
     /// Kept history entries; None = forever.
     #[serde(default = "default_history_limit")]
     pub history_limit: Option<u32>,
+    /// Dictations older than this many days are removed; None keeps any age.
+    #[serde(default)]
+    pub history_max_days: Option<u32>,
     #[serde(default)]
     pub launch_at_login: bool,
     /// Last onboarding step reached, for resume.
@@ -361,6 +364,7 @@ impl Default for Settings {
             ink_thickness: default_ink_thickness(),
             draw_anytime: default_draw_anytime(),
             history_limit: default_history_limit(),
+            history_max_days: None,
             launch_at_login: false,
             onboarding_step: 0,
             live_captions: default_live_captions(),

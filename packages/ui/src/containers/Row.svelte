@@ -5,6 +5,7 @@
     kind,
     label,
     caption,
+    captionTone,
     icon: Icon,
     tileColor,
     trailing,
@@ -12,6 +13,8 @@
     kind: 'info' | 'control' | 'icon';
     label: string;
     caption?: string;
+    /** A status caption (a check that passed or failed) takes the status colour. */
+    captionTone?: 'success' | 'danger';
     icon?: Component<{ size?: number; strokeWidth?: number }>;
     tileColor?: string;
     trailing?: Snippet;
@@ -26,7 +29,7 @@
   {/if}
   <div class="text">
     <span class="label">{label}</span>
-    {#if caption}<span class="caption">{caption}</span>{/if}
+    {#if caption}<span class="caption {captionTone ?? ''}">{caption}</span>{/if}
   </div>
   {#if trailing}<div class="trailing">{@render trailing()}</div>{/if}
 </div>
@@ -70,6 +73,12 @@
   .caption {
     color: var(--st-text-secondary);
     font-size: var(--st-font-caption);
+  }
+  .caption.success {
+    color: var(--st-success-text);
+  }
+  .caption.danger {
+    color: var(--st-danger-text);
   }
   .trailing {
     display: flex;

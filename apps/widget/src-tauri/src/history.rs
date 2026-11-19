@@ -81,12 +81,43 @@ pub fn new_entry_id() -> String {
     format!("{:x}", nanos)
 }
 
-/// How many dictations are kept; `None` (the setting's "Forever") is every
-/// entry the file can hold.
-pub fn retention_limit(settings: &Settings) -> usize {
-    settings
-        .history_limit
-        .map_or(usize::MAX, |limit| limit as usize)
+/// What History keeps: at most `entries` dictations, none older than
+/// `max_age_days`. "Forever" is no count and no age.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Retention {
+    pub entries: usize,
+    pub max_age_days: Option<u32>,
+}
+
+#[cfg(test)]
+impl Retention {
+    pub const FOREVER: Retention = Retention {
+        entries: usize::MAX,
+        max_age_days: None,
+    };
+
+    pub fn count(entries: usize) -> Self {
+        Retention {
+            entries,
+            max_age_days: None,
+        }
+    }
+}
+
+pub fn retention(settings: &Settings) -> Retention {
+    Retention {
+        entries: settings
+            .history_limit
+            .map_or(usize::MAX, |limit| limit as usize),
+        max_age_days: settings.history_max_days,
+    }
+}
+
+/// Whether an entry stamped `timestamp` (local `%Y-%m-%dT%H:%M:%S`) is older
+/// than `days` at `now`. An unreadable stamp is kept.
+fn older_than(timestamp: &str, days: u32, now: chrono::NaiveDateTime) -> bool {
+    chrono::NaiveDateTime::parse_from_str(timestamp, "%Y-%m-%dT%H:%M:%S")
+        .is_ok_and(|at| now - at > chrono::Duration::days(days.into()))
 }
 
 /// A take's saved WAV, if `save_recordings` kept one.
@@ -99,11 +130,23 @@ pub struct SavedRecording {
 
 /// Newest-first trim that also deletes the dropped recordings, so retention
 /// longer than the file's remaining entries is never silently exceeded.
-pub fn trim(entries: &mut Vec<HistoryEntry>, limit: usize) {
-    if entries.len() <= limit {
+pub fn trim(entries: &mut Vec<HistoryEntry>, retention: Retention) {
+    trim_at(entries, retention, chrono::Local::now().naive_local());
+}
+
+fn trim_at(entries: &mut Vec<HistoryEntry>, retention: Retention, now: chrono::NaiveDateTime) {
+    let mut keep = entries.len().min(retention.entries);
+    if let Some(days) = retention.max_age_days {
+        // Entries are newest first, so the first one past the age ends the kept run.
+        keep = entries[..keep]
+            .iter()
+            .position(|e| older_than(&e.timestamp, days, now))
+            .unwrap_or(keep);
+    }
+    if keep == entries.len() {
         return;
     }
-    let dropped: Vec<HistoryEntry> = entries.drain(limit..).collect();
+    let dropped: Vec<HistoryEntry> = entries.drain(keep..).collect();
     History::remove_dropped_entries(&dropped);
 }
 
@@ -272,7 +315,7 @@ impl History {
         id: &str,
         text: &str,
         outcome: DictationOutcome,
-        limit: usize,
+        retention: Retention,
         audio: Option<SavedRecording>,
     ) {
         self.entries.insert(
@@ -287,7 +330,7 @@ impl History {
                 outcome: Some(outcome),
             },
         );
-        trim(&mut self.entries, limit);
+        trim(&mut self.entries, retention);
     }
 
     pub fn update_text(index: usize, text: &str) -> Result<(), String> {
@@ -463,7 +506,13 @@ mod tests {
         assert_eq!(old.entries[0].outcome, None);
 
         let mut history = History::default();
-        history.add_entry("b", "new", DictationOutcome::PasteFailed, 100, None);
+        history.add_entry(
+            "b",
+            "new",
+            DictationOutcome::PasteFailed,
+            Retention::count(100),
+            None,
+        );
         let json = serde_json::to_string(&history).unwrap();
         assert!(json.contains(r#""outcome":"pasteFailed""#), "{json}");
         let back: History = serde_json::from_str(&json).unwrap();
@@ -485,7 +534,13 @@ mod tests {
     fn history_limit_is_optional_and_forever_is_its_absence() {
         let mut history = History::default();
         for i in 0..3 {
-            history.add_entry(&format!("{i}"), "t", DictationOutcome::Pasted, 2, None);
+            history.add_entry(
+                &format!("{i}"),
+                "t",
+                DictationOutcome::Pasted,
+                Retention::count(2),
+                None,
+            );
         }
         let ids: Vec<_> = history.entries.iter().map(|e| e.id.as_str()).collect();
         assert_eq!(ids, vec!["2", "1"]);
@@ -494,21 +549,37 @@ mod tests {
             history_limit: None,
             ..Settings::default()
         };
-        assert_eq!(retention_limit(&forever), usize::MAX, "None is forever");
+        assert_eq!(retention(&forever), Retention::FOREVER, "None is forever");
         let custom = Settings {
             history_limit: Some(7),
             ..Settings::default()
         };
-        assert_eq!(retention_limit(&custom), 7);
+        assert_eq!(retention(&custom), Retention::count(7));
         let default = Settings::default();
-        assert_eq!(retention_limit(&default), 100, "new and old files keep 100");
+        assert_eq!(
+            retention(&default),
+            Retention::count(100),
+            "new and old files keep 100"
+        );
     }
 
     #[test]
     fn delete_entry_emits_history_changed_and_persists() {
         let mut seeded = History::default();
-        seeded.add_entry("first", "one", DictationOutcome::Pasted, 100, None);
-        seeded.add_entry("second", "two", DictationOutcome::Pasted, 100, None);
+        seeded.add_entry(
+            "first",
+            "one",
+            DictationOutcome::Pasted,
+            Retention::count(100),
+            None,
+        );
+        seeded.add_entry(
+            "second",
+            "two",
+            DictationOutcome::Pasted,
+            Retention::count(100),
+            None,
+        );
         seeded.save().expect("seed history");
 
         History::delete_entry(0).expect("delete");
@@ -539,7 +610,54 @@ mod tests {
         let mut history = History::default();
         history.entries.push(entry("a", None));
         history.entries.push(entry("b", None));
-        trim(&mut history.entries, 1);
+        trim(&mut history.entries, Retention::count(1));
         assert_eq!(history.entries.len(), 1);
+    }
+
+    #[test]
+    fn an_age_limit_drops_dictations_older_than_it_and_keeps_the_rest() {
+        let now = chrono::NaiveDateTime::parse_from_str("2026-11-20T12:00:00", "%Y-%m-%dT%H:%M:%S")
+            .unwrap();
+        let mut entries: Vec<_> = [
+            ("new", "2026-11-19T12:00:00"),
+            ("month", "2026-10-25T12:00:00"),
+            ("old", "2026-08-01T12:00:00"),
+        ]
+        .into_iter()
+        .map(|(id, at)| {
+            let mut e = entry(id, None);
+            e.timestamp = at.to_string();
+            e
+        })
+        .collect();
+        let thirty_days = Retention {
+            entries: usize::MAX,
+            max_age_days: Some(30),
+        };
+        trim_at(&mut entries, thirty_days, now);
+        let ids: Vec<_> = entries.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec!["new", "month"]);
+    }
+
+    #[test]
+    fn a_count_and_an_age_both_apply() {
+        let now = chrono::NaiveDateTime::parse_from_str("2026-11-20T12:00:00", "%Y-%m-%dT%H:%M:%S")
+            .unwrap();
+        let mut entries: Vec<_> = (0..3)
+            .map(|i| {
+                let mut e = entry(&format!("{i}"), None);
+                e.timestamp = "2026-11-20T11:00:00".to_string();
+                e
+            })
+            .collect();
+        trim_at(
+            &mut entries,
+            Retention {
+                entries: 2,
+                max_age_days: Some(365),
+            },
+            now,
+        );
+        assert_eq!(entries.len(), 2);
     }
 }

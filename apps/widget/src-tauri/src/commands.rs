@@ -733,7 +733,7 @@ async fn process_recording(
         &entry_id,
         &text,
         outcome,
-        history::retention_limit(&settings),
+        history::retention(&settings),
         saved_recording,
     );
     if let Err(e) = history.save() {

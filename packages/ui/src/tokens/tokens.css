@@ -28,6 +28,7 @@
   --st-warning: #ff9f0a;
   --st-danger: #ff453a;
   --st-danger-text: #ff6961;
+  --st-success-text: #30d158;
   --st-success: #30d158;
   --st-keycap: linear-gradient(180deg, #535357, #404044);
   --st-elevation-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.28);
@@ -64,6 +65,7 @@
   --st-warning: #ff9500;
   --st-danger: #ff3b30;
   --st-danger-text: #d70015;
+  --st-success-text: #248a3d;
   --st-success: #34c759;
   --st-keycap: linear-gradient(180deg, #ffffff, #f0f0f2);
   --st-elevation-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.14);
@@ -101,6 +103,7 @@
     --st-warning: #ff9500;
     --st-danger: #ff3b30;
     --st-danger-text: #d70015;
+    --st-success-text: #248a3d;
     --st-success: #34c759;
     --st-keycap: linear-gradient(180deg, #ffffff, #f0f0f2);
     --st-elevation-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.14);

@@ -536,6 +536,8 @@ export type Settings = {
 	draw_anytime?: boolean,
 	/**  Kept history entries; None = forever. */
 	history_limit?: number | null,
+	/**  Dictations older than this many days are removed; None keeps any age. */
+	history_max_days?: number | null,
 	launch_at_login?: boolean,
 	/**  Last onboarding step reached, for resume. */
 	onboarding_step?: number,

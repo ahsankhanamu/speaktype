@@ -24,6 +24,7 @@
   });
   let apiUrl = $state<string | null>(null);
   let checkResult = $state('');
+  let checkTone = $state<'success' | 'danger'>();
   let busy = $state<'unload' | 'load' | 'check' | null>(null);
 
   const url = $derived(apiUrl ?? settings.data?.api_url ?? '');
@@ -65,9 +66,12 @@
     busy = 'check';
     try {
       const result = await checkServer(url);
-      checkResult = result.status === 'connected' ? 'Connected' : (result.message ?? 'Couldn’t connect');
+      const connected = result.status === 'connected';
+      checkResult = connected ? 'Connected' : (result.message ?? 'Couldn’t connect');
+      checkTone = connected ? 'success' : 'danger';
     } catch (error) {
       checkResult = (error as { message?: string })?.message ?? `${error}`;
+      checkTone = 'danger';
     } finally {
       busy = null;
     }
@@ -122,9 +126,9 @@
           {/if}
         {/snippet}
       </Row>
-      <Row kind="control" label="API URL" caption={checkResult}>
+      <Row kind="control" label="API URL" caption={checkResult} captionTone={checkTone}>
         {#snippet trailing()}
-          <TextField aria-label="API URL" bind:value={() => url, (next) => (apiUrl = next)} onchange={() => settings.save({ api_url: url })} />
+          <TextField class="api-url" aria-label="API URL" bind:value={() => url, (next) => (apiUrl = next)} onchange={() => settings.save({ api_url: url })} />
           <Button size={28} busy={busy === 'check'} onclick={check}>Check</Button>
         {/snippet}
       </Row>
@@ -133,3 +137,13 @@
 
   <DebugRecords />
 </Page>
+
+<style>
+  /* Wide enough for a full local address (http://127.0.0.1:8002/inference). */
+  :global(.api-url) {
+    width: 300px;
+  }
+  :global(.api-url .st-field) {
+    width: 100%;
+  }
+</style>

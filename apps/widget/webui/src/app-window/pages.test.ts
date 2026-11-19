@@ -152,6 +152,28 @@ describe('settings pages', () => {
     await vi.waitFor(() => expect(text()).toContain('1 chunks'));
     button('Check').click();
     await vi.waitFor(() => expect(ipc.checkServer).toHaveBeenCalledWith('http://127.0.0.1:8002/inference'));
+    await vi.waitFor(() => expect(document.querySelector('.caption.success')?.textContent).toBe('Connected'));
+  });
+
+  it('a debug record opens to show its text and how each chunk was decoded', async () => {
+    ipc.getDebugSessions.mockResolvedValue([
+      {
+        id: 3,
+        startedAt: '2026-11-19T10:00:00Z',
+        model: 'small',
+        durationSecs: 9,
+        finalChars: 11,
+        finalText: 'hello there',
+        chunks: [{ idx: 0, startSecs: 0, endSecs: 9, status: 'ok', chars: 11 }],
+        passes: [{ chunkIdx: 0, pass: 1, rawChars: 11, score: 0.82 }],
+      },
+    ]);
+    render(Advanced);
+    const toggle = await vi.waitFor(() => document.querySelector<HTMLButtonElement>('[aria-label="Show details"]')!);
+    toggle.click();
+    await vi.waitFor(() => expect(text()).toContain('hello there'));
+    expect(text()).toContain('Chunk 1 · 0:00–0:09');
+    expect(text()).toContain('pass 1 · 11 chars · score 0.82');
   });
 
   it('Advanced unloads the model with the size the menu bar quotes, then loads it now', async () => {
@@ -184,6 +206,12 @@ describe('settings pages', () => {
     ipc.getSettings.mockResolvedValue({ ...SETTINGS, history_limit: null });
     render(Storage);
     await vi.waitFor(() => expect(text()).toContain('Forever'));
+  });
+
+  it('Storage shows an age choice when History keeps dictations by age', async () => {
+    ipc.getSettings.mockResolvedValue({ ...SETTINGS, history_limit: null, history_max_days: 90 });
+    render(Storage);
+    await vi.waitFor(() => expect(text()).toContain('3 months'));
   });
 });
 

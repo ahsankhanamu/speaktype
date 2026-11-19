@@ -10,11 +10,19 @@
   const settings = useSettings();
   const models = useModels();
 
-  // A missing field is a pre-v2 settings file, which keeps 100 entries; null means forever.
+  // History keeps either a number of dictations or an age. A missing count is a pre-v2 settings
+  // file, which keeps 100; null for both means forever.
   const limit = $derived(settings.data?.history_limit === undefined ? 100 : settings.data.history_limit);
-  const choice = $derived(limit === null ? 'forever' : String(limit));
+  const days = $derived(settings.data?.history_max_days ?? null);
+  const choice = $derived(days !== null ? `days:${days}` : limit === null ? 'forever' : `count:${limit}`);
 
-  const setLimit = (value: string) => settings.save({ history_limit: value === 'forever' ? null : Number(value) });
+  function setRetention(value: string) {
+    const [kind, amount] = value.split(':');
+    settings.save({
+      history_limit: kind === 'count' ? Number(amount) : null,
+      history_max_days: kind === 'days' ? Number(amount) : null,
+    });
+  }
 
   async function clear() {
     const confirmed = await confirmAlert({
@@ -32,15 +40,19 @@
 <Page title="Storage">
   <Section title="History">
     <Group>
-      <Row kind="control" label="Keep history" caption="Older dictations are removed once you pass the limit">
+      <Row kind="control" label="Keep history" caption="Older dictations are removed as new ones come in">
         {#snippet trailing()}
           <PopupMenu
             label="Keep history"
-            bind:value={() => choice, setLimit}
+            bind:value={() => choice, setRetention}
             items={[
-              { value: '100', label: 'Last 100' },
-              { value: '1000', label: 'Last 1,000' },
-              { value: 'forever', label: 'Forever' },
+              { value: 'count:100', label: 'Last 100' },
+              { value: 'count:500', label: 'Last 500' },
+              { value: 'count:1000', label: 'Last 1,000' },
+              { value: 'days:30', label: '30 days', separatorBefore: true },
+              { value: 'days:90', label: '3 months' },
+              { value: 'days:365', label: '1 year' },
+              { value: 'forever', label: 'Forever', separatorBefore: true },
             ]}
           />
         {/snippet}
