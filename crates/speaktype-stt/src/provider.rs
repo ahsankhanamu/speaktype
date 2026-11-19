@@ -5,14 +5,34 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
+/// Per-pass decode parameters. The first pass is greedy and deterministic with
+/// whisper's internal temperature fallback disabled, so invented text comes
+/// from a path the app controls rather than a silent server-side retry.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Decode {
+    pub temperature: f32,
+    pub internal_fallback: bool,
+}
+
+impl Default for Decode {
+    fn default() -> Self {
+        Self {
+            temperature: 0.0,
+            internal_fallback: false,
+        }
+    }
+}
+
 /// One clip to transcribe. `wav` is 16 kHz mono 16-bit WAV, converted once at
-/// capture; `duration_ms` is the clip's audio length.
+/// capture; `duration_ms` is the clip's audio length. Providers that cannot
+/// express a decode field ignore it.
 #[derive(Debug, Clone)]
 pub struct TranscribeRequest {
     pub wav: bytes::Bytes,
     pub duration_ms: u32,
     pub language: Option<String>,
     pub prompt: Option<String>,
+    pub decode: Decode,
 }
 
 #[derive(Debug, Clone)]
@@ -47,17 +67,20 @@ pub trait SttProvider: Send + Sync {
     async fn list_models(&self, cancel: CancellationToken) -> Result<Vec<RemoteModel>, SttError>;
 }
 
-/// Build the provider for `cfg`, wrapped in the retry policy. Fails with
+/// Build the provider for `cfg`, wrapped in the retry policy. `local_url` is
+/// the runtime address of the whisper-server the app runs (it picks its port
+/// at start), used by [`ProviderConfig::Local`]. Fails with
 /// [`SttError::NotConfigured`] when a cloud provider has no API key or no
 /// usable address.
 pub fn provider_for(
     cfg: &ProviderConfig,
+    local_url: &str,
     secrets: &dyn SecretStore,
     http: reqwest::Client,
 ) -> Result<Box<dyn SttProvider>, SttError> {
     let inner: Box<dyn SttProvider> = match cfg {
         ProviderConfig::Local { model } => Box::new(crate::local::WhisperServer::new(
-            crate::local::LOCAL_ENDPOINT,
+            local_url,
             Some(model.clone()),
             http,
         )?),

@@ -101,6 +101,25 @@ export const commands = {
 	overlayPen: (on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("overlay_pen", { on }, options),
 	/**  Phase-0 stub: the overlay windows arrive with Phase 2 (S1). */
 	overlayMarkComplete: (displayId: number, bounds: Rect, options?: InvokeOptions) => __TAURI_INVOKE<null>("overlay_mark_complete", { displayId, bounds }, options),
+	/**  Store the provider choice. The key itself never travels with it. */
+	sttSetProvider: (cfg: ProviderConfig, options?: InvokeOptions) => __TAURI_INVOKE<ProviderConfig>("stt_set_provider", { cfg }, options),
+	/**  Keychain only: the key is never written to settings or returned. */
+	sttSetApiKey: (service: string, key: string, options?: InvokeOptions) => __TAURI_INVOKE<null>("stt_set_api_key", { service, key }, options),
+	sttHasApiKey: (service: string, options?: InvokeOptions) => __TAURI_INVOKE<boolean>("stt_has_api_key", { service }, options),
+	/**
+	 *  Reads the Keychain after the user authenticates (spec §6.7: the eye toggle
+	 *  shows the key, so it is gated behind Touch ID or the login password as well
+	 *  as the Keychain's own ACL).
+	 */
+	sttRevealApiKey: (service: string, options?: InvokeOptions) => __TAURI_INVOKE<string>("stt_reveal_api_key", { service }, options),
+	/**
+	 *  Models the configured provider offers. Local returns the one model the
+	 *  server runs; a user's own server has no listing API, so an empty list is
+	 *  not "nothing configured" (F4 report, open question 3).
+	 */
+	sttListModels: (options?: InvokeOptions) => __TAURI_INVOKE<RemoteModel[]>("stt_list_models", undefined, options),
+	/**  Send the bundled 3 s clip through the provider and report latency and text. */
+	sttTest: (options?: InvokeOptions) => __TAURI_INVOKE<SttTestResult>("stt_test", undefined, options),
 };
 
 /** Events */
@@ -126,6 +145,8 @@ export type ChunkEvent = {
 	reason?: string,
 	seededPrompt?: boolean,
 };
+
+export type CloudService = "openai" | "groq" | "deepgram" | "custom";
 
 export type DebugSession = {
 	id?: number,
@@ -201,12 +222,22 @@ export type PassEvent = {
 	segments?: SegmentDebug[],
 };
 
+/**
+ *  How transcription is served: the bundled local whisper-server, a
+ *  user-configured whisper.cpp server, or a cloud service.
+ */
+export type ProviderConfig = { kind: "local"; model: string } | { kind: "server"; baseUrl: string } | { kind: "cloud"; service: CloudService; baseUrl: string; model: string; fallbackToLocal: boolean };
+
 /**  A rectangle in display points (mark bounds, from the overlay window). */
 export type Rect = {
 	x: number | null,
 	y: number | null,
 	width: number | null,
 	height: number | null,
+};
+
+export type RemoteModel = {
+	id: string,
 };
 
 /**
@@ -346,6 +377,11 @@ export type Settings = {
 	 */
 	scribe_llm_base_url?: string,
 	scribe_llm_api_key?: string,
+	/**
+	 *  Where transcription comes from. Missing in files written before the
+	 *  Providers page existed; [`Settings::from_json`] fills it from `api_url`.
+	 */
+	stt_provider?: ProviderConfig | null,
 	scribe_llm_model?: string,
 	/**
 	 *  Scribe: use the local llama.cpp server (llama-server) instead of the
@@ -356,6 +392,12 @@ export type Settings = {
 	scribe_llm_local_model?: string,
 	/**  Scribe: context size for the local llama-server. */
 	scribe_llm_local_ctx?: number,
+};
+
+/**  What `stt_test` reports back. */
+export type SttTestResult = {
+	latencyMs: number,
+	text: string,
 };
 
 /**  Where a session's rendered prompt is headed. */

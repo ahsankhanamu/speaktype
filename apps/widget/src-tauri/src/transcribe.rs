@@ -2,6 +2,132 @@ use crate::debug;
 use crate::logging::log_message;
 use crate::quality::{self, Report, Segment, Thresholds};
 use crate::settings::Settings;
+use serde_json::json;
+use speaktype_stt::{
+    provider_for, CloudService, Decode, KeychainStore, ProviderConfig, SecretStore, SttError,
+    SttProvider, TranscribeRequest, Transcript,
+};
+use tauri::{AppHandle, Emitter, Runtime};
+use tokio_util::sync::CancellationToken;
+
+const LOCAL_NAME: &str = "On this Mac";
+
+/// The bundled clip the Providers page's Test button sends.
+pub(crate) const TEST_CLIP: &[u8] = include_bytes!("../../../../assets/test-clip-3s.wav");
+
+/// Display name for provider copy ("Groq", "On this Mac", …).
+pub(crate) fn service_name(cfg: &ProviderConfig) -> &'static str {
+    match cfg {
+        ProviderConfig::Local { .. } => LOCAL_NAME,
+        ProviderConfig::Server { .. } => "Your server",
+        ProviderConfig::Cloud { service, .. } => match service {
+            CloudService::OpenAi => "OpenAI",
+            CloudService::Groq => "Groq",
+            CloudService::Deepgram => "Deepgram",
+            CloudService::Custom => "Your service",
+        },
+    }
+}
+
+/// Build the provider for `cfg`. Local transcription calls the whisper-server
+/// the app started: `local_url` is `settings.api_url`, which `server.rs` keeps
+/// pointing at the live port.
+pub(crate) fn provider(
+    cfg: &ProviderConfig,
+    local_url: &str,
+    secrets: &dyn SecretStore,
+) -> Result<Box<dyn SttProvider>, SttError> {
+    provider_for(cfg, local_url, secrets, reqwest::Client::new())
+}
+
+/// One clip to send: the audio plus the optional decode hints. Providers that
+/// cannot express a hint ignore it.
+pub(crate) struct Clip<'a> {
+    pub wav: &'a [u8],
+    pub duration_ms: u32,
+    pub language: Option<&'a str>,
+    pub prompt: Option<&'a str>,
+    pub decode: Decode,
+}
+
+impl Clip<'_> {
+    fn request(&self) -> TranscribeRequest {
+        TranscribeRequest {
+            wav: self.wav.to_vec().into(),
+            duration_ms: self.duration_ms,
+            language: self
+                .language
+                .filter(|l| !l.trim().is_empty() && *l != "auto")
+                .map(str::to_string),
+            prompt: self
+                .prompt
+                .filter(|p| !p.trim().is_empty())
+                .map(str::to_string),
+            decode: self.decode,
+        }
+    }
+}
+
+/// Send `clip` through the configured provider. A cloud provider that cannot
+/// be reached (or times out) and allows it is retried on the local server, and
+/// the caller is told through `on_fallback` that it happened. Other failures
+/// become one plain-language message.
+pub(crate) async fn run_provider(
+    cfg: &ProviderConfig,
+    local_url: &str,
+    secrets: &dyn SecretStore,
+    clip: &Clip<'_>,
+    on_fallback: impl FnOnce(),
+) -> Result<Transcript, String> {
+    let attempt = |cfg: &ProviderConfig| {
+        let req = clip.request();
+        let provider = provider(cfg, local_url, secrets);
+        async move { provider?.transcribe(req, CancellationToken::new()).await }
+    };
+
+    match attempt(cfg).await {
+        Ok(transcript) => Ok(transcript),
+        Err(e) if cloud_falls_back(cfg, &e) => {
+            log_message(&format!(
+                "[transcribe] {} failed ({e}); using {LOCAL_NAME}",
+                service_name(cfg)
+            ));
+            let local = ProviderConfig::Local {
+                model: String::new(),
+            };
+            let transcript = attempt(&local)
+                .await
+                .map_err(|e| e.user_message(LOCAL_NAME))?;
+            on_fallback();
+            Ok(transcript)
+        }
+        Err(e) => Err(e.user_message(service_name(cfg))),
+    }
+}
+
+/// The one automatic switch (spec §6.7): a cloud service that cannot be
+/// reached falls back to On this Mac, only when the user left it on.
+pub(crate) fn cloud_falls_back(cfg: &ProviderConfig, err: &SttError) -> bool {
+    matches!(
+        cfg,
+        ProviderConfig::Cloud {
+            fallback_to_local: true,
+            ..
+        }
+    ) && matches!(err, SttError::Unreachable | SttError::Timeout)
+}
+
+/// Event the widget already listens to, so a fallback shows as a plain error
+/// pill without a new channel.
+pub(crate) fn emit_fallback<R: Runtime>(app: &AppHandle<R>, cfg: &ProviderConfig) {
+    let _ = app.emit(
+        "sidecar:error",
+        json!({
+            "kind": "providerFallback",
+            "message": format!("Couldn't reach {}. Used {LOCAL_NAME}.", service_name(cfg)),
+        }),
+    );
+}
 
 /// One decode configuration. The first pass runs greedy and deterministic with
 /// whisper's internal temperature fallback disabled, so any invented text comes
@@ -11,6 +137,15 @@ struct Attempt {
     temperature: f32,
     use_prompt: bool,
     allow_internal_fallback: bool,
+}
+
+impl Attempt {
+    fn decode(&self) -> Decode {
+        Decode {
+            temperature: self.temperature,
+            internal_fallback: self.allow_internal_fallback,
+        }
+    }
 }
 
 const FIRST_PASS: Attempt = Attempt {
@@ -36,111 +171,159 @@ const RETRY_LADDER: &[Attempt] = &[
     },
 ];
 
-fn is_openai_api(url: &str) -> bool {
-    let lower = url.to_lowercase();
-    let patterns = [
-        "/v1/audio/transcriptions",
-        "/v1/audio/",
-        "openai",
-        "groq",
-        "deepgram",
-    ];
-    patterns.iter().any(|p| lower.contains(p))
+async fn transcribe_pass<R: Runtime>(
+    app: &AppHandle<R>,
+    settings: &Settings,
+    secrets: &dyn SecretStore,
+    wav: &[u8],
+    duration_ms: u32,
+    attempt: Attempt,
+    prompt: Option<&str>,
+) -> Result<Transcript, String> {
+    let cfg = settings.active_provider();
+    let clip = Clip {
+        wav,
+        duration_ms,
+        language: Some(&settings.language),
+        prompt: prompt.filter(|_| attempt.use_prompt),
+        decode: attempt.decode(),
+    };
+    let transcript = run_provider(&cfg, &settings.api_url, secrets, &clip, || {
+        emit_fallback(app, &cfg)
+    })
+    .await?;
+    log_message(&format!(
+        "[transcribe] {}: {} chars, {} segments",
+        service_name(&cfg),
+        transcript.text.len(),
+        transcript.segments.len()
+    ));
+    Ok(transcript)
 }
 
-pub async fn transcribe(
+pub async fn transcribe<R: Runtime>(
+    app: &AppHandle<R>,
     wav_data: Vec<u8>,
     settings: &Settings,
     duration_secs: f64,
 ) -> Result<String, String> {
-    transcribe_with_prompt(wav_data, settings, duration_secs, None).await
+    transcribe_with_prompt(app, wav_data, settings, duration_secs, None).await
 }
 
 /// Transcribe and return only text that survived hallucination scoring.
 /// Empty means everything was rejected.
-pub async fn transcribe_with_prompt(
+pub async fn transcribe_with_prompt<R: Runtime>(
+    app: &AppHandle<R>,
     wav_data: Vec<u8>,
     settings: &Settings,
     duration_secs: f64,
     prompt: Option<&str>,
 ) -> Result<String, String> {
-    let report = transcribe_verified(wav_data, settings, duration_secs, prompt, None).await?;
+    let report = transcribe_verified(app, wav_data, settings, duration_secs, prompt, None).await?;
     Ok(report.clean_text)
 }
 
 /// Transcribe, score the result, and re-decode with different parameters while
 /// it still looks hallucinated. Returns the best-scoring candidate rather than
 /// discarding suspicious output outright.
-pub async fn transcribe_verified(
+pub async fn transcribe_verified<R: Runtime>(
+    app: &AppHandle<R>,
     wav_data: Vec<u8>,
     settings: &Settings,
     duration_secs: f64,
     prompt: Option<&str>,
     debug_chunk: Option<u32>,
 ) -> Result<Report, String> {
+    let secrets = KeychainStore;
+    let duration_ms = (duration_secs * 1000.0) as u32;
+    let first = transcribe_pass(
+        app,
+        settings,
+        &secrets,
+        &wav_data,
+        duration_ms,
+        FIRST_PASS,
+        prompt,
+    )
+    .await?;
+
     if !settings.hallucination_guard {
-        let raw = transcribe_once(wav_data, settings, duration_secs, prompt, FIRST_PASS).await?;
-        debug::record_pass(crate::debug::PassEvent {
+        debug::record_pass(debug::PassEvent {
             chunk_idx: debug_chunk,
             pass: 1,
             temperature: FIRST_PASS.temperature,
             prompt_used: prompt.is_some(),
-            raw_chars: raw.text.len(),
+            raw_chars: first.text.len(),
             score: 0.0,
             dropped: 0,
             had_metrics: false,
             reason: "guard disabled".into(),
             segments: Vec::new(),
         });
-        return Ok(Report::passthrough(&raw.text));
+        return Ok(Report::passthrough(&first.text));
     }
 
     let thresholds = Thresholds::from_settings(settings);
     let retries = (settings.hallucination_retries as usize).min(RETRY_LADDER.len());
-    let attempts: Vec<Attempt> = std::iter::once(FIRST_PASS)
+    let passes: Vec<Attempt> = std::iter::once(FIRST_PASS)
         .chain(RETRY_LADDER.iter().take(retries).copied())
         .collect();
 
     let mut best: Option<Report> = None;
 
-    for (pass, attempt) in attempts.iter().enumerate() {
-        let attempt_prompt = if attempt.use_prompt { prompt } else { None };
-        let raw = match transcribe_once(
-            wav_data.clone(),
-            settings,
-            duration_secs,
-            attempt_prompt,
-            *attempt,
-        )
-        .await
-        {
-            Ok(raw) => raw,
+    for (index, pass) in passes.iter().enumerate() {
+        let transcript = if index == 0 {
+            Ok(first.clone())
+        } else {
+            transcribe_pass(
+                app,
+                settings,
+                &secrets,
+                &wav_data,
+                duration_ms,
+                *pass,
+                prompt,
+            )
+            .await
+        };
+        let transcript = match transcript {
+            Ok(transcript) => transcript,
             Err(e) if best.is_some() => {
-                log_message(&format!("[quality] Retry pass {} failed: {}", pass + 1, e));
+                log_message(&format!("[quality] Retry pass {} failed: {}", index + 1, e));
                 break;
             }
             Err(e) => return Err(e),
         };
 
-        let silent = raw.text.trim().is_empty();
-        let report = quality::evaluate(&raw.text, &raw.segments, &thresholds);
+        let segments: Vec<Segment> = transcript
+            .segments
+            .iter()
+            .map(|s| Segment {
+                text: s.text.clone(),
+                start: s.start_ms as f64 / 1000.0,
+                end: s.end_ms as f64 / 1000.0,
+                no_speech_prob: s.no_speech_prob,
+                avg_logprob: s.avg_logprob,
+            })
+            .collect();
+        let silent = transcript.text.trim().is_empty();
+        let report = quality::evaluate(&transcript.text, &segments, &thresholds);
         log_message(&format!(
-            "[quality] Pass {} (temp={:.1}, prompt={}, metrics={}): score={:.1}, {}/{} segments dropped [{}]",
-            pass + 1,
-            attempt.temperature,
-            attempt.use_prompt && prompt.is_some(),
+            "[quality] Pass {} (prompt={}, metrics={}): score={:.1}, {}/{} segments dropped [{}]",
+            index + 1,
+            pass.use_prompt && prompt.is_some(),
             report.had_metrics,
             report.score,
             report.dropped,
             report.segments.len(),
             report.reason()
         ));
-        debug::record_pass(crate::debug::PassEvent {
+        debug::record_pass(debug::PassEvent {
             chunk_idx: debug_chunk,
-            pass: pass as u32 + 1,
-            temperature: attempt.temperature,
-            prompt_used: attempt.use_prompt && prompt.is_some(),
-            raw_chars: raw.text.len(),
+            pass: index as u32 + 1,
+            temperature: pass.temperature,
+            prompt_used: pass.use_prompt && prompt.is_some(),
+            raw_chars: transcript.text.len(),
             score: report.score,
             dropped: report.dropped,
             had_metrics: report.had_metrics,
@@ -150,7 +333,7 @@ pub async fn transcribe_verified(
                 .iter()
                 .enumerate()
                 .map(|(i, seg)| {
-                    let src = raw.segments.get(i);
+                    let src = segments.get(i);
                     crate::debug::SegmentDebug {
                         text: seg.text.clone(),
                         start: src.map(|s| s.start).unwrap_or(0.0),
@@ -172,13 +355,12 @@ pub async fn transcribe_verified(
             break;
         }
         // Nothing was decoded, so there is nothing to salvage. Re-decoding
-        // silence at a higher temperature invites a hallucination instead of
-        // fixing one.
+        // silence invites a hallucination instead of fixing one.
         if silent {
             log_message("[quality] No text decoded — not re-decoding");
             break;
         }
-        if pass + 1 < attempts.len() {
+        if index + 1 < passes.len() {
             log_message("[quality] Result looks hallucinated — re-decoding");
         }
     }
@@ -197,262 +379,156 @@ pub async fn transcribe_verified(
     Ok(report)
 }
 
-struct RawResult {
-    text: String,
-    segments: Vec<Segment>,
-}
-
-async fn transcribe_once(
-    wav_data: Vec<u8>,
-    settings: &Settings,
-    duration_secs: f64,
-    prompt: Option<&str>,
-    attempt: Attempt,
-) -> Result<RawResult, String> {
-    let api_url = &settings.api_url;
-    let is_openai = is_openai_api(api_url);
-
-    let timeout_secs = (duration_secs * 2.0).clamp(30.0, 300.0) as u64;
-
-    log_message(&format!(
-        "[transcribe] Sending {}KB to {} (duration={:.1}s, timeout={}s, openai_compat={})",
-        wav_data.len() / 1024,
-        api_url,
-        duration_secs,
-        timeout_secs,
-        is_openai
-    ));
-
-    let file_part = reqwest::multipart::Part::bytes(wav_data)
-        .file_name("audio.wav")
-        .mime_str("audio/wav")
-        .map_err(|e| format!("Failed to create file part: {}", e))?;
-
-    let mut form = reqwest::multipart::Form::new().part("file", file_part);
-
-    // verbose_json carries the per-segment metrics hallucination scoring needs.
-    // Servers that ignore it still return `text`, which scoring falls back to.
-    if is_openai {
-        form = form
-            .text("model", settings.model.clone())
-            .text("response_format", "verbose_json".to_string())
-            .text("temperature", attempt.temperature.to_string());
-        if settings.language != "auto" {
-            form = form.text("language", settings.language.clone());
-        }
-    } else {
-        form = form
-            .text("language", settings.language.clone())
-            .text("response_format", "verbose_json".to_string())
-            .text("temperature", attempt.temperature.to_string())
-            .text(
-                "temperature_inc",
-                if attempt.allow_internal_fallback {
-                    "0.2"
-                } else {
-                    "0.0"
-                }
-                .to_string(),
-            )
-            .text("no_speech_thold", "0.65")
-            .text("entropy_thold", "2.4")
-            .text("suppress_nst", "true");
-    }
-
-    if let Some(prompt) = prompt.filter(|p| !p.trim().is_empty()) {
-        form = form.text("prompt", prompt.to_string());
-        form = form.text("initial_prompt", prompt.to_string());
-    }
-
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(timeout_secs))
-        .build()
-        .map_err(|e| format!("Failed to build HTTP client: {}", e))?;
-
-    let resp = client
-        .post(api_url)
-        .multipart(form)
-        .send()
-        .await
-        .map_err(|e| format!("API request failed after {}s timeout: {}", timeout_secs, e))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp
-            .text()
-            .await
-            .unwrap_or_else(|e| format!("<failed to read response body: {}>", e));
-        return Err(format!("API error: HTTP {} - {}", status, body));
-    }
-
-    let body = resp
-        .text()
-        .await
-        .map_err(|e| format!("Failed to read response: {}", e))?;
-
-    let mut parsed = parse_response(&body);
-    parsed.text = normalize_line_breaks(&parsed.text);
-    log_message(&format!(
-        "[transcribe] Result: {} chars, {} segments",
-        parsed.text.len(),
-        parsed.segments.len()
-    ));
-    Ok(parsed)
-}
-
-fn parse_response(body: &str) -> RawResult {
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(body) else {
-        return RawResult {
-            text: body.trim().to_string(),
-            segments: Vec::new(),
-        };
-    };
-
-    let segments: Vec<Segment> = json
-        .get("segments")
-        .and_then(|v| v.as_array())
-        .map(|items| items.iter().filter_map(parse_segment).collect())
-        .unwrap_or_default();
-
-    let text = json
-        .get("text")
-        .and_then(|v| v.as_str())
-        .map(|t| t.trim().to_string())
-        .filter(|t| !t.is_empty())
-        .unwrap_or_else(|| {
-            segments
-                .iter()
-                .map(|s| s.text.trim())
-                .filter(|t| !t.is_empty())
-                .collect::<Vec<&str>>()
-                .join(" ")
-        });
-
-    RawResult { text, segments }
-}
-
-/// Whisper servers disagree on whether numbers arrive as JSON numbers or
-/// strings, so accept either.
-fn loose_f64(value: Option<&serde_json::Value>) -> Option<f64> {
-    match value {
-        Some(serde_json::Value::Number(n)) => n.as_f64(),
-        Some(serde_json::Value::String(s)) => s.parse().ok(),
-        _ => None,
-    }
-}
-
-fn parse_segment(item: &serde_json::Value) -> Option<Segment> {
-    let text = item
-        .get("text")
-        .and_then(|v| v.as_str())?
-        .trim()
-        .to_string();
-    Some(Segment {
-        text,
-        start: loose_f64(item.get("start")).unwrap_or(0.0),
-        end: loose_f64(item.get("end")).unwrap_or(0.0),
-        no_speech_prob: loose_f64(item.get("no_speech_prob")).map(|v| v as f32),
-        avg_logprob: loose_f64(item.get("avg_logprob")).map(|v| v as f32),
-    })
-}
-
-/// whisper.cpp inserts line breaks at segment boundaries (~30s chunks).
-/// Join single newlines into flowing text while preserving paragraph breaks (double newlines).
-fn normalize_line_breaks(text: &str) -> String {
-    let text = text.replace("\r\n", "\n");
-    let paragraphs: Vec<&str> = text.split("\n\n").collect();
-    let joined: Vec<String> = paragraphs
-        .iter()
-        .map(|p| {
-            p.split('\n')
-                .map(|s| s.trim())
-                .filter(|s| !s.is_empty())
-                .collect::<Vec<&str>>()
-                .join(" ")
-        })
-        .filter(|s| !s.is_empty())
-        .collect();
-    joined.join("\n\n")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use speaktype_stt::MemoryStore;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
 
-    #[test]
-    fn parses_verbose_json_segment_metrics() {
-        let body = r#"{
-            "text": "Ship the release notes.",
-            "segments": [
-                {"start": 0.0, "end": 2.4, "text": " Ship the release notes.",
-                 "no_speech_prob": 0.012, "avg_logprob": -0.31}
-            ]
-        }"#;
-        let parsed = parse_response(body);
-        assert_eq!(parsed.text, "Ship the release notes.");
-        assert_eq!(parsed.segments.len(), 1);
-        assert_eq!(parsed.segments[0].no_speech_prob, Some(0.012));
-        assert_eq!(parsed.segments[0].avg_logprob, Some(-0.31));
-        assert_eq!(parsed.segments[0].end, 2.4);
+    fn verbose_json() -> ResponseTemplate {
+        ResponseTemplate::new(200).set_body_string(
+            r#"{"task":"transcribe","language":"english","duration":2.4,
+                "text":" Ship the release notes before the stand-up tomorrow.\n",
+                "segments":[{"id":0,"text":" Ship the release notes before the stand-up tomorrow.",
+                "start":0.16,"end":2.3,"avg_logprob":-0.048,"no_speech_prob":0.018}]}"#,
+        )
+    }
+
+    fn unreachable_cloud(fallback_to_local: bool) -> ProviderConfig {
+        ProviderConfig::Cloud {
+            service: CloudService::Groq,
+            base_url: "http://127.0.0.1:9/openai/v1".to_string(),
+            model: "whisper-large-v3-turbo".to_string(),
+            fallback_to_local,
+        }
+    }
+
+    fn clip() -> Clip<'static> {
+        Clip {
+            wav: b"RIFF fake wav",
+            duration_ms: 2400,
+            language: Some("en"),
+            prompt: None,
+            decode: Decode::default(),
+        }
+    }
+
+    fn cloud_secrets() -> MemoryStore {
+        let secrets = MemoryStore::new();
+        secrets.set("stt.groq", "sk-test").unwrap();
+        secrets
     }
 
     #[test]
-    fn parses_metrics_sent_as_strings() {
-        let body = r#"{"text": "hi", "segments": [
-            {"text": "hi", "start": "0.0", "end": "1.0", "no_speech_prob": "0.9"}
-        ]}"#;
-        let parsed = parse_response(body);
-        assert_eq!(parsed.segments[0].no_speech_prob, Some(0.9));
-        assert_eq!(parsed.segments[0].avg_logprob, None);
-    }
-
-    #[test]
-    fn falls_back_to_plain_text_without_segments() {
-        let parsed = parse_response(r#"{"text": "Just text."}"#);
-        assert_eq!(parsed.text, "Just text.");
-        assert!(parsed.segments.is_empty());
-
-        let parsed = parse_response("not json at all");
-        assert_eq!(parsed.text, "not json at all");
-        assert!(parsed.segments.is_empty());
-    }
-
-    /// Trimmed from an actual whisper-server verbose_json response (large-v3,
-    /// VAD on) so the parser and thresholds stay pinned to the real payload.
-    #[test]
-    fn real_server_payload_scores_clean() {
-        let body = r#"{"task":"transcribe","language":"english","duration":2.4,
-            "text":" Ship the release notes before the stand-up tomorrow.\n",
-            "segments":[{"id":0,"text":" Ship the release notes before the stand-up tomorrow.",
-            "start":0.16,"end":2.3000000000000003,"temperature":0.0,
-            "avg_logprob":-0.04834417253732681,"no_speech_prob":0.01814487762749195}]}"#;
-        let parsed = parse_response(body);
-        let report = quality::evaluate(&parsed.text, &parsed.segments, &Thresholds::default());
-        assert!(report.is_clean(), "clean speech must not be flagged");
+    fn service_names_are_plain_language() {
         assert_eq!(
-            report.clean_text,
+            service_name(&ProviderConfig::Local {
+                model: "base".to_string()
+            }),
+            "On this Mac"
+        );
+        assert_eq!(
+            service_name(&ProviderConfig::Server {
+                base_url: "http://127.0.0.1:9137/inference".to_string()
+            }),
+            "Your server"
+        );
+        assert_eq!(service_name(&unreachable_cloud(true)), "Groq");
+    }
+
+    #[tokio::test]
+    async fn cloud_unreachable_falls_back_to_local_when_enabled() {
+        let cloud = unreachable_cloud(true);
+        let local = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path("/inference"))
+            .respond_with(verbose_json())
+            .expect(1)
+            .mount(&local)
+            .await;
+        let fell_back = std::cell::Cell::new(false);
+        let secrets = cloud_secrets();
+
+        let outcome = run_provider(
+            &cloud,
+            &format!("{}/inference", local.uri()),
+            &secrets,
+            &clip(),
+            || fell_back.set(true),
+        )
+        .await;
+
+        assert_eq!(
+            outcome.unwrap().text,
             "Ship the release notes before the stand-up tomorrow."
+        );
+        assert!(
+            fell_back.get(),
+            "the caller must be told about the fallback"
         );
     }
 
-    /// VAD trims silence to nothing, which must read as "no speech" rather than
-    /// as a hallucination worth re-decoding.
-    #[test]
-    fn vad_trimmed_silence_yields_empty_result() {
-        let body = r#"{"task":"transcribe","language":"english","duration":4.0,
-            "text":"","segments":[]}"#;
-        let parsed = parse_response(body);
-        assert!(parsed.text.is_empty());
-        let report = quality::evaluate(&parsed.text, &parsed.segments, &Thresholds::default());
-        assert!(report.is_empty());
-        assert!(!report.is_clean());
+    #[tokio::test]
+    async fn cloud_unreachable_without_fallback_is_one_plain_message() {
+        let fell_back = std::cell::Cell::new(false);
+        let err = run_provider(
+            &unreachable_cloud(false),
+            "http://127.0.0.1:9/inference",
+            &cloud_secrets(),
+            &clip(),
+            || fell_back.set(true),
+        )
+        .await
+        .unwrap_err();
+        // Retry policy turns a refused connection into the plain copy once it
+        // gives up; either way it is one user-facing sentence, never a debug string.
+        assert!(err.starts_with("Couldn't reach Groq"), "{err}");
+        assert!(!fell_back.get());
     }
 
     #[test]
-    fn rebuilds_text_from_segments_when_top_level_text_missing() {
-        let body = r#"{"segments": [
-            {"text": " Hello"}, {"text": " world."}
-        ]}"#;
-        assert_eq!(parse_response(body).text, "Hello world.");
+    fn retry_ladder_is_the_three_passes_from_main() {
+        let ladder: Vec<(f32, bool, bool)> = std::iter::once(FIRST_PASS)
+            .chain(RETRY_LADDER.iter().copied())
+            .map(|a| (a.temperature, a.use_prompt, a.allow_internal_fallback))
+            .collect();
+        assert_eq!(
+            ladder,
+            vec![(0.0, true, false), (0.0, false, false), (0.4, false, true)]
+        );
+        assert_eq!(
+            RETRY_LADDER[0].decode(),
+            Decode {
+                temperature: 0.0,
+                internal_fallback: false
+            }
+        );
+        assert_eq!(
+            RETRY_LADDER[1].decode(),
+            Decode {
+                temperature: 0.4,
+                internal_fallback: true
+            }
+        );
+    }
+
+    #[test]
+    fn only_unreachable_cloud_failures_fall_back() {
+        let timeout = SttError::Timeout;
+        let unreachable = SttError::Unreachable;
+        assert!(cloud_falls_back(&unreachable_cloud(true), &unreachable));
+        assert!(cloud_falls_back(&unreachable_cloud(true), &timeout));
+        assert!(!cloud_falls_back(&unreachable_cloud(false), &unreachable));
+        assert!(!cloud_falls_back(
+            &unreachable_cloud(true),
+            &SttError::Unauthorized
+        ));
+        assert!(!cloud_falls_back(
+            &ProviderConfig::Local {
+                model: "base".to_string()
+            },
+            &unreachable
+        ));
     }
 }

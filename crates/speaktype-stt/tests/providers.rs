@@ -6,11 +6,15 @@ use wiremock::matchers::{body_string_contains, header, method, path, query_param
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 use speaktype_stt::{
-    provider_for, timeout_for, CloudService, MemoryStore, ProviderConfig, SecretStore, SttError,
-    TranscribeRequest,
+    provider_for, timeout_for, CloudService, Decode, MemoryStore, ProviderConfig, SecretStore,
+    SttError, TranscribeRequest,
 };
 
 const GROQ_MODEL: &str = "whisper-large-v3-turbo";
+
+/// Callers of these cloud-only tests never read the local address; point it at
+/// a closed port so an accidental local call fails visibly.
+const LOCAL_URL: &str = "http://127.0.0.1:9/inference";
 
 /// The provider sends the multipart `file` part verbatim; nothing on either
 /// side of these tests decodes audio, so a compact ASCII stand-in is used
@@ -25,6 +29,7 @@ fn request(duration_ms: u32) -> TranscribeRequest {
         duration_ms,
         language: Some("en".to_string()),
         prompt: None,
+        decode: Decode::default(),
     }
 }
 
@@ -55,7 +60,7 @@ fn groq_provider(
         format!("{}/openai/v1", server.uri()),
         GROQ_MODEL,
     );
-    provider_for(&cfg, secrets, reqwest::Client::new())
+    provider_for(&cfg, LOCAL_URL, secrets, reqwest::Client::new())
 }
 
 #[tokio::test]
@@ -107,7 +112,7 @@ async fn deepgram_sends_token_header() {
         format!("{}/v1", server.uri()),
         "nova-3",
     );
-    let provider = provider_for(&cfg, &secrets, reqwest::Client::new()).unwrap();
+    let provider = provider_for(&cfg, LOCAL_URL, &secrets, reqwest::Client::new()).unwrap();
     let transcript = provider
         .transcribe(request(1000), CancellationToken::new())
         .await
@@ -256,7 +261,8 @@ async fn times_out_and_cancels() {
 
     let (listener, endpoint) = dead_endpoint().await;
     let cfg = ProviderConfig::Server { base_url: endpoint };
-    let provider = provider_for(&cfg, &MemoryStore::new(), reqwest::Client::new()).unwrap();
+    let provider =
+        provider_for(&cfg, LOCAL_URL, &MemoryStore::new(), reqwest::Client::new()).unwrap();
     let err = provider
         .transcribe(request(1000), CancellationToken::new())
         .await
@@ -269,7 +275,8 @@ async fn times_out_and_cancels() {
 async fn cancels_in_flight_request() {
     let (listener, endpoint) = dead_endpoint().await;
     let cfg = ProviderConfig::Server { base_url: endpoint };
-    let provider = provider_for(&cfg, &MemoryStore::new(), reqwest::Client::new()).unwrap();
+    let provider =
+        provider_for(&cfg, LOCAL_URL, &MemoryStore::new(), reqwest::Client::new()).unwrap();
     let cancel = CancellationToken::new();
     let task_cancel = cancel.clone();
     let handle = tokio::spawn(async move {
@@ -306,7 +313,7 @@ async fn list_models_filters_to_speech() {
         format!("{}/openai/v1", server.uri()),
         GROQ_MODEL,
     );
-    let provider = provider_for(&cfg, &secrets, reqwest::Client::new()).unwrap();
+    let provider = provider_for(&cfg, LOCAL_URL, &secrets, reqwest::Client::new()).unwrap();
     let models = provider
         .list_models(CancellationToken::new())
         .await
@@ -335,7 +342,7 @@ async fn list_models_falls_back_to_curated_on_404() {
         format!("{}/openai/v1", server.uri()),
         GROQ_MODEL,
     );
-    let models = provider_for(&groq, &secrets, http.clone())
+    let models = provider_for(&groq, LOCAL_URL, &secrets, http.clone())
         .unwrap()
         .list_models(CancellationToken::new())
         .await
@@ -348,7 +355,7 @@ async fn list_models_falls_back_to_curated_on_404() {
         format!("{}/openai/v1", server.uri()),
         GROQ_MODEL,
     );
-    let models = provider_for(&openai, &secrets, http)
+    let models = provider_for(&openai, LOCAL_URL, &secrets, http)
         .unwrap()
         .list_models(CancellationToken::new())
         .await
@@ -377,7 +384,7 @@ async fn list_models_404_without_curated_errors() {
         format!("{}/openai/v1", server.uri()),
         GROQ_MODEL,
     );
-    let provider = provider_for(&cfg, &secrets, reqwest::Client::new()).unwrap();
+    let provider = provider_for(&cfg, LOCAL_URL, &secrets, reqwest::Client::new()).unwrap();
     let err = provider
         .list_models(CancellationToken::new())
         .await
@@ -395,13 +402,80 @@ async fn deepgram_list_models_is_curated() {
         "http://127.0.0.1:9/v1".to_string(),
         "nova-3",
     );
-    let provider = provider_for(&cfg, &secrets, reqwest::Client::new()).unwrap();
+    let provider = provider_for(&cfg, LOCAL_URL, &secrets, reqwest::Client::new()).unwrap();
     let models = provider
         .list_models(CancellationToken::new())
         .await
         .unwrap();
     let ids: Vec<&str> = models.iter().map(|m| m.id.as_str()).collect();
     assert_eq!(ids, ["nova-3", "nova-2"]);
+}
+
+#[tokio::test]
+async fn local_uses_given_url() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/whisper-on-9137/inference"))
+        .respond_with(verbose_json())
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let cfg = ProviderConfig::Local {
+        model: "base".to_string(),
+    };
+    let local_url = format!("{}/whisper-on-9137/inference", server.uri());
+    let provider = provider_for(
+        &cfg,
+        &local_url,
+        &MemoryStore::new(),
+        reqwest::Client::new(),
+    )
+    .unwrap();
+    let transcript = provider
+        .transcribe(request(2400), CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(transcript.text, "Ship the release notes.");
+}
+
+#[tokio::test]
+async fn local_sends_decode_fields() {
+    let server = MockServer::start().await;
+    let local_url = format!("{}/inference", server.uri());
+    Mock::given(method("POST"))
+        .and(path("/inference"))
+        .and(body_string_contains("name=\"temperature\"\r\n\r\n0.4\r\n"))
+        .and(body_string_contains(
+            "name=\"temperature_inc\"\r\n\r\n0.0\r\n",
+        ))
+        .respond_with(verbose_json())
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let cfg = ProviderConfig::Local {
+        model: "base".to_string(),
+    };
+    let provider = provider_for(
+        &cfg,
+        &local_url,
+        &MemoryStore::new(),
+        reqwest::Client::new(),
+    )
+    .unwrap();
+    let req = TranscribeRequest {
+        decode: Decode {
+            temperature: 0.4,
+            internal_fallback: false,
+        },
+        ..request(2400)
+    };
+    let transcript = provider
+        .transcribe(req, CancellationToken::new())
+        .await
+        .unwrap();
+    assert_eq!(transcript.text, "Ship the release notes.");
 }
 
 #[tokio::test]
@@ -425,7 +499,8 @@ async fn local_parses_quality_fields() {
     let cfg = ProviderConfig::Server {
         base_url: format!("{}/inference", server.uri()),
     };
-    let provider = provider_for(&cfg, &MemoryStore::new(), reqwest::Client::new()).unwrap();
+    let provider =
+        provider_for(&cfg, LOCAL_URL, &MemoryStore::new(), reqwest::Client::new()).unwrap();
     let transcript = provider
         .transcribe(request(2400), CancellationToken::new())
         .await

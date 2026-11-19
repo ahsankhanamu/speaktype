@@ -7,10 +7,6 @@ use async_trait::async_trait;
 use tokio_util::sync::CancellationToken;
 use url::Url;
 
-/// Endpoint of the bundled whisper-server sidecar (the app's default
-/// `api_url`).
-pub(crate) const LOCAL_ENDPOINT: &str = "http://127.0.0.1:8002/inference";
-
 /// A whisper.cpp-compatible server: the bundled sidecar (`Local`) or the
 /// user's own (`Server`). The request and response handling are ported
 /// unchanged from the app's `transcribe_once`.
@@ -59,8 +55,16 @@ impl SttProvider for WhisperServer {
                 req.language.unwrap_or_else(|| "auto".to_string()),
             )
             .text("response_format", "verbose_json".to_string())
-            .text("temperature", "0".to_string())
-            .text("temperature_inc", "0.0".to_string())
+            .text("temperature", req.decode.temperature.to_string())
+            .text(
+                "temperature_inc",
+                if req.decode.internal_fallback {
+                    "0.2"
+                } else {
+                    "0.0"
+                }
+                .to_string(),
+            )
             .text("no_speech_thold", "0.65".to_string())
             .text("entropy_thold", "2.4".to_string())
             .text("suppress_nst", "true".to_string());

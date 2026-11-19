@@ -1,6 +1,14 @@
 use serde::{Deserialize, Serialize};
+use speaktype_stt::{ProviderConfig, SecretStore};
 use std::fs;
 use std::path::PathBuf;
+
+/// The whisper-server address the app writes on every start; an `api_url`
+/// still holding it means On this Mac.
+pub(crate) const DEFAULT_API_URL: &str = "http://127.0.0.1:8002/inference";
+
+/// Keychain account for the AI-writing key, moved out of settings.json.
+pub(crate) const LLM_KEY_ACCOUNT: &str = "llm.api_key";
 
 #[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
 pub struct Settings {
@@ -77,6 +85,10 @@ pub struct Settings {
     pub scribe_llm_base_url: String,
     #[serde(default)]
     pub scribe_llm_api_key: String,
+    /// Where transcription comes from. Missing in files written before the
+    /// Providers page existed; [`Settings::from_json`] fills it from `api_url`.
+    #[serde(default)]
+    pub stt_provider: Option<ProviderConfig>,
     #[serde(default = "default_scribe_llm_model")]
     pub scribe_llm_model: String,
     /// Scribe: use the local llama.cpp server (llama-server) instead of the
@@ -167,7 +179,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             hotkey: "Super+Control".to_string(),
-            api_url: "http://127.0.0.1:8002/inference".to_string(),
+            api_url: DEFAULT_API_URL.to_string(),
             model: "medium".to_string(),
             language: "auto".to_string(),
             window_x: None,
@@ -195,6 +207,7 @@ impl Default for Settings {
             scribe_template: default_scribe_template(),
             scribe_llm_base_url: default_scribe_llm_base_url(),
             scribe_llm_api_key: String::new(),
+            stt_provider: None,
             scribe_llm_model: default_scribe_llm_model(),
             scribe_llm_use_local: default_scribe_llm_use_local(),
             scribe_llm_local_model: String::new(),
@@ -226,40 +239,93 @@ impl Settings {
 
     pub fn load() -> Self {
         let path = Self::config_path();
-        let settings = if path.exists() {
+        let read = if path.exists() {
             match fs::read_to_string(&path) {
-                Ok(content) => match serde_json::from_str::<Settings>(&content) {
-                    Ok(s) => s,
-                    Err(e) => {
-                        crate::logging::log_message(&format!(
-                            "[settings] Corrupt settings file at {:?}, backing up and using defaults: {}",
-                            path, e
-                        ));
-                        let backup = path.with_extension("json.corrupt");
-                        let _ = fs::rename(&path, &backup);
-                        Self::default()
-                    }
-                },
+                Ok(content) => Some(content),
                 Err(e) => {
                     crate::logging::log_message(&format!(
                         "[settings] Failed to read settings file at {:?}: {}",
                         path, e
                     ));
-                    Self::default()
+                    None
                 }
             }
         } else {
-            Self::default()
+            None
+        };
+        let keychain = speaktype_stt::KeychainStore;
+        let (mut settings, mut changed) = match read {
+            Some(content) => match Self::from_json(&content, &keychain) {
+                Ok(migrated) => migrated,
+                Err(e) => {
+                    crate::logging::log_message(&format!(
+                        "[settings] Corrupt settings file at {:?}, backing up and using defaults: {}",
+                        path, e
+                    ));
+                    let _ = fs::rename(&path, path.with_extension("json.corrupt"));
+                    (Self::default(), true)
+                }
+            },
+            None => (Self::default(), false),
         };
 
         let normalized = Self::normalize_hotkey(&settings.hotkey);
         if normalized != settings.hotkey {
-            let mut migrated = settings;
-            migrated.hotkey = normalized;
-            let _ = migrated.save();
-            migrated
-        } else {
-            settings
+            settings.hotkey = normalized;
+            changed = true;
+        }
+        if changed {
+            if let Err(e) = settings.save() {
+                crate::logging::log_message(&format!("[settings] Failed to save migration: {}", e));
+            }
+        }
+        settings.resolve_provider();
+        settings
+    }
+
+    /// Parse a settings file, migrating out-of-date fields. The second value
+    /// reports whether `settings` needs writing back.
+    pub fn from_json(json: &str, secrets: &dyn SecretStore) -> Result<(Self, bool), String> {
+        let mut settings: Settings = serde_json::from_str(json).map_err(|e| e.to_string())?;
+        let mut changed = false;
+
+        if settings.stt_provider.is_none() {
+            settings.stt_provider = Some(if settings.api_url == DEFAULT_API_URL {
+                ProviderConfig::Local {
+                    model: settings.model.clone(),
+                }
+            } else {
+                ProviderConfig::Server {
+                    base_url: settings.api_url.clone(),
+                }
+            });
+            changed = true;
+        }
+
+        let llm_key = settings.scribe_llm_api_key.trim().to_string();
+        if !llm_key.is_empty() {
+            secrets
+                .set(LLM_KEY_ACCOUNT, &llm_key)
+                .map_err(|e| e.to_string())?;
+            settings.scribe_llm_api_key = String::new();
+            changed = true;
+        }
+
+        Ok((settings, changed))
+    }
+
+    /// The provider in force. A missing setting can only come from a value the
+    /// app built itself without loading (a test, a default); it reads as On
+    /// this Mac rather than panicking.
+    pub fn active_provider(&self) -> ProviderConfig {
+        self.stt_provider.clone().unwrap_or(ProviderConfig::Local {
+            model: self.model.clone(),
+        })
+    }
+
+    fn resolve_provider(&mut self) {
+        if self.stt_provider.is_none() {
+            self.stt_provider = Some(self.active_provider());
         }
     }
 
@@ -330,5 +396,82 @@ mod tests {
         assert_eq!(parsed.settings_y, Some(64.0));
         assert_eq!(parsed.settings_w, Some(960.0));
         assert_eq!(parsed.settings_h, Some(700.0));
+    }
+
+    /// A settings.json from before the explicit provider setting existed.
+    fn legacy_json(api_url: &str, llm_key: &str) -> String {
+        format!(
+            r#"{{
+                "hotkey": "Super+Control",
+                "api_url": "{api_url}",
+                "model": "large-v3",
+                "language": "auto",
+                "scribe_llm_base_url": "https://api.openai.com/v1",
+                "scribe_llm_api_key": "{llm_key}",
+                "scribe_llm_model": "gpt-4o-mini"
+            }}"#
+        )
+    }
+
+    #[test]
+    fn settings_migrates_default_url_to_local() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, changed) =
+            Settings::from_json(&legacy_json("http://127.0.0.1:8002/inference", ""), &store)
+                .expect("legacy settings must parse");
+        assert!(changed);
+        assert_eq!(
+            settings.active_provider(),
+            ProviderConfig::Local {
+                model: "large-v3".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn settings_migrates_custom_url_to_server() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, changed) = Settings::from_json(
+            &legacy_json("https://whisper.example.com/v1/inference", ""),
+            &store,
+        )
+        .expect("legacy settings must parse");
+        assert!(changed);
+        assert_eq!(
+            settings.active_provider(),
+            ProviderConfig::Server {
+                base_url: "https://whisper.example.com/v1/inference".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn llm_key_moves_to_keychain_and_blanks_json() {
+        let store = speaktype_stt::MemoryStore::new();
+        let (settings, _) = Settings::from_json(
+            &legacy_json("http://127.0.0.1:8002/inference", "sk-llm"),
+            &store,
+        )
+        .expect("legacy settings must parse");
+        assert_eq!(settings.scribe_llm_api_key, "");
+        assert_eq!(store.get("llm.api_key").unwrap().as_deref(), Some("sk-llm"));
+    }
+
+    #[test]
+    fn an_explicit_provider_is_kept_as_is() {
+        let store = speaktype_stt::MemoryStore::new();
+        let explicit = Settings {
+            stt_provider: Some(ProviderConfig::Cloud {
+                service: speaktype_stt::CloudService::Groq,
+                base_url: "https://api.groq.com/openai/v1".to_string(),
+                model: "whisper-large-v3".to_string(),
+                fallback_to_local: true,
+            }),
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&explicit).expect("serialize");
+        let (settings, changed) = Settings::from_json(&json, &store).expect("parse");
+        assert!(!changed);
+        assert_eq!(settings.active_provider(), explicit.active_provider());
     }
 }

@@ -38,7 +38,7 @@ pub struct AppState {
     pub is_transcribing: Arc<AtomicBool>,
     pub target_window: Arc<Mutex<Option<WindowInfo>>>,
     pub last_active_window: Arc<Mutex<Option<WindowInfo>>>,
-    pub chunk_session: Arc<Mutex<Option<ChunkSession>>>,
+    pub chunk_session: Arc<Mutex<Option<ChunkSession<tauri::Wry>>>>,
     pub is_pasting: Arc<AtomicBool>,
 }
 
@@ -374,7 +374,7 @@ fn begin_recording(app: &AppHandle, state: &AppState) -> Result<(), String> {
         recorder.start_with_input(app.clone(), input_device.as_deref())?;
         let sample_rate = recorder.sample_rate();
 
-        let session = ChunkSession::start(settings, sample_rate, buffer);
+        let session = ChunkSession::start(app.clone(), settings, sample_rate, buffer);
         let mut chunk_session = state.chunk_session.lock().map_err(|e| e.to_string())?;
         if let Some(old) = chunk_session.take() {
             log_message("[toggle_recording] Aborting stale chunk session before new recording");
@@ -414,7 +414,7 @@ async fn process_recording(
     mut settings: Settings,
     target_window: Option<WindowInfo>,
     is_transcribing: Arc<AtomicBool>,
-    chunk_session: Option<ChunkSession>,
+    chunk_session: Option<ChunkSession<tauri::Wry>>,
 ) {
     if is_transcribing
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -483,7 +483,7 @@ async fn process_recording(
             _ => {
                 log_message("[process] Chunk session produced no text, falling back");
                 crate::debug::capture_audio(&samples, sample_rate);
-                match transcribe_chunked(samples, sample_rate, &settings).await {
+                match transcribe_chunked(&app, samples, sample_rate, &settings).await {
                     Ok(t) => {
                         crate::debug::update_meta(duration_secs, "post_hoc_fallback");
                         crate::debug::finish_session(&t);
@@ -503,7 +503,7 @@ async fn process_recording(
         }
     } else {
         crate::debug::capture_audio(&samples, sample_rate);
-        match transcribe_chunked(samples, sample_rate, &settings).await {
+        match transcribe_chunked(&app, samples, sample_rate, &settings).await {
             Ok(t) => {
                 crate::debug::update_meta(duration_secs, "chunked");
                 crate::debug::finish_session(&t);
@@ -1375,7 +1375,7 @@ pub async fn reprocess_history_entry(
 
     crate::debug::start_session(&settings.model);
     crate::debug::capture_audio(&samples, sample_rate);
-    let result = transcribe_chunked(samples, sample_rate, &settings).await;
+    let result = transcribe_chunked(&app, samples, sample_rate, &settings).await;
     let text = match result {
         Ok(t) => {
             crate::debug::update_meta(reprocess_duration, "reprocess");

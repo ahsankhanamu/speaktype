@@ -57,7 +57,8 @@ impl SttProvider for OpenAiCompatible {
         let mut form = reqwest::multipart::Form::new()
             .part("file", file_part)
             .text("model", self.model.clone())
-            .text("response_format", "verbose_json".to_string());
+            .text("response_format", "verbose_json".to_string())
+            .text("temperature", req.decode.temperature.to_string());
         if let Some(language) = req.language.as_deref().filter(|l| !l.trim().is_empty()) {
             form = form.text("language", language.to_string());
         }

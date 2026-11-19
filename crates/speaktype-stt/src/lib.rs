@@ -13,7 +13,7 @@ mod secrets;
 pub use config::{CloudService, ProviderConfig};
 pub use error::SttError;
 pub use provider::{
-    provider_for, RemoteModel, Segment, SttProvider, TranscribeRequest, Transcript,
+    provider_for, Decode, RemoteModel, Segment, SttProvider, TranscribeRequest, Transcript,
 };
 pub use retry::{timeout_for, RetryPolicy};
 pub use secrets::{KeychainStore, MemoryStore, SecretError, SecretStore};

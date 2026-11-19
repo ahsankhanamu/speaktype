@@ -27,6 +27,7 @@ mod segmented_download;
 mod server;
 mod session_cmds;
 mod settings;
+mod stt_cmds;
 #[allow(dead_code)]
 mod templates;
 mod tones;

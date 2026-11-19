@@ -79,6 +79,12 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::session_cmds::bundle_reveal,
             crate::session_cmds::overlay_pen,
             crate::session_cmds::overlay_mark_complete,
+            crate::stt_cmds::stt_set_provider,
+            crate::stt_cmds::stt_set_api_key,
+            crate::stt_cmds::stt_has_api_key,
+            crate::stt_cmds::stt_reveal_api_key,
+            crate::stt_cmds::stt_list_models,
+            crate::stt_cmds::stt_test,
         ])
         .events(collect_events![
             crate::session_cmds::SessionState,
@@ -129,6 +135,24 @@ mod tests {
             "\"sessions-changed\"",
         ] {
             assert!(bindings.contains(name), "bindings.ts must register {name}");
+        }
+    }
+
+    #[test]
+    fn stt_commands_are_registered_in_bindings() {
+        let bindings = std::fs::read_to_string(BINDINGS_PATH).expect("bindings");
+        for name in [
+            "sttSetProvider",
+            "sttSetApiKey",
+            "sttHasApiKey",
+            "sttRevealApiKey",
+            "sttListModels",
+            "sttTest",
+        ] {
+            assert!(
+                bindings.contains(&format!("{name}: (")),
+                "bindings.ts must export {name}"
+            );
         }
     }
 
