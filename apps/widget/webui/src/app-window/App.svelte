@@ -53,6 +53,8 @@
 </script>
 
 <LayerRoot>
+  <!-- Overlay title bar: this strip moves the window and keeps the traffic lights clear. -->
+  <div class="titlebar" data-tauri-drag-region></div>
   <div class="window">
     <Sidebar label="SpeakType">
       <SearchField bind:value={query} />
@@ -112,12 +114,27 @@
     background: color-mix(in srgb, var(--st-accent) 14%, transparent);
     border-radius: var(--st-radius-card);
   }
+  .titlebar {
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: var(--titlebar-h);
+    z-index: 1;
+  }
   .window {
+    --titlebar-h: 44px;
     display: flex;
     height: 100vh;
     background: var(--st-window);
     color: var(--st-text);
     font-family: var(--st-font-family);
+  }
+  .window :global(.st-sidebar) {
+    padding-top: var(--titlebar-h);
+  }
+  /* macOS sidebar search is a compact 28 pt field. */
+  .window :global(.st-sidebar .st-field) {
+    height: var(--st-h-row-control);
+    font-size: var(--st-font-info);
   }
   main {
     flex: 1;
@@ -127,8 +144,8 @@
   .app {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 6px 10px;
+    gap: 8px;
+    padding: 4px 8px;
     border: 0;
     border-radius: var(--st-radius-selection);
     background: none;
@@ -148,9 +165,9 @@
     display: grid;
     flex: none;
     place-items: center;
-    width: 36px;
-    height: 36px;
-    border-radius: 9px;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
     background: linear-gradient(180deg, #4a4a4e, #2c2c2e);
     color: #fff;
     box-shadow: 0 1px 2px var(--st-shadow);
@@ -161,11 +178,11 @@
     min-width: 0;
   }
   strong {
-    font-size: 15px;
+    font-size: 13px;
   }
   .text span {
     color: var(--st-text-secondary);
-    font-size: var(--st-font-info);
+    font-size: 11px;
   }
   .none {
     margin: 0;

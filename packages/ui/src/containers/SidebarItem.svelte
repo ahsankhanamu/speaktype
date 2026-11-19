@@ -19,7 +19,7 @@
 </script>
 
 <button type="button" class="st-sidebar-item" class:selected aria-current={selected ? 'page' : undefined} {...rest}>
-  <span class="tile" style:background={tileColor}><Icon size={14} strokeWidth={2.4} /></span>
+  <span class="tile" style:background={tileColor}><Icon size={12} strokeWidth={2.4} /></span>
   <span class="label">{label}</span>
   {#if badge}<span class="badge" role="img" aria-label="Needs attention"></span>{/if}
 </button>
@@ -28,11 +28,11 @@
   .st-sidebar-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     box-sizing: border-box;
     width: 100%;
-    height: 36px;
-    padding: 0 10px;
+    height: 28px;
+    padding: 0 8px;
     border: 0;
     border-radius: var(--st-radius-selection);
     background: transparent;
@@ -59,9 +59,9 @@
     display: grid;
     flex: none;
     place-items: center;
-    width: 24px;
-    height: 24px;
-    border-radius: var(--st-radius-tile);
+    width: 20px;
+    height: 20px;
+    border-radius: 5px;
     color: #fff;
   }
   .label {

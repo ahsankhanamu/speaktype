@@ -108,7 +108,8 @@
     display: flex;
     flex-direction: column;
     gap: 10px;
-    padding: 14px 12px 8px;
+    /* Clear the window's overlay title bar. */
+    padding: calc(var(--titlebar-h, 44px) + 4px) 12px 8px;
   }
   .loading {
     padding: 12px;

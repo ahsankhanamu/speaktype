@@ -1884,10 +1884,11 @@ pub async fn open_about(app: AppHandle) -> Result<(), String> {
     show_and_focus_window(&window)
 }
 
-const SETTINGS_WINDOW_W: f64 = 880.0;
-const SETTINGS_WINDOW_H: f64 = 640.0;
-const SETTINGS_WINDOW_MIN_W: f64 = 720.0;
-const SETTINGS_WINDOW_MIN_H: f64 = 540.0;
+// Sized for the three-column History layout (sidebar 256 · list 340 · detail).
+const SETTINGS_WINDOW_W: f64 = 1180.0;
+const SETTINGS_WINDOW_H: f64 = 780.0;
+const SETTINGS_WINDOW_MIN_W: f64 = 980.0;
+const SETTINGS_WINDOW_MIN_H: f64 = 640.0;
 const ONBOARDING_WINDOW_W: f64 = 960.0;
 const ONBOARDING_WINDOW_H: f64 = 640.0;
 

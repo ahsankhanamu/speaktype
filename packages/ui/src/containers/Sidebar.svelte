@@ -11,9 +11,9 @@
     display: flex;
     flex: none;
     flex-direction: column;
-    gap: 10px;
+    gap: 8px;
     box-sizing: border-box;
-    width: 256px;
+    width: 220px;
     padding: 10px;
     background: var(--st-sidebar);
     font-family: var(--st-font-family);
