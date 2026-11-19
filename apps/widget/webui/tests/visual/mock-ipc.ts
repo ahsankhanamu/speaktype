@@ -9,6 +9,19 @@ declare global {
   }
 }
 
+type Box = { x: number; y: number; width: number; height: number };
+type LayoutArgs = { size: { width: number; height: number }; current: Box | null };
+
+/** The page plays the widget window: the pill sits in its middle, as it does away from the screen edges. */
+function layout({ size, current }: LayoutArgs) {
+  const to = {
+    x: Math.round((innerWidth - size.width) / 2),
+    y: Math.round((innerHeight - size.height) / 2),
+    ...size,
+  };
+  return { from: current ?? to, to };
+}
+
 /** Stands in for the Tauri runtime: commands answer from the fixture, events fire from `emit`. */
 export function installMockIpc(fixture: Fixture) {
   const callbacks = new Map<number, Handler>();
@@ -36,6 +49,7 @@ export function installMockIpc(fixture: Fixture) {
         return null;
       }
       calls.push({ cmd, args });
+      if (cmd === 'layout_widget') return layout(args as unknown as LayoutArgs);
       return fixture[cmd] ?? null;
     },
   };

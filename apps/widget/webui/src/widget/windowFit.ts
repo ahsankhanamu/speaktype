@@ -1,60 +1,78 @@
-import { LogicalSize, PhysicalPosition } from '@tauri-apps/api/dpi';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import type { ScreenRect } from '../lib/bindings';
+import { commands } from '../lib/ipc';
 
-interface Fit {
+export interface Extent {
   width: number;
   height: number;
-  /** Distance from the window's left edge to the pill's centre, which stays where it is on screen. */
-  pivot: number;
+}
+/** A rect in the widget window's coordinates, in points. */
+export interface Box extends Extent {
+  x: number;
+  y: number;
 }
 
-/** Room around the pill for its halo; the window is never larger than this at rest. */
-const MARGIN = 24;
 const TOOLTIP = { width: 150, height: 124 };
 const MENU = { width: 460, height: 560 };
+const NONE = { width: 0, height: 0 };
+
+/** How far an opened pill keeps from the screen's edges; the idle bubble may sit right at them. */
+export const EDGE_INSET = 8;
 
 /**
- * The window size for a pill (or pill and card) of the given size. A transparent window still takes
- * clicks, so it grows only while the tooltip or a menu needs room, and returns to the rest size after.
+ * The least window the pill needs around it. A transparent window still takes clicks, so it grows
+ * only while the tooltip or a menu needs room, and returns to hugging the pill after.
  */
-export function fitFor(
-  content: { width: number; height: number },
-  { hovering, menuOpen }: { hovering: boolean; menuOpen: boolean },
-): { width: number; height: number } {
-  const rest = { width: content.width + 2 * MARGIN, height: content.height + 2 * MARGIN };
-  const room = menuOpen ? MENU : hovering ? TOOLTIP : { width: 0, height: 0 };
-  return { width: Math.max(rest.width, room.width), height: Math.max(rest.height, room.height) };
+export function roomFor({ hovering, menuOpen }: { hovering: boolean; menuOpen: boolean }): Extent {
+  return menuOpen ? MENU : hovering ? TOOLTIP : NONE;
 }
 
-let current: Fit | undefined;
-let latest: Fit | undefined;
-let queue: Promise<void> = Promise.resolve();
+export interface Target {
+  size: Extent;
+  room: Extent;
+  inset: number;
+}
 
-async function apply(next: Fit) {
-  if (next !== latest) return;
-  const window = getCurrentWindow();
-  const scale = await window.scaleFactor();
-  if (!current) {
-    const size = await window.innerSize();
-    const width = size.width / scale;
-    current = { width, height: size.height / scale, pivot: width / 2 };
+/** Draws the pill at `box`; with `animate`, resolves once the morph has landed. */
+export type Show = (box: Box, animate: boolean) => Promise<void>;
+
+const same = (a: Target, b: Target) =>
+  a.size.width === b.size.width &&
+  a.size.height === b.size.height &&
+  a.room.width === b.room.width &&
+  a.room.height === b.room.height &&
+  a.inset === b.inset;
+
+// Rust's f64 crosses as `number | null` (NaN); a layout never produces one.
+const box = (r: ScreenRect): Box => ({ x: r.x ?? 0, y: r.y ?? 0, width: r.width ?? 0, height: r.height ?? 0 });
+
+/**
+ * Lays the widget out for each target in turn, the latest winning. The window first grows to hold
+ * the pill where it is drawn now and where it is going, the pill morphs between the two, and then
+ * the window hugs the pill again. A new target cuts a morph short and carries on from wherever the
+ * pill has got to.
+ */
+export function createLayout(show: Show, current: () => Box | null) {
+  let latest: Target | undefined;
+  let interrupt = () => {};
+  let queue: Promise<void> = Promise.resolve();
+
+  async function run(target: Target) {
+    if (target !== latest) return;
+    const { size, room, inset } = target;
+    const superseded = new Promise<void>((resolve) => (interrupt = resolve));
+    const grown = await commands.layoutWidget(size, room, inset, current());
+    await show(box(grown.from), false);
+    await Promise.race([show(box(grown.to), true), superseded]);
+    if (target !== latest) return;
+    const hugged = await commands.layoutWidget(size, room, inset, null);
+    await show(box(hugged.to), false);
   }
-  if (next.width === current.width && next.height === current.height && next.pivot === current.pivot) return;
-  const position = await window.outerPosition();
-  await window.setPosition(
-    new PhysicalPosition(
-      Math.round(position.x + (current.pivot - next.pivot) * scale),
-      Math.round(position.y + ((current.height - next.height) / 2) * scale),
-    ),
-  );
-  await window.setSize(new LogicalSize(next.width, next.height));
-  current = next;
-}
 
-/** Resizes the widget window to its content, growing and shrinking around the pill's centre. */
-export function fitWindow(width: number, height: number, pivot: number): Promise<void> {
-  const next = { width, height, pivot };
-  latest = next;
-  queue = queue.then(() => apply(next)).catch((error) => console.error('[widget] resize failed', error));
-  return queue;
+  return function layout(target: Target): Promise<void> {
+    if (latest && same(target, latest)) return queue;
+    latest = target;
+    interrupt();
+    queue = queue.then(() => run(target)).catch((error) => console.error('[widget] layout failed', error));
+    return queue;
+  };
 }

@@ -118,22 +118,23 @@
   --st-radius-tile: 6px;
   --st-radius-selection: 8px;
   --st-radius-popover: 10px;
-  --st-radius-card: 16px;
-  --st-radius-card-lg: 18px;
+  --st-radius-card: 12px;
+  --st-radius-card-lg: 14px;
   --st-radius-window: 18px;
   --st-radius-sheet: 28px;
 
-  --st-h-row-control: 28px;
-  --st-h-panel-control: 32px;
-  --st-row-info: 36px;
-  --st-row-control: 50px;
-  --st-row-icon: 64px;
+  /* macOS metrics: 13 pt text, 24 pt controls, 40 pt form rows. */
+  --st-h-row-control: 24px;
+  --st-h-panel-control: 28px;
+  --st-row-info: 32px;
+  --st-row-control: 40px;
+  --st-row-icon: 52px;
 
-  --st-font-body: 14px;
-  --st-font-caption: 12px;
-  --st-font-info: 13px;
-  --st-font-section: 15px;
-  --st-font-title: 24px;
+  --st-font-body: 13px;
+  --st-font-caption: 11px;
+  --st-font-info: 12px;
+  --st-font-section: 13px;
+  --st-font-title: 20px;
   --st-font-sidebar: 13px;
   --st-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
 
@@ -146,7 +147,10 @@
   --st-dur-base: 160ms;
   --st-dur-slow: 200ms;
   --st-dur-ink: 250ms;
+  --st-dur-morph: 320ms;
   --st-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* The widget pill growing from and settling back into its bubble: fast start, long soft landing. */
+  --st-ease-morph: cubic-bezier(0.32, 0.72, 0, 1);
 
   --st-scrim: rgba(0, 0, 0, 0.4);
 

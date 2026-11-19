@@ -37,6 +37,7 @@ mod tones;
 mod transcribe;
 mod tray;
 mod widget_cmds;
+mod widget_frame;
 mod window;
 
 use audio::{AudioRecorder, LevelMonitor};
@@ -86,7 +87,9 @@ pub fn run() {
                 }
                 ("main", WindowEvent::Moved(position)) => {
                     if let Some(widget) = window.app_handle().get_webview_window("main") {
-                        widget_cmds::save_dragged_position(&widget, *position);
+                        if let Some(saved) = widget_frame::on_moved(&widget, *position) {
+                            widget_cmds::save_dragged_position(&widget, saved);
+                        }
                     }
                 }
                 _ => {}
@@ -741,6 +744,7 @@ mod ipc_surface {
         "minimize_widget",
         "quit_app",
         "save_window_position",
+        "layout_widget",
         "reset_widget_position",
         "get_history",
         "delete_history_entry",
@@ -793,6 +797,7 @@ mod ipc_surface {
         "minimize_widget",
         "quit_app",
         "save_window_position",
+        "layout_widget",
         "reset_widget_position",
         "open_about",
         "open_settings",

@@ -31,7 +31,7 @@
     gap: 8px;
     box-sizing: border-box;
     width: 100%;
-    height: 32px;
+    height: 28px;
     padding: 0 8px;
     border: 0;
     border-radius: var(--st-radius-selection);

@@ -38,19 +38,19 @@
     align-items: center;
     gap: 12px;
     box-sizing: border-box;
-    padding: 8px 14px 8px 16px;
+    padding: 6px 12px 6px 14px;
     font-family: var(--st-font-family);
   }
   .icon {
-    gap: 14px;
+    gap: 10px;
   }
   .tile {
     display: grid;
     flex: none;
     place-items: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
     color: #fff;
   }
   .text {

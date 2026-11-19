@@ -14,6 +14,16 @@ const STATES = [
   'long-audio',
 ];
 
+/** The widget as the window would show it: the pill (and card) with the halo margin around them. */
+async function widget(page: Page) {
+  const boxes = await page.locator('.stage, .card').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON()));
+  const left = Math.min(...boxes.map((b) => b.left)) - 24;
+  const top = Math.min(...boxes.map((b) => b.top)) - 24;
+  const right = Math.max(...boxes.map((b) => b.right)) + 24;
+  const bottom = Math.max(...boxes.map((b) => b.bottom)) + 24;
+  return { clip: { x: left, y: top, width: right - left, height: bottom - top } };
+}
+
 // The page clock is frozen, so a hold time (pasted: 0.5 s, no speech: 2 s) cannot run out mid-screenshot.
 async function open(page: Page, state: string, theme: string, extra = '') {
   await page.clock.install({ time: 0 });
@@ -30,7 +40,7 @@ for (const theme of ['dark', 'light']) {
     for (const state of STATES) {
       test(state, async ({ page }) => {
         await open(page, state, theme);
-        await expect(page.locator('.widget')).toHaveScreenshot(`widget-${state}-${theme}.png`);
+        await expect(page).toHaveScreenshot(`widget-${state}-${theme}.png`, await widget(page));
       });
     }
 
@@ -43,28 +53,28 @@ for (const theme of ['dark', 'light']) {
         await page.clock.runFor(60);
       }
       await expect(page.getByText('0:07')).toBeVisible();
-      await expect(page.locator('.widget')).toHaveScreenshot(`widget-recording-speech-${theme}.png`, { maxDiffPixelRatio: 0.03 });
+      await expect(page).toHaveScreenshot(`widget-recording-speech-${theme}.png`, { ...(await widget(page)), maxDiffPixelRatio: 0.03 });
     });
 
     test("You're all set card", async ({ page }) => {
       await open(page, 'all-set', theme);
       await expect(page.getByText("You're all set")).toBeVisible();
-      await expect(page.locator('.widget')).toHaveScreenshot(`widget-all-set-${theme}.png`);
+      await expect(page).toHaveScreenshot(`widget-all-set-${theme}.png`, await widget(page));
     });
 
     test('finish setup dot and server dot', async ({ page }) => {
       await open(page, 'idle', theme, '&setup=unfinished');
       await expect(page.getByRole('img', { name: 'Finish setup' })).toBeVisible();
-      await expect(page.locator('.widget')).toHaveScreenshot(`widget-finish-setup-${theme}.png`);
+      await expect(page).toHaveScreenshot(`widget-finish-setup-${theme}.png`, await widget(page));
       await page.evaluate(() => window.__mock.emit('server:starting', {}));
       await expect(page.getByRole('img', { name: 'Server starting…' })).toBeVisible();
-      await expect(page.locator('.widget')).toHaveScreenshot(`widget-server-starting-${theme}.png`);
+      await expect(page).toHaveScreenshot(`widget-server-starting-${theme}.png`, await widget(page));
     });
 
     for (const size of ['small', 'large']) {
       test(`${size} widget`, async ({ page }) => {
         await open(page, 'copied', theme, `&size=${size}`);
-        await expect(page.locator('.widget')).toHaveScreenshot(`widget-${size}-copied-${theme}.png`);
+        await expect(page).toHaveScreenshot(`widget-${size}-copied-${theme}.png`, await widget(page));
       });
     }
 

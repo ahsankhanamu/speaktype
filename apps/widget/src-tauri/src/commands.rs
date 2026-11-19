@@ -1885,10 +1885,10 @@ pub async fn open_about(app: AppHandle) -> Result<(), String> {
 }
 
 // Sized for the three-column History layout (sidebar 256 · list 340 · detail).
-const SETTINGS_WINDOW_W: f64 = 1180.0;
-const SETTINGS_WINDOW_H: f64 = 780.0;
-const SETTINGS_WINDOW_MIN_W: f64 = 980.0;
-const SETTINGS_WINDOW_MIN_H: f64 = 640.0;
+const SETTINGS_WINDOW_W: f64 = 880.0;
+const SETTINGS_WINDOW_H: f64 = 640.0;
+const SETTINGS_WINDOW_MIN_W: f64 = 760.0;
+const SETTINGS_WINDOW_MIN_H: f64 = 520.0;
 const ONBOARDING_WINDOW_W: f64 = 960.0;
 const ONBOARDING_WINDOW_H: f64 = 640.0;
 
@@ -2020,20 +2020,15 @@ pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<()
 
     let (saved_x, saved_y, width, height) = settings_window_geometry(&app);
 
-    let builder = hidden_title_bar(WebviewWindowBuilder::new(
-        &app,
-        "settings",
-        WebviewUrl::App("settings.html".into()),
-    ))
-    .title("SpeakType")
-    .inner_size(width, height)
-    .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
-    .resizable(true);
-    // macOS Tahoe: the traffic lights sit inside the floating sidebar, lined up
-    // with its search field (the sidebar is inset 8 pt, padded 10 pt).
-    #[cfg(target_os = "macos")]
-    let builder = builder.traffic_light_position(tauri::LogicalPosition::new(22.0, 26.0));
-    let window = builder.build().map_err(|e| e.to_string())?;
+    // A standard macOS window: a real title bar people can grab and read.
+    let window =
+        WebviewWindowBuilder::new(&app, "settings", WebviewUrl::App("settings.html".into()))
+            .title("SpeakType Settings")
+            .inner_size(width, height)
+            .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
+            .resizable(true)
+            .build()
+            .map_err(|e| e.to_string())?;
 
     // A position the clamp rejects falls back to the widget's top-right corner,
     // which is meaningless for a window this size — centre it instead.
@@ -2088,7 +2083,8 @@ pub async fn save_window_position(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     if let Some(window) = app.get_webview_window("main") {
-        let pos = window.outer_position().map_err(|e| e.to_string())?;
+        let pos = crate::widget_frame::current_saved_position(&window)
+            .ok_or("The widget has no position")?;
         let (cx, cy) = crate::window::clamp_to_visible_screens(&window, pos.x as f64, pos.y as f64);
         let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
         settings.window_x = Some(cx);

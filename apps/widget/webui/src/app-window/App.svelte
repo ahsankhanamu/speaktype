@@ -53,8 +53,6 @@
 </script>
 
 <LayerRoot>
-  <!-- Overlay title bar: this strip moves the window and keeps the traffic lights clear. -->
-  <div class="titlebar" data-tauri-drag-region></div>
   <div class="window">
     <Sidebar label="SpeakType">
       <SearchField bind:value={query} />
@@ -114,23 +112,13 @@
     background: color-mix(in srgb, var(--st-accent) 14%, transparent);
     border-radius: var(--st-radius-card);
   }
-  .titlebar {
-    position: fixed;
-    inset: 0 0 auto 0;
-    height: var(--titlebar-h);
-    z-index: 1;
-  }
   .window {
-    --titlebar-h: 56px;
+    --page-top: 20px;
     display: flex;
     height: 100vh;
     background: var(--st-window);
     color: var(--st-text);
     font-family: var(--st-font-family);
-  }
-  .window :global(.st-sidebar) {
-    /* The panel starts 8 pt down; the traffic lights sit inside its top. */
-    padding-top: calc(var(--titlebar-h) - 8px);
   }
   /* macOS sidebar search is a compact 28 pt field. */
   .window :global(.st-sidebar .st-field) {

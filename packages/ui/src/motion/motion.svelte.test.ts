@@ -32,7 +32,7 @@ describe('transitions', () => {
     expect(easeOut(0.5)).toBeGreaterThan(0.8);
   });
 
-  test('durations', () => expect(duration).toEqual({ fast: 120, base: 160, slow: 200, ink: 250 }));
+  test('durations', () => expect(duration).toEqual({ fast: 120, base: 160, slow: 200, ink: 250, morph: 320 }));
 });
 
 describe('reducedMotion', () => {

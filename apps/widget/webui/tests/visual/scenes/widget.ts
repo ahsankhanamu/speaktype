@@ -28,10 +28,8 @@ installMockIpc(fixture);
   currentWindow: { label: 'main' },
   currentWebview: { windowLabel: 'main', label: 'main' },
 };
-// The real window resizes around the pill's centre; centring the page content does the same here.
-const app = document.getElementById('app')!;
-Object.assign(app.style, { position: 'fixed', left: '50%', top: '50%', transform: 'translate(-50%, -50%)' });
-mount(Widget, { target: app });
+// The page is the widget window; the mocked layout puts the pill in its middle.
+mount(Widget, { target: document.getElementById('app')! });
 
 for (const { event, payload } of fixture.$states[params.get('state') ?? 'idle']) {
   window.__mock.emit(event, payload);

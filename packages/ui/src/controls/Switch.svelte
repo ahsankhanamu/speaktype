@@ -19,11 +19,11 @@
     position: relative;
     flex: none;
     box-sizing: border-box;
-    width: 38px;
-    height: 22px;
+    width: 32px;
+    height: 18px;
     padding: 0;
     border: 0;
-    border-radius: 11px;
+    border-radius: 9px;
     background: var(--st-track);
     transition: background-color var(--st-dur-base) var(--st-ease-out);
   }
@@ -41,14 +41,14 @@
     position: absolute;
     top: 2px;
     left: 2px;
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     background: #fff;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
     transition: transform var(--st-dur-base) var(--st-ease-out);
   }
   :global(.st-switch-thumb[data-state='checked']) {
-    transform: translateX(16px);
+    transform: translateX(14px);
   }
 </style>

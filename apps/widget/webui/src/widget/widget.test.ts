@@ -23,12 +23,12 @@ const ipc = vi.hoisted(() => ({
 }));
 const mic = vi.hoisted(() => ({ micLevelsStart: vi.fn(), micLevelsStop: vi.fn() }));
 const win = vi.hoisted(() => ({ startDragging: vi.fn() }));
-const fit = vi.hoisted(() => ({ fitWindow: vi.fn() }));
+const fit = vi.hoisted(() => ({ layout: vi.fn() }));
 vi.mock('../lib/ipc', () => ipc);
 vi.mock('../lib/app/micLevels', () => mic);
 vi.mock('../lib/app/deleteModel', () => ({ deleteModel: vi.fn() }));
 vi.mock('@tauri-apps/api/window', () => ({ getCurrentWindow: () => win }));
-vi.mock('./windowFit', async (original) => ({ ...(await original<typeof import('./windowFit')>()), fitWindow: fit.fitWindow }));
+vi.mock('./windowFit', async (original) => ({ ...(await original<typeof import('./windowFit')>()), createLayout: () => fit.layout }));
 
 const { default: Widget } = await import('./Widget.svelte');
 
@@ -58,7 +58,11 @@ const send = async (phase: string, kind?: string, message = '') => {
   await settle();
 };
 const halo = () => document.querySelector<HTMLElement>('.halo')!.style.boxShadow;
-const lastFit = () => fit.fitWindow.mock.calls.at(-1)!.slice(0, 2);
+/** The room the window was last asked to keep around the pill, and the pill's edge inset. */
+const lastFit = () => {
+  const { room, inset } = fit.layout.mock.calls.at(-1)![0];
+  return [room.width, room.height, inset];
+};
 
 beforeEach(() => {
   bus = new FakeBus();
@@ -84,7 +88,7 @@ beforeEach(() => {
   ipc.toggleRecording.mockResolvedValue(null);
   ipc.commands.pasteLast.mockResolvedValue(null);
   ipc.commands.openSettings.mockResolvedValue(null);
-  fit.fitWindow.mockResolvedValue(undefined);
+  fit.layout.mockResolvedValue(undefined);
   win.startDragging.mockResolvedValue(undefined);
 });
 
@@ -250,9 +254,15 @@ describe('size and window', () => {
     await vi.waitFor(() => expect(document.querySelector<HTMLElement>('.widget')!.style.getPropertyValue('--size')).toBe(px));
   });
 
-  it('fits the window to its content with a 24 px margin', async () => {
+  it('hugs the idle bubble, which may sit right at the screen edge', async () => {
     await start();
-    await vi.waitFor(() => expect(lastFit()).toEqual([48, 48]));
+    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 0]));
+  });
+
+  it('keeps an opened pill inside the screen edges', async () => {
+    await start();
+    await send('recording');
+    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 8]));
   });
 
   it('grows while the idle pill is hovered and shrinks back after', async () => {
@@ -261,7 +271,7 @@ describe('size and window', () => {
     stage.dispatchEvent(new MouseEvent('pointerenter'));
     await vi.waitFor(() => expect(lastFit()[1]).toBeGreaterThanOrEqual(120));
     stage.dispatchEvent(new MouseEvent('pointerleave'));
-    await vi.waitFor(() => expect(lastFit()).toEqual([48, 48]));
+    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 0]));
   });
 
   it('does not grow for hover once recording', async () => {
@@ -269,7 +279,7 @@ describe('size and window', () => {
     await send('recording');
     document.querySelector('.stage')!.dispatchEvent(new MouseEvent('pointerenter'));
     await settle();
-    expect(lastFit()).toEqual([48, 48]);
+    expect(lastFit()).toEqual([0, 0, 8]);
   });
 
   it('grows while the menu is open and returns to rest when it closes', async () => {
@@ -277,7 +287,7 @@ describe('size and window', () => {
     document.querySelector('.stage')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
     await vi.waitFor(() => expect(lastFit()[1]).toBeGreaterThan(500));
     button('Hide widget')!.click();
-    await vi.waitFor(() => expect(lastFit()).toEqual([48, 48]));
+    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 0]));
   });
 });
 

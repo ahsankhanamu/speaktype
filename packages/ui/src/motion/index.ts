@@ -3,7 +3,7 @@ import { reducedMotion } from './reduced.svelte';
 
 export { reducedMotion };
 
-export const duration = { fast: 120, base: 160, slow: 200, ink: 250 } as const;
+export const duration = { fast: 120, base: 160, slow: 200, ink: 250, morph: 320 } as const;
 
 const bezier = (a: number, b: number, t: number) => 3 * a * (1 - t) ** 2 * t + 3 * b * (1 - t) * t ** 2 + t ** 3;
 

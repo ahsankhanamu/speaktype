@@ -80,6 +80,13 @@ export const commands = {
 	minimizeWidget: (options?: InvokeOptions) => __TAURI_INVOKE<null>("minimize_widget", undefined, options),
 	quitApp: (options?: InvokeOptions) => __TAURI_INVOKE<void>("quit_app", undefined, options),
 	saveWindowPosition: (options?: InvokeOptions) => __TAURI_INVOKE<null>("save_window_position", undefined, options),
+	/**
+	 *  Place the pill of `size` around home and fit the window to it. `current` is
+	 *  where the pill is drawn now, in the window's coordinates: the window then
+	 *  also holds it, so the pill can morph from there. Without it the window hugs
+	 *  the new pill alone.
+	 */
+	layoutWidget: (size: Extent, room: Extent, inset: number | null, current: ScreenRect | null, options?: InvokeOptions) => __TAURI_INVOKE<PillLayout>("layout_widget", { size, room, inset, current }, options),
 	resetWidgetPosition: (options?: InvokeOptions) => __TAURI_INVOKE<null>("reset_widget_position", undefined, options),
 	getHistory: (options?: InvokeOptions) => __TAURI_INVOKE<History>("get_history", undefined, options),
 	deleteHistoryEntry: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("delete_history_entry", { index }, options),
@@ -230,6 +237,11 @@ export type DictationState = {
 	notice: Notice | null,
 };
 
+export type Extent = {
+	width: number | null,
+	height: number | null,
+};
+
 export type History = {
 	entries: HistoryEntry[],
 };
@@ -312,6 +324,12 @@ export type PassEvent = {
 	segments?: SegmentDebug[],
 };
 
+/**  The pill before and after a layout, in the window's own coordinates. */
+export type PillLayout = {
+	from: ScreenRect,
+	to: ScreenRect,
+};
+
 /**
  *  How transcription is served: the bundled local whisper-server, a
  *  user-configured whisper.cpp server, or a cloud service.
@@ -341,6 +359,13 @@ export type RenderedPrompt = {
 	imageCount: number,
 	totalImageBytes: number,
 	warning: string | null,
+};
+
+export type ScreenRect = {
+	x: number | null,
+	y: number | null,
+	width: number | null,
+	height: number | null,
 };
 
 export type SegmentDebug = {

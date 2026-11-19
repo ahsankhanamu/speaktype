@@ -1,6 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 
-test.use({ viewport: { width: 960, height: 720 }, timezoneId: 'UTC', locale: 'en-GB' });
+test.use({ viewport: { width: 880, height: 640 }, timezoneId: 'UTC', locale: 'en-GB' });
 
 const NOW = new Date('2026-11-19T12:00:00Z');
 

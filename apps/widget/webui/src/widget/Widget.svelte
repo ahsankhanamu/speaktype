@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { flushSync, tick } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { AudioLines, Check, EyeOff, History, Mic, Settings, X } from '@lucide/svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
   import { Button, DropdownMenu, Halo, Keycap, LayerRoot, MenuItem, MenuSeparator, Popover, Spinner, StatusDot, Tooltip, formatShortcut } from '@speaktype/ui';
@@ -18,8 +19,9 @@
     cancelRecording,
   } from '../lib/ipc';
   import { useDictation, type Action } from './dictation.svelte';
+  import { duration, reducedMotion } from '@speaktype/ui/motion';
   import Recording from './Recording.svelte';
-  import { fitFor, fitWindow } from './windowFit';
+  import { EDGE_INSET, createLayout, roomFor, type Box, type Extent } from './windowFit';
 
   const SIZES = { small: 30, regular: 40, large: 50 } as const;
   const DRAG_PX = 5;
@@ -51,13 +53,13 @@
     }
   });
 
-  let root = $state<HTMLElement>();
-  let inner = $state<HTMLElement>();
   let stage = $state<HTMLElement>();
+  let face = $state<HTMLElement>();
+  let cardEl = $state<HTMLElement>();
   let menuOpen = $state(false);
   let panel = $state<'mic' | 'model' | null>(null);
   let opening = $state(false);
-  const room = $derived(opening || menuOpen || panel !== null);
+  const menuRoom = $derived(opening || menuOpen || panel !== null);
 
   let server = $state<{ tone: 'accent' | 'danger' | 'success'; label: string } | null>(null);
   let serverTimer: ReturnType<typeof setTimeout> | undefined;
@@ -100,36 +102,90 @@
     if (view.kind === 'recording') card = null;
   });
 
-  let content = $state({ width: 0, height: 0 });
+  const CARD_GAP = 12;
+  const round = $derived(view.kind === 'idle' || view.kind === 'pasted');
+  let faceSize = $state<Extent>({ width: 0, height: 0 });
+  let cardSize = $state<Extent>({ width: 0, height: 0 });
   let hovering = $state(false);
-  const fit = $derived(fitFor(content, { hovering: hovering && view.kind === 'idle', menuOpen: room }));
+  let pill = $state<Box | null>(null);
+  let morphing = $state(false);
 
-  function fitNow() {
-    if (!stage) return Promise.resolve();
-    return fitWindow(fit.width, fit.height, stage.offsetLeft + stage.offsetWidth / 2);
-  }
-
-  $effect(() => {
-    if (!inner) return;
-    const observer = new ResizeObserver(() => (content = { width: inner!.offsetWidth, height: inner!.offsetHeight }));
-    observer.observe(inner);
-    content = { width: inner.offsetWidth, height: inner.offsetHeight };
+  /** An element's laid-out size, kept current. */
+  function observeSize(el: HTMLElement | undefined, set: (size: Extent) => void) {
+    if (!el) return set({ width: 0, height: 0 });
+    const read = () => set({ width: el.offsetWidth, height: el.offsetHeight });
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    read();
     return () => observer.disconnect();
+  }
+  $effect(() => observeSize(face, (size) => (faceSize = size)));
+  $effect(() => observeSize(cardEl ?? undefined, (size) => (cardSize = size)));
+
+  const target = $derived.by(() => {
+    const room = roomFor({ hovering: hovering && view.kind === 'idle', menuOpen: menuRoom });
+    // The card sits above or below the pill, whichever side has the room.
+    const cardRoom = card === null ? 0 : 2 * (cardSize.height + CARD_GAP) + faceSize.height;
+    return {
+      size: faceSize,
+      room: { width: Math.max(room.width, cardSize.width), height: Math.max(room.height, cardRoom) },
+      inset: round ? 0 : EDGE_INSET,
+    };
   });
 
+  const sameBox = (a: Box, b: Box) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+
+  /** Draws the pill at `next`; a morph resolves when the pill lands (or at once, without motion). */
+  function show(next: Box, animate: boolean): Promise<void> {
+    const moves = !pill || !sameBox(pill, next);
+    flushSync(() => {
+      morphing = animate && moves && !reducedMotion.current;
+      pill = next;
+    });
+    if (!morphing) return Promise.resolve();
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(timer);
+        stage?.removeEventListener('transitionend', onEnd);
+        resolve();
+      };
+      const onEnd = (event: TransitionEvent) => event.target === stage && done();
+      const timer = setTimeout(done, duration.morph + 60);
+      stage?.addEventListener('transitionend', onEnd);
+    });
+  }
+
+  /** Where the pill is drawn right now, mid-morph included. */
+  function drawn(): Box | null {
+    if (!pill || !stage) return null;
+    const r = stage.getBoundingClientRect();
+    return { x: r.x, y: r.y, width: r.width, height: r.height };
+  }
+
+  const layout = createLayout(show, drawn);
+  const layoutNow = () => layout(target);
+
   $effect(() => {
-    void fit;
-    void tick().then(fitNow);
+    void target;
+    void tick().then(layoutNow);
   });
 
   /** The window grows around the pill before a menu opens, so the menu has room and the pill stays put. */
-  async function reveal(show: () => void) {
+  async function reveal(open: () => void) {
     opening = true;
     await tick();
-    await fitNow();
-    show();
+    await layoutNow();
+    open();
     opening = false;
   }
+
+  let windowWidth = $state(0);
+  const cardAbove = $derived(!pill || pill.y >= cardSize.height + CARD_GAP);
+  const cardLeft = $derived.by(() => {
+    const half = cardSize.width / 2;
+    const centre = pill ? pill.x + pill.width / 2 : windowWidth / 2;
+    return Math.min(Math.max(centre, half), Math.max(half, windowWidth - half));
+  });
 
   let press: { x: number; y: number } | undefined;
   let dragged = false;
@@ -184,18 +240,18 @@
   };
 </script>
 
+<svelte:window bind:innerWidth={windowWidth} />
+
 <LayerRoot>
-  <div
-    class="widget"
-    style:--size="{size}px"
-    style:--k={size / 40}
-    style:width="{fit.width}px"
-    style:height="{fit.height}px"
-    bind:this={root}
-  >
-    <div class="content" bind:this={inner}>
+  <div class="widget" style:--size="{size}px" style:--k={size / 40}>
     {#if card !== null}
-      <div class="card">
+      <div
+        class="card"
+        bind:this={cardEl}
+        style:left="{cardLeft}px"
+        style:top={pill ? `${cardAbove ? pill.y - CARD_GAP : pill.y + pill.height + CARD_GAP}px` : undefined}
+        class:above={cardAbove}
+      >
         <div class="card-text">
           <p class="card-title">You're all set</p>
           <p class="card-hint">{card}</p>
@@ -210,48 +266,58 @@
     <div
       class="stage"
       class:locating
+      class:morphing
+      class:placed={pill !== null}
       bind:this={stage}
+      style:left={pill ? `${pill.x}px` : undefined}
+      style:top={pill ? `${pill.y}px` : undefined}
+      style:width="{pill?.width ?? faceSize.width}px"
+      style:height="{pill?.height ?? faceSize.height}px"
       onpointerdown={onPointerDown}
       oncontextmenu={onContextMenu}
       onpointerenter={() => (hovering = true)}
       onpointerleave={() => (hovering = false)}
     >
       <Halo tone={halo}>
-        <div class="pill {view.kind}" class:haloed={halo !== null} class:round={view.kind === 'idle' || view.kind === 'pasted'}>
-          {#if view.kind === 'idle'}
-            <Tooltip label="Dictate" shortcut={(settings.data?.shortcuts?.dictation ?? 'Super+Control').split('+')}>
-              {#snippet children(tooltipProps)}
-                <button type="button" {...tooltipProps} class="mic" aria-label="Dictate" onclick={mic}>
-                  <Mic size={18} strokeWidth={2} aria-hidden="true" />
-                </button>
-              {/snippet}
-            </Tooltip>
-            {#if dot}
-              <span class="dot"><StatusDot tone={dot.tone} label={dot.label} /></span>
-            {/if}
-          {:else if view.kind === 'recording'}
-            <Recording onstop={() => toggleRecording(true).catch(report)} oncancel={() => cancelRecording().catch(report)} />
-          {:else if view.kind === 'transcribing'}
-            <span class="dots" role="status" aria-label="Transcribing"><i></i><i></i><i></i></span>
-          {:else if view.kind === 'preparing'}
-            <span class="spinner"><Spinner /></span>
-            <span class="text">Getting ready…</span>
-          {:else if view.kind === 'pasted'}
-            <Check size={18} strokeWidth={2.2} color="var(--st-success)" role="img" aria-label="Pasted" />
-          {:else}
-            {#if view.dot}<span class="amber"></span>{/if}
-            {#if view.copiedKeys}
-              <span class="text">Copied. Press <Keycap key="⌘" /><Keycap key="V" /> to paste</span>
-            {:else}
-              <span class="text">{view.message}</span>
-            {/if}
-            {#if view.action}
-              {@const action = actions[view.action]}
-              <Button size={28} class="pill-action" data-action onclick={action.run}>{action.label}</Button>
-            {/if}
-          {/if}
+        <div class="pill" class:haloed={halo !== null}>
+          {#key view.kind}
+            <div class="face {view.kind}" class:round bind:this={face} in:fade={{ duration: duration.fast }}>
+              {#if view.kind === 'idle'}
+                <Tooltip label="Dictate" shortcut={(settings.data?.shortcuts?.dictation ?? 'Super+Control').split('+')}>
+                  {#snippet children(tooltipProps)}
+                    <button type="button" {...tooltipProps} class="mic" aria-label="Dictate" onclick={mic}>
+                      <Mic size={18} strokeWidth={2} aria-hidden="true" />
+                    </button>
+                  {/snippet}
+                </Tooltip>
+              {:else if view.kind === 'recording'}
+                <Recording onstop={() => toggleRecording(true).catch(report)} oncancel={() => cancelRecording().catch(report)} />
+              {:else if view.kind === 'transcribing'}
+                <span class="dots" role="status" aria-label="Transcribing"><i></i><i></i><i></i></span>
+              {:else if view.kind === 'preparing'}
+                <span class="spinner"><Spinner /></span>
+                <span class="text">Getting ready…</span>
+              {:else if view.kind === 'pasted'}
+                <Check size={18} strokeWidth={2.2} color="var(--st-success)" role="img" aria-label="Pasted" />
+              {:else}
+                {#if view.dot}<span class="amber"></span>{/if}
+                {#if view.copiedKeys}
+                  <span class="text">Copied. Press <Keycap key="⌘" /><Keycap key="V" /> to paste</span>
+                {:else}
+                  <span class="text">{view.message}</span>
+                {/if}
+                {#if view.action}
+                  {@const action = actions[view.action]}
+                  <Button size={28} class="pill-action" data-action onclick={action.run}>{action.label}</Button>
+                {/if}
+              {/if}
+            </div>
+          {/key}
         </div>
       </Halo>
+      {#if dot && view.kind === 'idle'}
+        <span class="dot"><StatusDot tone={dot.tone} label={dot.label} /></span>
+      {/if}
 
       <DropdownMenu.Root bind:open={menuOpen}>
         <DropdownMenu.Trigger>
@@ -289,7 +355,6 @@
         </div>
       </Popover>
     </div>
-    </div>
   </div>
 </LayerRoot>
 
@@ -304,25 +369,32 @@
 
   .widget {
     position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-sizing: border-box;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
     color: rgba(255, 255, 255, 0.88);
     font-family: var(--st-font-family);
     font-size: 12px;
   }
-  .content {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: 12px;
-  }
-
+  /* Placed by the layout in window coordinates; until then, centred in the starting square. */
   .stage {
-    position: relative;
-    display: inline-flex;
-    flex: none;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    display: flex;
+  }
+  .stage.placed {
+    translate: none;
+  }
+  .stage.morphing {
+    transition-property: left, top, width, height;
+    transition-duration: var(--st-dur-morph);
+    transition-timing-function: var(--st-ease-morph);
+  }
+  .stage > :global(.halo) {
+    width: 100%;
+    height: 100%;
   }
   .anchor {
     position: absolute;
@@ -349,46 +421,57 @@
     }
   }
 
+  /* The pill clips its face, so content appears as the pill grows around it. */
   .pill {
     position: relative;
-    display: flex;
-    align-items: center;
-    gap: calc(10px * var(--k));
-    box-sizing: border-box;
-    height: var(--size);
-    padding: 0 calc(16px * var(--k));
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
     border-radius: 999px;
     background: rgba(40, 40, 42, 0.96);
     box-shadow:
       0 0 0 0.5px rgba(255, 255, 255, 0.14),
       0 0 0 1px rgba(0, 0, 0, 0.25),
       0 6px 18px rgba(0, 0, 0, 0.25);
-    white-space: nowrap;
   }
   .pill.haloed {
     box-shadow: none;
   }
-  .pill.round {
+  .face {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    translate: -50% -50%;
+    display: flex;
+    align-items: center;
+    gap: calc(10px * var(--k));
+    box-sizing: border-box;
+    width: max-content;
+    height: var(--size);
+    padding: 0 calc(16px * var(--k));
+    white-space: nowrap;
+  }
+  .face.round {
     justify-content: center;
     width: calc(44px * var(--k));
     height: calc(44px * var(--k));
     padding: 0;
   }
-  .pill.recording {
+  .face.recording {
     padding: 0 calc(7px * var(--k)) 0 calc(8px * var(--k));
   }
-  .pill.preparing {
+  .face.preparing {
     gap: calc(8px * var(--k));
   }
-  .pill.notice {
+  .face.notice {
     gap: calc(8px * var(--k));
     padding: 0 calc(16px * var(--k));
   }
-  .pill.notice:has(:global(.pill-action)) {
+  .face.notice:has(:global(.pill-action)) {
     gap: calc(10px * var(--k));
     padding: 0 calc(7px * var(--k)) 0 calc(14px * var(--k));
   }
-  .pill.transcribing {
+  .face.transcribing {
     gap: calc(6px * var(--k));
     padding: 0 calc(18px * var(--k));
   }
@@ -437,7 +520,7 @@
     border-radius: 50%;
     background: var(--st-warning);
   }
-  .pill :global(.pill-action) {
+  .face :global(.pill-action) {
     height: calc(26px * var(--k));
     padding: 0 10px;
     border-radius: 999px;
@@ -484,7 +567,8 @@
   }
 
   .card {
-    position: relative;
+    position: absolute;
+    translate: -50% 0;
     display: flex;
     align-items: center;
     gap: 10px;
@@ -496,6 +580,9 @@
       0 0 0 0.5px rgba(255, 255, 255, 0.14),
       0 0 0 1px rgba(0, 0, 0, 0.25),
       0 6px 18px rgba(0, 0, 0, 0.25);
+  }
+  .card.above {
+    translate: -50% -100%;
   }
   .card-text p {
     margin: 0;

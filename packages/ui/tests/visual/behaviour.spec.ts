@@ -90,9 +90,9 @@ test('a busy button keeps its width', async ({ page }) => {
 
 test('rows have the info, control and icon heights', async ({ page }) => {
   const heights = await page.locator('.st-row').evaluateAll((rows) => rows.map((row) => row.getBoundingClientRect().height));
-  expect(heights[0]).toBe(36);
-  expect(heights[1]).toBe(50);
-  expect(heights[2]).toBeGreaterThanOrEqual(64);
+  expect(heights[0]).toBe(32);
+  expect(heights[1]).toBe(40);
+  expect(heights[2]).toBeGreaterThanOrEqual(52);
 });
 
 test('pop-up menu opens over its button and picks an item with the pointer', async ({ page }) => {

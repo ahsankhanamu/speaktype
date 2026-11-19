@@ -17,7 +17,7 @@
     gap: 24px;
     box-sizing: border-box;
     min-height: 100%;
-    padding: var(--titlebar-h, 56px) 28px 40px;
+    padding: var(--page-top, 20px) 28px 40px;
   }
   h1 {
     margin: 0;
