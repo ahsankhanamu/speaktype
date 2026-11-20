@@ -38,10 +38,10 @@
 :root[data-theme="light"] {
   color-scheme: light;
 
-  --st-window: #f5f5f7;
-  --st-group: #ffffff;
+  --st-window: #ffffff;
+  --st-group: #f4f4f6;
   --st-control: #e5e5ea;
-  --st-sidebar: #ececef;
+  --st-sidebar: #efeff1;
   --st-sidebar-edge: rgba(0, 0, 0, 0.1);
   --st-popover: #ffffff;
   --st-inset: #ececf0;
@@ -76,10 +76,10 @@
   :root:not([data-theme="dark"]) {
     color-scheme: light;
 
-    --st-window: #f5f5f7;
-    --st-group: #ffffff;
+    --st-window: #ffffff;
+    --st-group: #f4f4f6;
     --st-control: #e5e5ea;
-    --st-sidebar: #ececef;
+    --st-sidebar: #efeff1;
     --st-sidebar-edge: rgba(0, 0, 0, 0.1);
     --st-popover: #ffffff;
     --st-inset: #ececf0;

@@ -1,5 +1,5 @@
 <script lang="ts">
-  /** SpeakType's microphone: the filled mic on its stand that the app has always used. */
+  /** SpeakType's microphone: the same filled mic on its stand as the menu bar icon. */
   let { size = 18, label }: { size?: number; label?: string } = $props();
 </script>
 
@@ -12,6 +12,8 @@
   aria-label={label}
   aria-hidden={label ? undefined : 'true'}
 >
-  <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
-  <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+  <rect x="7.6" y="0.6" width="8.8" height="16" rx="4.4" />
+  <path d="M4.9 10.4v1.3a7.1 7.1 0 0 0 14.2 0v-1.3" fill="none" stroke="currentColor" stroke-width="2.3" stroke-linecap="round" />
+  <rect x="11" y="18.6" width="2" height="3.6" />
+  <rect x="7.4" y="21.6" width="9.2" height="2.3" rx="1.15" />
 </svg>
