@@ -107,12 +107,10 @@ describe('truncate', () => {
 });
 
 describe('MenuItem', () => {
-  test('an item without an icon keeps the icon column', () => {
+  test('an item without an icon has no empty icon column before its label', () => {
     render(MenuFixture);
     const plain = screen.getByRole('menuitem', { name: 'Reset' });
-    const icon = plain.querySelector('.icon') as HTMLElement;
-    expect(icon).not.toBeNull();
-    expect(icon.children.length).toBe(0);
+    expect(plain.querySelector('.icon')).toBeNull();
     expect(plain.querySelector('.check')).not.toBeNull();
   });
 
