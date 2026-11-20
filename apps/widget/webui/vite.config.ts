@@ -17,6 +17,7 @@ export default defineConfig({
         index: resolve(__dirname, 'index.html'),
         settings: resolve(__dirname, 'settings.html'),
         onboarding: resolve(__dirname, 'onboarding.html'),
+        overlay: resolve(__dirname, 'overlay.html'),
       },
     },
   },

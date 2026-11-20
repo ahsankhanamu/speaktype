@@ -21,6 +21,7 @@ mod llm_server;
 mod logging;
 mod notice;
 mod ocr;
+mod overlay;
 mod paste;
 mod paths;
 mod permissions;
@@ -437,6 +438,7 @@ pub fn run() {
             }
 
             clipboard::spawn_clipboard_monitor(app.handle().clone());
+            overlay::start(app.handle());
 
             let record_item =
                 MenuItemBuilder::with_id("record", "Start Recording").build(app)?;

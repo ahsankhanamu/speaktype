@@ -269,7 +269,11 @@ fn update_pass_through(window: &WebviewWindow) {
         };
         let local = (point.x - frame.x, layout.primary_height - point.y - frame.y);
         let pass = !layout.regions.iter().any(|r| r.contains(local));
-        if layout.passing == Some(pass) {
+        // A held button means a press or drag on the widget is under way; the
+        // window moves with a drag faster than its frame is updated here, so
+        // switching to click-through now would cut the drag off.
+        let button_down = objc2_app_kit::NSEvent::pressedMouseButtons() != 0;
+        if layout.passing == Some(pass) || (pass && button_down && layout.passing == Some(false)) {
             return;
         }
         layout.passing = Some(pass);
@@ -289,8 +293,9 @@ pub fn watch_pointer(window: &WebviewWindow) {
     use objc2_app_kit::{NSEvent, NSEventMask};
     use std::ptr::NonNull;
 
-    let mask =
-        NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged;
+    // Moves only: during a drag the regions are stale, and the button-up is
+    // followed by a move that settles the state.
+    let mask = NSEventMask::MouseMoved | NSEventMask::LeftMouseUp;
     let global_window = window.clone();
     let global = RcBlock::new(move |_: NonNull<NSEvent>| update_pass_through(&global_window));
     let local_window = window.clone();
