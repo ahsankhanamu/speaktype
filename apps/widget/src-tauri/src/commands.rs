@@ -2124,10 +2124,9 @@ pub async fn save_window_position(
     if let Some(window) = app.get_webview_window("main") {
         let pos = crate::widget_frame::current_saved_position(&window)
             .ok_or("The widget has no position")?;
-        let (cx, cy) = crate::window::clamp_to_visible_screens(&window, pos.x as f64, pos.y as f64);
         let mut settings = state.settings.lock().map_err(|e| e.to_string())?;
-        settings.window_x = Some(cx);
-        settings.window_y = Some(cy);
+        settings.window_x = Some(pos.x as f64);
+        settings.window_y = Some(pos.y as f64);
         settings.widget_corner = crate::window::WidgetCorner::Custom.as_str().to_string();
         settings.save()?;
     }

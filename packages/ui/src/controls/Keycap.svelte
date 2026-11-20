@@ -33,8 +33,8 @@
     padding: 0 calc(var(--size) / 4);
     border-radius: var(--st-radius-tile);
     background: var(--st-keycap);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 0 rgba(0, 0, 0, 0.65), 0 1px 3px rgba(0, 0, 0, 0.3);
-    color: var(--st-text);
+    box-shadow: var(--st-keycap-shadow);
+    color: var(--st-keycap-text);
     font: inherit;
     font-size: calc(var(--size) * 0.54);
     font-weight: 500;

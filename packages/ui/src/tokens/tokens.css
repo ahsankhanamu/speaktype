@@ -31,6 +31,8 @@
   --st-success-text: #30d158;
   --st-success: #30d158;
   --st-keycap: linear-gradient(180deg, #535357, #404044);
+  --st-keycap-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 0 rgba(0, 0, 0, 0.65), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --st-keycap-text: rgba(255, 255, 255, 0.88);
   --st-elevation-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.28);
   --st-elevation-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.45);
 }
@@ -44,7 +46,7 @@
   --st-sidebar: #efeff1;
   --st-sidebar-edge: rgba(0, 0, 0, 0.1);
   --st-popover: #ffffff;
-  --st-inset: #ececf0;
+  --st-inset: #f1f1f4;
   --st-track: #d1d1d6;
   --st-shadow: rgba(0, 0, 0, 0.12);
   --st-text: rgba(0, 0, 0, 0.88);
@@ -67,7 +69,9 @@
   --st-danger-text: #d70015;
   --st-success-text: #248a3d;
   --st-success: #34c759;
-  --st-keycap: linear-gradient(180deg, #ffffff, #f0f0f2);
+  --st-keycap: #ffffff;
+  --st-keycap-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 1.5px rgba(0, 0, 0, 0.07);
+  --st-keycap-text: rgba(0, 0, 0, 0.66);
   --st-elevation-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.14);
   --st-elevation-sheet: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 24px 60px rgba(0, 0, 0, 0.2);
 }
@@ -82,7 +86,7 @@
     --st-sidebar: #efeff1;
     --st-sidebar-edge: rgba(0, 0, 0, 0.1);
     --st-popover: #ffffff;
-    --st-inset: #ececf0;
+    --st-inset: #f1f1f4;
     --st-track: #d1d1d6;
     --st-shadow: rgba(0, 0, 0, 0.12);
     --st-text: rgba(0, 0, 0, 0.88);
@@ -105,7 +109,9 @@
     --st-danger-text: #d70015;
     --st-success-text: #248a3d;
     --st-success: #34c759;
-    --st-keycap: linear-gradient(180deg, #ffffff, #f0f0f2);
+    --st-keycap: #ffffff;
+    --st-keycap-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 1.5px rgba(0, 0, 0, 0.07);
+    --st-keycap-text: rgba(0, 0, 0, 0.66);
     --st-elevation-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.14);
     --st-elevation-sheet: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 24px 60px rgba(0, 0, 0, 0.2);
   }

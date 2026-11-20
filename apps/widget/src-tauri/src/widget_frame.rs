@@ -12,7 +12,6 @@
 
 use crate::session_cmds::IpcError;
 use serde::{Deserialize, Serialize};
-use std::collections::VecDeque;
 use std::sync::Mutex;
 use tauri::{PhysicalPosition, WebviewWindow};
 
@@ -24,8 +23,6 @@ const STAGE: Extent = Extent {
 /// The window the widget starts at (`tauri.conf.json`): the saved position is
 /// the top-left of this square centred on the bubble.
 const SAVED_SQUARE: f64 = 92.0;
-/// Origins of our own reframes whose `Moved` events have not arrived yet.
-const PENDING_MOVES: usize = 8;
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
 pub struct ScreenRect {
@@ -111,10 +108,12 @@ pub fn stage_for(home: (f64, f64), area: ScreenRect) -> ScreenRect {
 
 #[derive(Default)]
 struct Layout {
-    home: Option<(f64, f64)>,
-    /// The window as we last set it, in logical points.
+    /// Home relative to the window's origin. Home moves with the window (a
+    /// drag, a corner placement), so it is always the window's real position
+    /// plus this; no move events need to be tracked or matched.
+    home_offset: Option<(f64, f64)>,
+    /// The window's frame, in logical points, for hit testing.
     frame: Option<ScreenRect>,
-    own_moves: VecDeque<(i32, i32)>,
     /// Where the window takes clicks, in its own coordinates.
     regions: Vec<ScreenRect>,
     /// The primary display's height in points, to flip AppKit's bottom-left y.
@@ -124,13 +123,21 @@ struct Layout {
 }
 
 static LAYOUT: Mutex<Layout> = Mutex::new(Layout {
-    home: None,
+    home_offset: None,
     frame: None,
-    own_moves: VecDeque::new(),
     regions: Vec::new(),
     primary_height: 0.0,
     passing: None,
 });
+
+/// Home for a window at `rect`: its offset in the window, or the window's
+/// centre before the first layout (the window starts as a square around it).
+fn home_in(rect: ScreenRect, offset: Option<(f64, f64)>) -> (f64, f64) {
+    match offset {
+        Some((dx, dy)) => (rect.x + dx, rect.y + dy),
+        None => (rect.x + rect.width / 2.0, rect.y + rect.height / 2.0),
+    }
+}
 
 fn window_rect(window: &WebviewWindow) -> Option<ScreenRect> {
     let scale = window.scale_factor().ok()?;
@@ -217,31 +224,27 @@ pub fn layout_widget(
     inset: f64,
 ) -> Result<ScreenRect, IpcError> {
     let fail = |e: String| IpcError::new("widgetLayout", e);
-    let scale = window.scale_factor().map_err(|e| fail(e.to_string()))?;
+    let current = window_rect(&window).ok_or_else(|| fail("The widget has no frame.".into()))?;
     let mut layout = LAYOUT.lock().map_err(|e| fail(e.to_string()))?;
-    let before = match layout.frame {
-        Some(frame) => frame,
-        None => window_rect(&window).ok_or_else(|| fail("The widget has no frame.".into()))?,
-    };
-    let home = *layout.home.get_or_insert((
-        before.x + before.width / 2.0,
-        before.y + before.height / 2.0,
-    ));
-    let area = work_area(&window, home).unwrap_or(before);
+    let home = home_in(current, layout.home_offset);
+    let area = work_area(&window, home).unwrap_or(current);
     let frame = stage_for(home, area);
-    if layout.frame != Some(frame) {
+    if layout.primary_height == 0.0 || !same_rect(current, frame) {
         layout.primary_height = primary_height(&window).unwrap_or(layout.primary_height);
-        set_frame(&window, frame).map_err(fail)?;
-        if layout.own_moves.len() == PENDING_MOVES {
-            layout.own_moves.pop_front();
-        }
-        layout.own_moves.push_back((
-            (frame.x * scale).round() as i32,
-            (frame.y * scale).round() as i32,
-        ));
-        layout.frame = Some(frame);
     }
+    if !same_rect(current, frame) {
+        set_frame(&window, frame).map_err(fail)?;
+    }
+    layout.frame = Some(frame);
+    layout.home_offset = Some((home.0 - frame.x, home.1 - frame.y));
     Ok(place_pill(home, size, area, inset).offset(-frame.x, -frame.y))
+}
+
+fn same_rect(a: ScreenRect, b: ScreenRect) -> bool {
+    (a.x - b.x).abs() < 0.5
+        && (a.y - b.y).abs() < 0.5
+        && (a.width - b.width).abs() < 0.5
+        && (a.height - b.height).abs() < 0.5
 }
 
 /// Where the widget takes clicks, in window coordinates; everywhere else they
@@ -311,46 +314,49 @@ pub fn watch_pointer(window: &WebviewWindow) {
     std::mem::forget(monitors);
 }
 
-/// A `Moved` event for the widget. Our own reframes are ignored; any other move
-/// (a drag, a corner placement) carries the bubble with it. Returns the saved
-/// position for the new home, or `None` when nothing moved it but us.
-pub fn on_moved(
-    window: &WebviewWindow,
-    position: PhysicalPosition<i32>,
-) -> Option<PhysicalPosition<i32>> {
+/// The widget moved (a drag, a corner placement, or our own layout). Home
+/// moves with it; returns where to save it.
+pub fn on_moved(window: &WebviewWindow) -> Option<PhysicalPosition<i32>> {
     let scale = window.scale_factor().ok()?;
+    let live = window_rect(window)?;
     let mut layout = LAYOUT.lock().ok()?;
-    let near = |&(x, y): &(i32, i32)| (x - position.x).abs() <= 1 && (y - position.y).abs() <= 1;
-    if let Some(i) = layout.own_moves.iter().position(near) {
-        layout.own_moves.drain(..=i);
-        return None;
+    if layout.frame.is_some() {
+        layout.frame = Some(live);
     }
-    let moved_to = position.to_logical::<f64>(scale);
-    match layout.frame {
-        Some(frame) => {
-            let (dx, dy) = (moved_to.x - frame.x, moved_to.y - frame.y);
-            layout.frame = Some(frame.offset(dx, dy));
-            layout.home = layout.home.map(|(x, y)| (x + dx, y + dy));
-        }
-        // Not laid out yet: the window is still the square it starts as.
-        None => layout.home = None,
-    }
-    let home = layout.home.unwrap_or((
-        moved_to.x + SAVED_SQUARE / 2.0,
-        moved_to.y + SAVED_SQUARE / 2.0,
-    ));
-    Some(saved_position(home, scale))
+    Some(saved_position(home_in(live, layout.home_offset), scale))
 }
 
 /// Where the widget is saved: the top-left of the starting square around the
 /// bubble, whatever size the window is right now.
 pub fn current_saved_position(window: &WebviewWindow) -> Option<PhysicalPosition<i32>> {
     let scale = window.scale_factor().ok()?;
-    let home = LAYOUT.lock().ok()?.home;
-    match home {
-        Some(home) => Some(saved_position(home, scale)),
-        None => window.outer_position().ok(),
-    }
+    let live = window_rect(window)?;
+    let offset = LAYOUT.lock().ok()?.home_offset;
+    Some(saved_position(home_in(live, offset), scale))
+}
+
+/// The square around the bubble that positions are saved and placed as, in
+/// physical pixels.
+pub fn square_size(window: &WebviewWindow) -> (i32, i32) {
+    let scale = window.scale_factor().unwrap_or(1.0);
+    let side = (SAVED_SQUARE * scale).round() as i32;
+    (side, side)
+}
+
+/// Move the widget so the square around the bubble has its top-left at
+/// `square` (physical): the window keeps the bubble where it draws it.
+pub fn move_square_to(window: &WebviewWindow, square: PhysicalPosition<i32>) -> tauri::Result<()> {
+    let scale = window.scale_factor()?;
+    let offset = LAYOUT.lock().ok().and_then(|l| l.home_offset);
+    let corner = square.to_logical::<f64>(scale);
+    let (x, y) = match offset {
+        Some((dx, dy)) => (
+            corner.x + SAVED_SQUARE / 2.0 - dx,
+            corner.y + SAVED_SQUARE / 2.0 - dy,
+        ),
+        None => (corner.x, corner.y),
+    };
+    window.set_position(tauri::LogicalPosition::new(x, y))
 }
 
 fn saved_position(home: (f64, f64), scale: f64) -> PhysicalPosition<i32> {

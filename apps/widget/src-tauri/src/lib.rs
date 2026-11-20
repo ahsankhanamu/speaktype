@@ -87,9 +87,9 @@ pub fn run() {
                     commands::persist_settings_window_geometry(window.app_handle());
                     commands::stop_mic_test_for_app(window.app_handle(), "window_closed");
                 }
-                ("main", WindowEvent::Moved(position)) => {
+                ("main", WindowEvent::Moved(_)) => {
                     if let Some(widget) = window.app_handle().get_webview_window("main") {
-                        if let Some(saved) = widget_frame::on_moved(&widget, *position) {
+                        if let Some(saved) = widget_frame::on_moved(&widget) {
                             widget_cmds::save_dragged_position(&widget, saved);
                         }
                     }

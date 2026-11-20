@@ -108,17 +108,16 @@ pub fn visible_frame(window: &WebviewWindow) -> Option<Region> {
 /// store.
 pub fn place_at_corner(window: &WebviewWindow, corner: WidgetCorner) -> Option<Point> {
     let visible = visible_frame(window)?;
-    let outer = window.outer_size().ok()?;
+    let (width, height) = window_outer_size(window);
     let point = corner_origin(
         visible,
         Size {
-            width: outer.width,
-            height: outer.height,
+            width: width as u32,
+            height: height as u32,
         },
         corner,
     );
-    window
-        .set_position(PhysicalPosition::new(point.x, point.y))
+    move_window(window, point.x, point.y)
         .map_err(|e| logging::log_message(&format!("[window] Could not place at corner: {e}")))
         .ok()?;
     Some(point)
@@ -135,7 +134,12 @@ fn monitor_for_window(window: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
     Some((pos.x, pos.y, size.width as i32, size.height as i32))
 }
 
+/// The size placement works with. For the widget that is the square around
+/// the bubble, not its (much larger) click-through stage.
 fn window_outer_size(window: &WebviewWindow) -> (i32, i32) {
+    if window.label() == "main" {
+        return crate::widget_frame::square_size(window);
+    }
     window
         .outer_size()
         .ok()
@@ -234,11 +238,17 @@ pub fn clamp_to_visible_screens(window: &WebviewWindow, x: f64, y: f64) -> (f64,
 
 pub fn apply_saved_position(window: &WebviewWindow, x: f64, y: f64) -> (f64, f64) {
     let (cx, cy) = clamp_to_visible_screens(window, x, y);
-    let _ = window.set_position(tauri::Position::Physical(PhysicalPosition {
-        x: cx as i32,
-        y: cy as i32,
-    }));
+    let _ = move_window(window, cx as i32, cy as i32);
     (cx, cy)
+}
+
+/// Put a window's top-left at `x, y` (physical). For the widget, that is
+/// where the square around the bubble goes; its stage follows.
+fn move_window(window: &WebviewWindow, x: i32, y: i32) -> tauri::Result<()> {
+    if window.label() == "main" {
+        return crate::widget_frame::move_square_to(window, PhysicalPosition::new(x, y));
+    }
+    window.set_position(tauri::Position::Physical(PhysicalPosition { x, y }))
 }
 
 pub fn place_at_default_position(window: &WebviewWindow) -> (f64, f64) {

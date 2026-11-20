@@ -83,9 +83,14 @@ pub fn save_dragged_position(
     let Ok(mut settings) = state.settings.lock() else {
         return;
     };
-    let (cx, cy) = window::clamp_to_visible_screens(widget, position.x as f64, position.y as f64);
-    settings.window_x = Some(cx);
-    settings.window_y = Some(cy);
+    // `position` is the square around the bubble (widget_frame), not the
+    // window; it is clamped on screen when it is restored at startup.
+    let (x, y) = (position.x as f64, position.y as f64);
+    if settings.window_x == Some(x) && settings.window_y == Some(y) {
+        return;
+    }
+    settings.window_x = Some(x);
+    settings.window_y = Some(y);
     if DRAGGING.load(Ordering::SeqCst) {
         settings.widget_corner = WidgetCorner::Custom.as_str().to_string();
     }
