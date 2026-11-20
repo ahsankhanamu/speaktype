@@ -11,8 +11,11 @@
 </RadioGroup.Root>
 
 <style>
+  /* Equal segments, as in AppKit; given the full width, they share it evenly. */
   :global(.st-segmented) {
-    display: inline-flex;
+    display: inline-grid;
+    grid-auto-columns: 1fr;
+    grid-auto-flow: column;
     padding: 3px;
     border-radius: 17px;
     background: var(--st-fill);
@@ -21,6 +24,7 @@
   :global(.st-segmented-item) {
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     height: 26px;
     padding: 0 14px;
     border: 0;

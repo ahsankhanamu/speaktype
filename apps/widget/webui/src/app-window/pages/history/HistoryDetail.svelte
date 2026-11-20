@@ -134,11 +134,15 @@
     flex-direction: column;
     gap: 14px;
   }
+  /* One line, truncated: the full text is right below it. */
   h2 {
     margin: 0;
-    font-size: 22px;
+    overflow: hidden;
+    font-size: 17px;
     font-weight: 700;
-    line-height: 1.2;
+    line-height: 1.3;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
   .heading p {
     margin: 6px 0 0;
