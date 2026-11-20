@@ -694,13 +694,35 @@ mod tests {
             .expect("run the watcher")
     }
 
+    /// Write an executable fake server and wait until it can be run. While
+    /// other test threads fork, a just-written file can still be open for
+    /// writing in a child and exec fails with "text file busy"; one successful
+    /// probe run means no such writer is left.
+    fn ready_script(path: &std::path::Path, body: &str) {
+        std::fs::write(
+            path,
+            format!("#!/bin/sh\n[ \"$1\" = --probe ] && exit 0\n{body}\n"),
+        )
+        .expect("fake server body");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        for _ in 0..100 {
+            if std::process::Command::new(path)
+                .arg("--probe")
+                .status()
+                .is_ok_and(|s| s.success())
+            {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        panic!("the fake server never became runnable");
+    }
+
     fn fake_server(name: &str, body: &str) -> std::path::PathBuf {
         let dir =
             std::env::temp_dir().join(format!("speaktype-watch-{}-{}", std::process::id(), name));
         std::fs::create_dir_all(&dir).expect("tempdir");
-        let path = dir.join("whisper-server");
-        std::fs::write(&path, format!("#!/bin/sh\n{body}\n")).expect("fake server");
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        ready_script(&dir.join("whisper-server"), body);
         dir
     }
 
@@ -728,14 +750,10 @@ mod tests {
             .spawn()
             .expect("fake app");
         let pidfile = dir.join("server.pid");
-        std::fs::write(
+        ready_script(
             &server,
-            format!(
-                "#!/bin/sh\necho $$ > '{}'\nexec sleep 30\n",
-                pidfile.display()
-            ),
-        )
-        .expect("fake server body");
+            &format!("echo $$ > '{}'\nexec sleep 30", pidfile.display()),
+        );
         let app_pid = app.id();
         std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(1500));
@@ -760,14 +778,10 @@ mod tests {
         let dir = fake_server("stop", "sleep 30");
         let server = dir.join("whisper-server");
         let pidfile = dir.join("server.pid");
-        std::fs::write(
+        ready_script(
             &server,
-            format!(
-                "#!/bin/sh\necho $$ > '{}'\nexec sleep 30\n",
-                pidfile.display()
-            ),
-        )
-        .expect("fake server body");
+            &format!("echo $$ > '{}'\nexec sleep 30", pidfile.display()),
+        );
         let (program, argv) = watch_command(&server, std::process::id(), &["-m".to_string()]);
         let mut watcher = std::process::Command::new(program)
             .args(argv)
