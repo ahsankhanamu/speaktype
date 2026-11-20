@@ -151,17 +151,22 @@ fn window_rect(window: &WebviewWindow) -> Option<ScreenRect> {
     })
 }
 
-/// The visible frame (below the menu bar, above the Dock) of the display
-/// `home` is on, in logical points.
+/// Where the widget may draw on the display `home` is on, in logical points:
+/// the whole display below the menu bar. The Dock doesn't count: it rarely
+/// spans the width, and moving a pill up past it would throw it far from
+/// the bubble; staying on screen is all that matters.
 fn work_area(window: &WebviewWindow, home: (f64, f64)) -> Option<ScreenRect> {
     let logical = |m: &tauri::Monitor| {
-        let area = m.work_area();
         let scale = m.scale_factor();
+        let (pos, size) = (m.position(), m.size());
+        let top = m.work_area().position.y as f64 / scale;
+        let (x, y) = (pos.x as f64 / scale, pos.y as f64 / scale);
+        let bottom = y + size.height as f64 / scale;
         ScreenRect {
-            x: area.position.x as f64 / scale,
-            y: area.position.y as f64 / scale,
-            width: area.size.width as f64 / scale,
-            height: area.size.height as f64 / scale,
+            x,
+            y: top.max(y),
+            width: size.width as f64 / scale,
+            height: bottom - top.max(y),
         }
     };
     let monitors = window.available_monitors().ok()?;
