@@ -855,6 +855,7 @@ pub fn open_onboarding_window(app: &AppHandle) -> Result<(), String> {
     .inner_size(ONBOARDING_WINDOW_W, ONBOARDING_WINDOW_H)
     .resizable(false)
     .center()
+    .theme(native_theme(&current_theme(app)))
     .build()
     .map_err(|e| e.to_string())?;
 
@@ -984,8 +985,35 @@ pub fn save_settings(
     }
     crate::settings::emit_settings_changed(&app);
 
+    apply_native_theme(&app, &theme);
     let _ = app.emit("theme:changed", json!({ "theme": theme }));
     Ok(())
+}
+
+/// The macOS appearance for a theme choice: Light and Dark pin it, Auto follows
+/// the system.
+fn native_theme(choice: &str) -> Option<tauri::Theme> {
+    match choice {
+        "light" => Some(tauri::Theme::Light),
+        "dark" => Some(tauri::Theme::Dark),
+        _ => None,
+    }
+}
+
+/// Title bars and other native chrome follow the app's theme, not just the page
+/// inside them. The widget is dark in every theme, so it keeps the system's.
+pub fn apply_native_theme(app: &AppHandle, choice: &str) {
+    for (label, window) in app.webview_windows() {
+        if label != "main" {
+            let _ = window.set_theme(native_theme(choice));
+        }
+    }
+}
+
+fn current_theme(app: &AppHandle) -> String {
+    app.try_state::<AppState>()
+        .and_then(|state| state.settings.lock().ok().map(|s| s.theme.clone()))
+        .unwrap_or_else(|| "auto".to_string())
 }
 
 /// The registry's rows for Settings → Keyboard.
@@ -2027,6 +2055,7 @@ pub async fn open_settings(app: AppHandle, section: Option<String>) -> Result<()
             .inner_size(width, height)
             .min_inner_size(SETTINGS_WINDOW_MIN_W, SETTINGS_WINDOW_MIN_H)
             .resizable(true)
+            .theme(native_theme(&current_theme(&app)))
             .build()
             .map_err(|e| e.to_string())?;
 
@@ -2173,6 +2202,13 @@ pub fn reveal_path(path: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn light_and_dark_pin_the_title_bar_and_auto_follows_macos() {
+        assert_eq!(native_theme("light"), Some(tauri::Theme::Light));
+        assert_eq!(native_theme("dark"), Some(tauri::Theme::Dark));
+        assert_eq!(native_theme("auto"), None);
+    }
 
     #[test]
     fn about_url_is_the_windows_route() {
