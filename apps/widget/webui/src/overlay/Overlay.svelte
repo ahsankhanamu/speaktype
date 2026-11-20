@@ -1,7 +1,8 @@
 <script lang="ts">
+  import { getCurrentWindow } from '@tauri-apps/api/window';
   import { liveQuery, useEvent } from '../lib/data';
-  import { getSettings } from '../lib/ipc';
-  import { FADE_MS, HOLD_MS, inkColor, mid, strokeWidth } from './ink';
+  import { commands, getSettings } from '../lib/ipc';
+  import { FADE_MS, HOLD_MS, grow, inkColor, mid, strokeWidth, type Bounds } from './ink';
 
   type Point = { x: number; y: number };
 
@@ -13,6 +14,10 @@
   let fading = $state(false);
   let stroke: Point[] | null = null;
   let clearTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Everything drawn since the last mark, in window points. */
+  let ink: Bounds | null = null;
+  // The overlay's label is `overlay-<display index>`.
+  const display = Number(getCurrentWindow().label.split('-')[1] ?? 0);
 
   useEvent<{ active: boolean }>('overlay:draw', ({ active }) => {
     drawing = active;
@@ -22,8 +27,13 @@
       return;
     }
     stroke = null;
-    // The mark is done 900 ms after the key comes up; then the ink fades away.
-    clearTimer = setTimeout(() => {
+    // The mark is done 900 ms after the key comes up: it is captured into the
+    // session with the ink still on screen, then the ink fades away.
+    clearTimer = setTimeout(async () => {
+      const mark = ink;
+      ink = null;
+      if (mark) await commands.overlayMarkComplete(display, mark).catch((error) => console.error('[overlay] mark', error));
+      if (drawing) return;
       fading = true;
       clearTimer = setTimeout(clear, FADE_MS);
     }, HOLD_MS);
@@ -63,6 +73,9 @@
     if (!drawing || event.button !== 0) return;
     (event.currentTarget as Element).setPointerCapture(event.pointerId);
     stroke = [{ x: event.clientX, y: event.clientY }];
+    // The first stroke starts a session (a no-op when one is running).
+    if (!ink) commands.sessionStart(null).catch((error) => console.error('[overlay] session', error));
+    ink = grow(ink, stroke[0]);
     const ctx = pen();
     ctx.beginPath();
     ctx.arc(event.clientX, event.clientY, ctx.lineWidth / 2, 0, Math.PI * 2);
@@ -85,6 +98,7 @@
       ctx.quadraticCurveTo(last.x, last.y, to.x, to.y);
       ctx.stroke();
       stroke.push(next);
+      ink = grow(ink, next);
     }
   }
 

@@ -181,8 +181,12 @@ fn set_drawing(app: &AppHandle, active: bool) {
 fn current_draw_key(app: &AppHandle) -> Option<DrawKey> {
     let state = app.try_state::<crate::commands::AppState>()?;
     let settings = state.settings.lock().ok()?;
+    // With "Draw anytime" off, drawing still works inside a session.
     if !settings.draw_anytime {
-        return None;
+        let store = app.try_state::<std::sync::Arc<speaktype_session::Store>>()?;
+        if !matches!(store.active_session(), Ok(Some(_))) {
+            return None;
+        }
     }
     let value = settings
         .shortcuts

@@ -220,9 +220,10 @@ pub fn session_start(
         &auto_session_name(now),
         &template.unwrap_or(default_template),
         now,
-        |_| {
+        |session| {
             emit_state(&app, &store, &muted);
             emit_sessions_changed(&app);
+            crate::narration::start(&app, session.id);
         },
     )
 }
@@ -252,7 +253,18 @@ pub fn session_stop(
     stop_and_notify(&store, now_ms(), |stopped| {
         emit_state(&app, &store, &muted);
         emit_sessions_changed(&app);
-        bundle_write(&sessions_root(), &store, stopped.id).map(|_| ())
+        // Stop is instant: the last phrase is transcribed after, then the
+        // bundle is written with everything in it.
+        let (app, id) = (app.clone(), stopped.id);
+        tauri::async_runtime::spawn(async move {
+            crate::narration::finish().await;
+            let store = app.state::<Arc<Store>>();
+            if let Err(e) = bundle_write(&sessions_root(), &store, id) {
+                log_message(&format!("[session] Bundle not written: {}", e.message));
+            }
+            emit_sessions_changed(&app);
+        });
+        Ok(())
     })
 }
 
@@ -489,13 +501,124 @@ pub fn overlay_pen(on: bool) -> Result<(), IpcError> {
     Ok(())
 }
 
-/// Phase-0 stub: the overlay windows arrive with Phase 2 (S1).
+/// The region a mark is captured from: the ink with generous room around it,
+/// so the image shows what the ink points at, kept inside the display.
+pub(crate) fn mark_region(ink: &Rect, display: &Rect) -> Rect {
+    const MIN_W: f64 = 900.0;
+    const MIN_H: f64 = 560.0;
+    let width = (ink.width * 1.6).max(MIN_W).min(display.width);
+    let height = (ink.height * 1.6).max(MIN_H).min(display.height);
+    let cx = ink.x + ink.width / 2.0;
+    let cy = ink.y + ink.height / 2.0;
+    let x = (cx - width / 2.0).clamp(display.x, display.x + display.width - width);
+    let y = (cy - height / 2.0).clamp(display.y, display.y + display.height - height);
+    Rect {
+        x: x.round(),
+        y: y.round(),
+        width: width.round(),
+        height: height.round(),
+    }
+}
+
+/// A mark is done (the draw key came up and the ink sat still): capture the
+/// area around it, ink included, into the active session.
 #[tauri::command]
 #[specta::specta]
-pub fn overlay_mark_complete(display_id: u32, bounds: Rect) -> Result<(), IpcError> {
+pub async fn overlay_mark_complete(
+    app: AppHandle,
+    display_id: u32,
+    bounds: Rect,
+) -> Result<(), IpcError> {
+    let store = app.state::<Arc<Store>>();
+    let Some(session) = store.active_session()? else {
+        return Ok(());
+    };
+    crate::narration::touch();
+    if !crate::permissions::screen_recording_granted() {
+        // The first mark asks once; macOS applies the grant after a relaunch.
+        crate::permissions::request_screen_recording();
+        log_message("[mark] Screen Recording not granted yet — mark not captured");
+        return Err(IpcError::new(
+            "screenRecording",
+            "Allow Screen Recording so marks can be saved",
+        ));
+    }
+    let overlay = app
+        .get_webview_window(&format!("overlay-{display_id}"))
+        .ok_or_else(|| IpcError::new("mark", "No overlay for that display"))?;
+    let scale = overlay
+        .scale_factor()
+        .map_err(|e| IpcError::new("mark", e.to_string()))?;
+    let origin = overlay
+        .outer_position()
+        .map_err(|e| IpcError::new("mark", e.to_string()))?
+        .to_logical::<f64>(scale);
+    let size = overlay
+        .outer_size()
+        .map_err(|e| IpcError::new("mark", e.to_string()))?
+        .to_logical::<f64>(scale);
+    let ink = Rect {
+        x: origin.x + bounds.x,
+        y: origin.y + bounds.y,
+        width: bounds.width,
+        height: bounds.height,
+    };
+    let display = Rect {
+        x: origin.x,
+        y: origin.y,
+        width: size.width,
+        height: size.height,
+    };
+    let region = mark_region(&ink, &display);
+
+    let dir = session_capture_dir(session.id);
+    let stamp = now_ms();
+    let full = dir.join(format!("mark-{stamp}.full.png"));
+    let small = dir.join(format!("mark-{stamp}.png"));
+    let (full_path, small_path) = (full.clone(), small.clone());
+    let spec = format!(
+        "{},{},{},{}",
+        region.x, region.y, region.width, region.height
+    );
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        std::fs::create_dir_all(full_path.parent().unwrap_or(Path::new(".")))
+            .map_err(|e| e.to_string())?;
+        let status = std::process::Command::new("/usr/sbin/screencapture")
+            .args(["-x", "-t", "png", "-R", &spec])
+            .arg(&full_path)
+            .status()
+            .map_err(|e| e.to_string())?;
+        if !status.success() || !full_path.exists() {
+            return Err("screencapture did not write the mark".into());
+        }
+        // What the agent sees: at most 1568 px on the long edge.
+        speaktype_capture::downscale_png(&full_path, &small_path, 1568)
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| IpcError::new("mark", e.to_string()))?
+    .map_err(|e| IpcError::new("mark", e))?;
+
+    let item = NewItem {
+        kind: speaktype_session::ItemKind::Mark,
+        t_start_ms: stamp,
+        t_end_ms: None,
+        text: None,
+        image_path: Some(small.to_string_lossy().into_owned()),
+        source_app: crate::paste::get_frontmost_window().map(|w| w.name),
+        payload: serde_json::json!({
+            "region": region,
+            "ink": ink,
+            "display": display_id,
+            "original": full.to_string_lossy(),
+        }),
+    };
+    let item = store.add_item(session.id, item)?;
+    emit_item_added(&app, &item);
     log_message(&format!(
-        "[overlay] mark complete on display {display_id} at {:.0}×{:.0}+{:.0}+{:.0} (stub)",
-        bounds.x, bounds.y, bounds.width, bounds.height
+        "[mark] Captured mark {} into session {}",
+        item.id, session.id
     ));
     Ok(())
 }
@@ -632,6 +755,44 @@ pub(crate) fn paste_source_app() -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_small_mark_is_captured_with_room_around_it_on_screen() {
+        let display = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1512.0,
+            height: 982.0,
+        };
+        let ink = Rect {
+            x: 700.0,
+            y: 400.0,
+            width: 60.0,
+            height: 30.0,
+        };
+        let region = mark_region(&ink, &display);
+        assert_eq!((region.width, region.height), (900.0, 560.0));
+        assert!(region.x <= ink.x && region.x + region.width >= ink.x + ink.width);
+    }
+
+    #[test]
+    fn a_mark_at_the_corner_stays_inside_the_display() {
+        let display = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 1512.0,
+            height: 982.0,
+        };
+        let ink = Rect {
+            x: 1480.0,
+            y: 960.0,
+            width: 20.0,
+            height: 15.0,
+        };
+        let region = mark_region(&ink, &display);
+        assert_eq!(region.x + region.width, 1512.0);
+        assert_eq!(region.y + region.height, 982.0);
+    }
     use serde_json::json;
     use speaktype_session::ItemKind;
 

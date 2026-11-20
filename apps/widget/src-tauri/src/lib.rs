@@ -20,6 +20,7 @@ mod llm;
 #[allow(dead_code)]
 mod llm_server;
 mod logging;
+mod narration;
 mod notice;
 mod ocr;
 mod overlay;

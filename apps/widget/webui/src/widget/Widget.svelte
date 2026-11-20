@@ -18,9 +18,11 @@
     toggleRecording,
     cancelRecording,
   } from '../lib/ipc';
-  import { useDictation, type Action } from './dictation.svelte';
+  import { useDictation, type Action, type View } from './dictation.svelte';
   import { duration, reducedMotion } from '@speaktype/ui/motion';
   import Recording from './Recording.svelte';
+  import SessionBar from './SessionBar.svelte';
+  import { useSession, type Saved } from './session.svelte';
   import { EDGE_INSET, createLayout, sameRegions, type Box, type Extent } from './windowFit';
 
   const SIZES = { regular: 40, large: 50 } as const;
@@ -36,12 +38,19 @@
   const dictation = useDictation();
 
   const size = $derived(SIZES[settings.data?.widget_size as keyof typeof SIZES] ?? SIZES.regular);
-  const view = $derived(dictation.view);
+  const session = useSession();
+  // A Show & Tell session takes the pill over; dictation's key mutes it meanwhile.
+  type WidgetView = View | { kind: 'session' } | ({ kind: 'saved' } & Saved);
+  const view = $derived<WidgetView>(
+    session.active ? { kind: 'session' } : session.saved ? { kind: 'saved', ...session.saved } : dictation.view,
+  );
   const unfinished = $derived(!!status.data && !(status.data.microphone && status.data.accessibility && status.data.model));
   const halo = $derived.by(() => {
     switch (view.kind) {
       case 'recording':
         return 'recording';
+      case 'session':
+        return session.muted ? null : 'recording';
       case 'preparing':
         return 'active';
       case 'pasted':
@@ -197,6 +206,17 @@
 
   const report = (error: unknown) => console.error('[widget]', error);
 
+  let copied = $state(false);
+  function copySession(id: number) {
+    session
+      .copy(id)
+      .then(() => (copied = true))
+      .catch(report);
+  }
+  $effect(() => {
+    if (view.kind !== 'saved') copied = false;
+  });
+
   function mic() {
     if (dragged) return;
     (unfinished ? openOnboarding() : toggleRecording(false)).catch(report);
@@ -263,6 +283,12 @@
                     </button>
                   {/snippet}
                 </Tooltip>
+              {:else if view.kind === 'session'}
+                <SessionBar {session} />
+              {:else if view.kind === 'saved'}
+                {@const marks = view.marks}
+                <span class="text">Session saved{marks ? ` · ${marks} ${marks === 1 ? 'mark' : 'marks'}` : ''}</span>
+                <Button size={28} class="pill-action" data-action onclick={() => copySession(view.sessionId)}>{copied ? 'Copied' : 'Copy'}</Button>
               {:else if view.kind === 'recording'}
                 <Recording onstop={() => toggleRecording(true).catch(report)} oncancel={() => cancelRecording().catch(report)} />
               {:else if view.kind === 'transcribing'}
@@ -288,6 +314,9 @@
           {/key}
         </div>
       </Halo>
+      {#if session.caption && view.kind === 'session'}
+        <p class="caption" aria-live="polite">{session.caption}</p>
+      {/if}
       {#if dot && view.kind === 'idle'}
         <span class="dot"><StatusDot tone={dot.tone} label={dot.label} /></span>
       {/if}
@@ -445,6 +474,31 @@
   .face.notice:has(:global(.pill-action)) {
     gap: calc(10px * var(--k));
     padding: 0 calc(7px * var(--k)) 0 calc(14px * var(--k));
+  }
+  .face.session {
+    gap: calc(8px * var(--k));
+    padding: 0 calc(7px * var(--k)) 0 calc(14px * var(--k));
+  }
+  .face.saved {
+    gap: calc(10px * var(--k));
+    padding: 0 calc(7px * var(--k)) 0 calc(14px * var(--k));
+  }
+  .caption {
+    position: absolute;
+    top: calc(100% + 8px);
+    left: 50%;
+    width: max-content;
+    max-width: 360px;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 10px;
+    background: rgba(28, 28, 30, 0.88);
+    color: rgba(255, 255, 255, 0.9);
+    font-size: 12px;
+    line-height: 1.35;
+    text-align: center;
+    translate: -50% 0;
+    pointer-events: none;
   }
   .face.transcribing {
     gap: calc(6px * var(--k));

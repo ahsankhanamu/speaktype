@@ -256,6 +256,20 @@ static PRESSING: AtomicBool = AtomicBool::new(false);
 /// hotkey and the command all arrive here, and the latch keeps a rapid double
 /// press from starting two takes.
 pub fn press_dictation(app: &AppHandle) {
+    // During a session the mic is already live: the dictation key mutes it.
+    if let Ok(Some(_)) = app
+        .state::<Arc<speaktype_session::Store>>()
+        .active_session()
+    {
+        let muted = app.state::<Arc<AtomicBool>>();
+        let now = !muted.load(Ordering::SeqCst);
+        if let Err(e) =
+            crate::session_cmds::session_set_mute(now, app.clone(), app.state(), app.state())
+        {
+            log_message(&format!("[session] Mute toggle failed: {}", e.message));
+        }
+        return;
+    }
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let Some(state) = app.try_state::<AppState>() else {

@@ -122,6 +122,7 @@ pub fn spawn_clipboard_monitor(app: AppHandle) {
                         item.id, session.id
                     ));
                     crate::session_cmds::emit_item_added(&app, &item);
+                    crate::narration::touch();
                 }
                 Err(e) => log_message(&format!("[clipboard] Capture failed: {}", e)),
             }

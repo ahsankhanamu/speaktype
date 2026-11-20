@@ -27,6 +27,7 @@ flate2 = "1"
 rusqlite = { version = "0.40", features = ["bundled"] }
 speaktype-session = { path = "../../../crates/speaktype-session" }
 speaktype-stt = { path = "../../../crates/speaktype-stt" }
+speaktype-capture = { path = "../../../crates/speaktype-capture" }
 thiserror = "2"
 # Exact pins: tauri-specta 2.0.0-rc.29 is the current Tauri-2-compatible line
 # (2026-11-13) and itself requires specta =2.0.0-rc.28 / specta-typescript ^0.0.15.

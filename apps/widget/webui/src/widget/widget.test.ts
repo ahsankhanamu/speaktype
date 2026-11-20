@@ -4,7 +4,16 @@ import { setBus } from '../lib/data';
 import { FakeBus } from '../lib/data/testBus';
 
 const ipc = vi.hoisted(() => ({
-  commands: { pasteLast: vi.fn(), openSettings: vi.fn(), setWidgetHitRegions: vi.fn() },
+  commands: {
+    pasteLast: vi.fn(),
+    openSettings: vi.fn(),
+    setWidgetHitRegions: vi.fn(),
+    sessionActive: vi.fn(),
+    sessionGet: vi.fn(),
+    sessionStop: vi.fn(),
+    sessionSetMute: vi.fn(),
+    promptCopy: vi.fn(),
+  },
   getSettings: vi.fn(),
   getOnboardingStatus: vi.fn(),
   toggleRecording: vi.fn(),
@@ -89,6 +98,11 @@ beforeEach(() => {
   ipc.commands.openSettings.mockResolvedValue(null);
   fit.layout.mockResolvedValue(undefined);
   ipc.commands.setWidgetHitRegions.mockResolvedValue(null);
+  ipc.commands.sessionActive.mockResolvedValue(null);
+  ipc.commands.sessionGet.mockResolvedValue({ session: null, items: [] });
+  ipc.commands.sessionStop.mockResolvedValue(null);
+  ipc.commands.sessionSetMute.mockResolvedValue(null);
+  ipc.commands.promptCopy.mockResolvedValue(null);
   win.startDragging.mockResolvedValue(undefined);
 });
 
@@ -282,6 +296,48 @@ describe('size and window', () => {
     await vi.waitFor(() => expect(lastRegions()).toEqual([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]));
     button('Hide widget')!.click();
     await vi.waitFor(() => expect(lastRegions()).not.toEqual([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]));
+  });
+});
+
+describe('Show & Tell session', () => {
+  const session = { id: 7, name: 'Session', startedAtMs: Date.now(), endedAtMs: null, template: 'auto', target: 'codingAgent', preface: null, bundlePath: null };
+  const mark = (id: number) => ({ id, sessionId: 7, kind: 'mark', ord: id, tStartMs: 0, tEndMs: null, text: null, caption: null, imagePath: 'x.png', sourceApp: null, payload: {} });
+
+  it('turns the pill into the session bar, counts marks, mutes and stops', async () => {
+    await start();
+    bus.emit('session-state', { phase: 'active', session, muted: false });
+    await settle();
+    expect(button('Stop session')).toBeDefined();
+    bus.emit('session-item-added', { item: mark(1) });
+    bus.emit('session-item-added', { item: mark(2) });
+    await settle();
+    expect(document.querySelector('[aria-label="2 marks"]')).not.toBeNull();
+    button('Mute')!.click();
+    expect(ipc.commands.sessionSetMute).toHaveBeenCalledWith(true);
+    button('Stop session')!.click();
+    expect(ipc.commands.sessionStop).toHaveBeenCalled();
+  });
+
+  it('says the session was saved, with Copy, once it stops', async () => {
+    await start();
+    bus.emit('session-state', { phase: 'active', session, muted: false });
+    await settle();
+    bus.emit('session-item-added', { item: mark(1) });
+    bus.emit('session-state', { phase: 'idle', session: null, muted: false });
+    await settle();
+    expect(text()).toContain('Session saved · 1 mark');
+    button('Copy')!.click();
+    await settle();
+    expect(ipc.commands.promptCopy).toHaveBeenCalledWith(7, 'codingAgent');
+    expect(button('Copied')).toBeDefined();
+  });
+
+  it('shows the latest phrase as a live caption', async () => {
+    await start();
+    bus.emit('session-state', { phase: 'active', session, muted: false });
+    bus.emit('session:caption', { text: 'the button overlaps the total' });
+    await settle();
+    expect(text()).toContain('the button overlaps the total');
   });
 });
 

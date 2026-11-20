@@ -155,7 +155,10 @@ export const commands = {
 	bundleReveal: (sessionId: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("bundle_reveal", { sessionId }, options),
 	/**  Phase-0 stub: the overlay windows arrive with Phase 2 (S1). */
 	overlayPen: (on: boolean, options?: InvokeOptions) => __TAURI_INVOKE<null>("overlay_pen", { on }, options),
-	/**  Phase-0 stub: the overlay windows arrive with Phase 2 (S1). */
+	/**
+	 *  A mark is done (the draw key came up and the ink sat still): capture the
+	 *  area around it, ink included, into the active session.
+	 */
 	overlayMarkComplete: (displayId: number, bounds: Rect, options?: InvokeOptions) => __TAURI_INVOKE<null>("overlay_mark_complete", { displayId, bounds }, options),
 	/**  Store the provider choice. The key itself never travels with it. */
 	sttSetProvider: (cfg: ProviderConfig, options?: InvokeOptions) => __TAURI_INVOKE<ProviderConfig>("stt_set_provider", { cfg }, options),

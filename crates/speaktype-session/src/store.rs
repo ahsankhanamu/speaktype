@@ -248,11 +248,20 @@ impl Store {
 
     pub fn add_item(&self, session_id: i64, item: NewItem) -> Result<Item, StoreError> {
         let conn = self.lock()?;
-        let ord: f64 = conn.query_row(
-            "SELECT COALESCE(MAX(ord), 0) + 1 FROM scribe_events WHERE session_id = ?1",
-            params![session_id],
+        // In time order: a phrase is saved once it is transcribed, after the
+        // mark drawn while it was said, but it belongs before that mark.
+        let before: f64 = conn.query_row(
+            "SELECT COALESCE(MAX(ord), 0) FROM scribe_events
+             WHERE session_id = ?1 AND t_start_ms <= ?2",
+            params![session_id, item.t_start_ms],
             |r| r.get(0),
         )?;
+        let after: Option<f64> = conn.query_row(
+            "SELECT MIN(ord) FROM scribe_events WHERE session_id = ?1 AND ord > ?2",
+            params![session_id, before],
+            |r| r.get(0),
+        )?;
+        let ord = after.map_or(before + 1.0, |after| (before + after) / 2.0);
         let payload_json = serde_json::to_string(&item.payload)?;
         conn.execute(
             "INSERT INTO scribe_events
@@ -598,6 +607,26 @@ mod tests {
         ));
         std::fs::create_dir_all(&dir).expect("tempdir");
         dir.join("scribe.db")
+    }
+
+    #[test]
+    fn a_phrase_saved_after_a_mark_still_comes_before_it_when_said_first() {
+        let store = mem();
+        let (session, _) = store.start_session("S", "auto", 0).expect("start");
+        let mut drawn = mark("m1");
+        drawn.t_start_ms = 2_000;
+        store.add_item(session.id, drawn).expect("mark");
+        let mut said = speech("this button overlaps the total");
+        said.t_start_ms = 1_000;
+        store.add_item(session.id, said).expect("speech");
+        let kinds: Vec<_> = store
+            .detail(session.id)
+            .expect("detail")
+            .items
+            .into_iter()
+            .map(|i| i.kind)
+            .collect();
+        assert_eq!(kinds, vec![ItemKind::Speech, ItemKind::Mark]);
     }
 
     #[test]
