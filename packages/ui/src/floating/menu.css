@@ -45,6 +45,11 @@
   outline: none;
 }
 
+/* A menu without checkable items has no check column (MenuItem renders it). */
+.st-menu:not(:has([role='menuitemradio'], [role='menuitemcheckbox'])) .st-menu-check {
+  display: none;
+}
+
 .st-menu-item[data-highlighted] {
   background: var(--st-accent);
   color: #fff;

@@ -15,7 +15,7 @@
 </script>
 
 {#snippet layout(checked: boolean)}
-  <span class="check">{#if checked}<Check size={12} strokeWidth={2.2} aria-hidden="true" />{/if}</span>
+  <span class="check st-menu-check">{#if checked}<Check size={12} strokeWidth={2.2} aria-hidden="true" />{/if}</span>
   {#if icon}<span class="icon">{@render icon()}</span>{/if}
   <span class="text" data-st-label>{label}</span>
 {/snippet}

@@ -3,6 +3,9 @@
 
   const OVERSCAN_PX = 320;
 
+  /** Room after the last row, so the list never ends flush against the window's bottom edge. */
+  const END_GAP = 12;
+
   let { items, height, row, label }: { items: T[]; height: (item: T) => number; row: Snippet<[T]>; label: string } = $props();
 
   let viewport = $state(600);
@@ -31,7 +34,7 @@
 </script>
 
 <div class="scroller" role="list" aria-label={label} bind:clientHeight={viewport} onscroll={(event) => (top = event.currentTarget.scrollTop)}>
-  <div class="space" style:height="{total}px">
+  <div class="space" style:height="{total + END_GAP}px">
     {#each { length: last - first } as _, k (items[first + k].key)}
       {@const item = items[first + k]}
       <div class="slot" role="listitem" style:transform="translateY({offsets[first + k]}px)" style:height="{height(item)}px">
