@@ -1,5 +1,7 @@
 const MARGIN = 8;
 const FOCUS_RING = 2;
+/** How soon after opening a release still belongs to the press that opened the popup. */
+export const OPENING_RELEASE_MS = 400;
 
 export function alignedOffset(
   triggerLabelRect: DOMRect,
@@ -20,12 +22,16 @@ const labelRect = (el: Element) => (el.querySelector('[data-st-label]') ?? el).g
 export function alignTo(node: HTMLElement, trigger: HTMLElement | null) {
   let origin: { x: number; y: number } | null = null;
   let moved = false;
+  const openedAt = performance.now();
   const track = (e: PointerEvent) => {
     origin ??= { x: e.clientX, y: e.clientY };
     moved ||= Math.hypot(e.clientX - origin.x, e.clientY - origin.y) > 4;
   };
+  // Only the release of the press that opened the popup is swallowed: it comes
+  // within a moment and without movement. A later click is a real choice, even
+  // when the pointer never moved over the popup.
   const guard = (e: PointerEvent) => {
-    if (!moved) e.stopPropagation();
+    if (!moved && performance.now() - openedAt < OPENING_RELEASE_MS) e.stopPropagation();
     moved = true;
   };
   node.addEventListener('pointermove', track);

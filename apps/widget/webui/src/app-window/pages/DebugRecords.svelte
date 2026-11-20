@@ -53,6 +53,16 @@
   <Group>
     {#each records.data ?? [] as record (record.id)}
       {@const expanded = open === record.id}
+      {@const toggle = () => (open = expanded ? null : (record.id ?? null))}
+      <!-- The whole row opens the record; the buttons inside keep their own clicks. -->
+      <div
+        class="record"
+        role="button"
+        tabindex="0"
+        aria-expanded={expanded}
+        onclick={(event) => !(event.target as Element).closest('button') && toggle()}
+        onkeydown={(event) => (event.key === 'Enter' || event.key === ' ') && event.target === event.currentTarget && (event.preventDefault(), toggle())}
+      >
       <Row
         kind="control"
         label={title(record)}
@@ -65,11 +75,12 @@
             size={28}
             class={expanded ? 'turned' : ''}
             aria-expanded={expanded}
-            onclick={() => (open = expanded ? null : (record.id ?? null))}
+            onclick={toggle}
           />
           <IconButton label="Delete record" icon={Trash2} size={28} onclick={() => remove(record.id ?? 0)} />
         {/snippet}
       </Row>
+      </div>
       {#if expanded}
         <div class="detail">
           <p class="text">{record.finalText || 'No text came out of this dictation.'}</p>
@@ -98,6 +109,16 @@
 </Section>
 
 <style>
+  .record {
+    border-radius: var(--st-radius-card);
+  }
+  .record:hover {
+    background: var(--st-hover);
+  }
+  .record:focus-visible {
+    outline: none;
+    box-shadow: var(--st-focus-ring);
+  }
   .clear {
     display: flex;
     justify-content: flex-end;

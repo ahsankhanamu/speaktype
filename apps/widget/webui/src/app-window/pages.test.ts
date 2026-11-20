@@ -169,8 +169,8 @@ describe('settings pages', () => {
       },
     ]);
     render(Advanced);
-    const toggle = await vi.waitFor(() => document.querySelector<HTMLButtonElement>('[aria-label="Show details"]')!);
-    toggle.click();
+    const row = await vi.waitFor(() => document.querySelector<HTMLElement>('.record')!);
+    row.click();
     await vi.waitFor(() => expect(text()).toContain('hello there'));
     expect(text()).toContain('Chunk 1 · 0:00–0:09');
     expect(text()).toContain('pass 1 · 11 chars · score 0.82');

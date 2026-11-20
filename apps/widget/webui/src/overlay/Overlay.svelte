@@ -131,6 +131,9 @@
     width: 100vw;
     height: 100vh;
     transition: opacity var(--st-dur-ink) var(--st-ease-out);
+    /* Its own compositing layer: WebKit otherwise never puts a canvas drawn on
+       a fully transparent page on screen. */
+    transform: translateZ(0);
   }
   canvas.drawing {
     cursor: crosshair;

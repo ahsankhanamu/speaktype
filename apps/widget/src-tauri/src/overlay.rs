@@ -108,6 +108,9 @@ fn ensure_overlays(app: &AppHandle) {
         .resizable(false)
         .skip_taskbar(true)
         .focused(false)
+        // The drag that draws is the first click the overlay sees; without
+        // this macOS spends it on activating the window and no ink appears.
+        .accept_first_mouse(true)
         .always_on_top(true)
         .visible(true)
         .build()
@@ -166,6 +169,7 @@ fn set_drawing(app: &AppHandle, active: bool) {
     if DRAWING.swap(active, Ordering::SeqCst) == active {
         return;
     }
+    logging::log_message(&format!("[overlay] Draw key {}", if active { "down" } else { "up" }));
     if active {
         ensure_overlays(app);
     }
