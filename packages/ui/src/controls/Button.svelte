@@ -62,7 +62,6 @@
     font: inherit;
     font-size: var(--st-font-info);
     white-space: nowrap;
-    cursor: default;
     transition:
       background-color var(--st-dur-fast) var(--st-ease-out),
       box-shadow var(--st-dur-fast) var(--st-ease-out);

@@ -486,7 +486,6 @@
     border-radius: 50%;
     background: transparent;
     color: #fff;
-    cursor: default;
   }
   .mic:focus-visible {
     outline: none;
@@ -608,7 +607,6 @@
     border-radius: 50%;
     background: transparent;
     color: rgba(255, 255, 255, 0.55);
-    cursor: default;
   }
   .card-close:hover {
     background: var(--st-fill);

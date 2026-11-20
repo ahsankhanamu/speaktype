@@ -32,7 +32,6 @@
     border-radius: 50%;
     background: var(--st-fill);
     color: rgba(255, 255, 255, 0.7);
-    cursor: default;
     transition: background-color var(--st-dur-fast) var(--st-ease-out);
   }
   .pill-btn:hover {

@@ -29,7 +29,6 @@
     color: var(--st-text-secondary);
     font: inherit;
     font-size: var(--st-font-info);
-    cursor: default;
     transition:
       background-color var(--st-dur-fast) var(--st-ease-out),
       color var(--st-dur-fast) var(--st-ease-out);

@@ -186,7 +186,6 @@
     background: var(--st-inset);
     box-shadow: inset 0 0 0 0.5px var(--st-edge);
     color: var(--st-text-secondary);
-    cursor: default;
   }
   .more:hover {
     background: var(--st-fill-hover);

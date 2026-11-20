@@ -33,7 +33,6 @@
     border-radius: 50%;
     background: transparent;
     color: var(--st-text-secondary);
-    cursor: default;
     transition:
       background-color var(--st-dur-fast) var(--st-ease-out),
       color var(--st-dur-fast) var(--st-ease-out);

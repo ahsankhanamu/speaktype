@@ -166,3 +166,25 @@
   --st-ink-white: #ffffff;
   --st-ink-highlighter: #ffd60a;
 }
+
+/* Everything you can click shows the pointing hand; disabled controls keep the arrow. */
+:where(
+    button,
+    a[href],
+    summary,
+    select,
+    input[type='range'],
+    input[type='checkbox'],
+    input[type='radio'],
+    [role='button'],
+    [role='menuitem'],
+    [role='menuitemradio'],
+    [role='menuitemcheckbox'],
+    [role='option'],
+    [role='radio'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='tab']
+  ):not(:disabled, [aria-disabled='true'], [data-disabled]) {
+  cursor: pointer;
+}

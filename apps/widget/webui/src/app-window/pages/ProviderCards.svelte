@@ -47,7 +47,6 @@
     color: var(--st-text);
     font: inherit;
     text-align: left;
-    cursor: default;
   }
   :global(.provider-card[data-state='checked']) {
     background: color-mix(in srgb, var(--st-accent) 12%, var(--st-group));

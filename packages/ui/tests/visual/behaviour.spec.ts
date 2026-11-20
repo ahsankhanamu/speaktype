@@ -133,3 +133,12 @@ test('aligned pop-ups are at least as wide as their button', async ({ page }) =>
   await expect(page.getByRole('menu')).toBeVisible();
   expect((await page.getByRole('menu').boundingBox())!.width).toBeGreaterThanOrEqual(popupWidth);
 });
+
+test('clickable controls show the pointing hand; disabled ones and text fields do not', async ({ page }) => {
+  const cursor = (selector: string) => page.locator(selector).first().evaluate((el) => getComputedStyle(el).cursor);
+  expect(await cursor('button:not(:disabled)')).toBe('pointer');
+  const disabled = page.locator('button:disabled');
+  if (await disabled.count()) expect(await disabled.first().evaluate((el) => getComputedStyle(el).cursor)).not.toBe('pointer');
+  const field = page.locator('.st-field').first();
+  if (await field.count()) expect(await field.evaluate((el) => getComputedStyle(el).cursor)).not.toBe('pointer');
+});

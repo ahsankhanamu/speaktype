@@ -38,7 +38,6 @@
     border: 0;
     border-radius: 50%;
     box-shadow: inset 0 0 0 0.5px var(--st-edge);
-    cursor: default;
   }
   :global(.st-swatch[data-state='checked']) {
     box-shadow: 0 0 0 2px var(--st-window), 0 0 0 4px var(--st-accent);

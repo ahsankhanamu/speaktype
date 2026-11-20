@@ -40,7 +40,6 @@
     font: inherit;
     font-size: var(--st-font-sidebar);
     text-align: left;
-    cursor: default;
     transition: background-color var(--st-dur-fast) var(--st-ease-out);
   }
   .st-sidebar-item:hover {

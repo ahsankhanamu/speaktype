@@ -108,7 +108,6 @@
     margin: 0;
     background: transparent;
     appearance: none;
-    cursor: default;
   }
   input:focus-visible {
     outline: none;

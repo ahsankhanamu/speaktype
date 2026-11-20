@@ -86,7 +86,6 @@ textarea.st-field-input {
   border-radius: 50%;
   background: none;
   color: var(--st-text-secondary);
-  cursor: default;
 }
 
 .st-field-icon-btn:hover {

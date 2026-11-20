@@ -35,7 +35,6 @@
     color: var(--st-text);
     font: inherit;
     text-align: left;
-    cursor: default;
   }
   .row:hover:not(.selected) {
     background: var(--st-hover);

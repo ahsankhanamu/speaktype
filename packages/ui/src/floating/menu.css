@@ -84,7 +84,6 @@
   color: var(--st-text);
   font: inherit;
   font-size: var(--st-font-info);
-  cursor: default;
   transition: background-color var(--st-dur-fast) var(--st-ease-out);
 }
 

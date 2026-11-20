@@ -135,7 +135,6 @@
     color: var(--st-text-secondary);
     font: inherit;
     font-size: var(--st-font-info);
-    cursor: default;
   }
   .clear {
     display: none;
@@ -148,7 +147,6 @@
     border-radius: 50%;
     background: var(--st-fill);
     color: var(--st-text-secondary);
-    cursor: default;
   }
   .field:hover .clear,
   .field:focus-within .clear {

@@ -36,7 +36,6 @@
     background: none;
     color: inherit;
     font: inherit;
-    cursor: default;
   }
   :global(.st-thumb:focus-visible) {
     outline: none;

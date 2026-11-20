@@ -81,7 +81,6 @@
     color: var(--st-text);
     font: inherit;
     text-align: left;
-    cursor: default;
   }
   :global(.mic-choice[data-state='checked']) {
     background: color-mix(in srgb, var(--st-accent) 14%, transparent);

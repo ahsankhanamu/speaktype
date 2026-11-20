@@ -149,7 +149,6 @@
     color: inherit;
     font: inherit;
     text-align: left;
-    cursor: default;
   }
   .app:hover {
     background: var(--st-hover);
