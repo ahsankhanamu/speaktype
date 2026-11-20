@@ -79,7 +79,7 @@
         <div class="detail">
           <p class="text">{record.finalText || 'No text came out of this dictation.'}</p>
           {#if record.id != null}
-            <Waveform clip={{ sessionId: record.id, start: null, end: null }} label="the whole recording" />
+            <Waveform clip={{ sessionId: record.id, start: 0, end: record.durationSecs ?? 0 }} label="the whole recording" />
           {/if}
           {#if record.chunks?.length}
             <div class="chunks">
