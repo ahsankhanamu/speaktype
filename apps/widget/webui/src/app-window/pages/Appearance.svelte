@@ -31,7 +31,6 @@
 {#snippet auto()}<WindowThumb mode="auto" />{/snippet}
 {#snippet light()}<WindowThumb mode="light" />{/snippet}
 {#snippet dark()}<WindowThumb mode="dark" />{/snippet}
-{#snippet small()}<WidgetThumb px={30} />{/snippet}
 {#snippet regular()}<WidgetThumb px={40} />{/snippet}
 {#snippet large()}<WidgetThumb px={50} />{/snippet}
 
@@ -57,7 +56,6 @@
             label="Widget size"
             bind:value={size.value}
             items={[
-              { value: 'small', label: 'Small', preview: small },
               { value: 'regular', label: 'Regular', preview: regular },
               { value: 'large', label: 'Large', preview: large },
             ]}

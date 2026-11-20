@@ -23,7 +23,7 @@
   import Recording from './Recording.svelte';
   import { EDGE_INSET, createLayout, sameRegions, type Box, type Extent } from './windowFit';
 
-  const SIZES = { small: 30, regular: 40, large: 50 } as const;
+  const SIZES = { regular: 40, large: 50 } as const;
   const DRAG_PX = 5;
   const READY_MS = 3000;
   const CARD_MS = 10_000;
@@ -258,7 +258,7 @@
                 <Tooltip label="Dictate" shortcut={(settings.data?.shortcuts?.dictation ?? 'Super+Control').split('+')}>
                   {#snippet children(tooltipProps)}
                     <button type="button" {...tooltipProps} class="mic" aria-label="Dictate" onclick={mic}>
-                      <MicGlyph size={20} />
+                      <MicGlyph size={Math.round(size / 2)} />
                     </button>
                   {/snippet}
                 </Tooltip>

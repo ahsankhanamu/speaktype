@@ -246,10 +246,10 @@ describe('states on the board', () => {
 
 describe('size and window', () => {
   it.each([
-    ['small', '30px'],
+    ['small', '40px'],
     ['regular', '40px'],
     ['large', '50px'],
-  ])('widget_size %s is a %s pill', async (size, px) => {
+  ])('widget_size %s is a %s pill (Small was dropped and reads as Regular)', async (size, px) => {
     await start({ widget_size: size });
     await vi.waitFor(() => expect(document.querySelector<HTMLElement>('.widget')!.style.getPropertyValue('--size')).toBe(px));
   });

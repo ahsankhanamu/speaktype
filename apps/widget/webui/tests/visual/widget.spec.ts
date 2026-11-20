@@ -71,7 +71,7 @@ for (const theme of ['dark', 'light']) {
       await expect(page).toHaveScreenshot(`widget-server-starting-${theme}.png`, await widget(page));
     });
 
-    for (const size of ['small', 'large']) {
+    for (const size of ['large']) {
       test(`${size} widget`, async ({ page }) => {
         await open(page, 'copied', theme, `&size=${size}`);
         await expect(page).toHaveScreenshot(`widget-${size}-copied-${theme}.png`, await widget(page));

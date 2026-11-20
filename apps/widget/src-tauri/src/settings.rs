@@ -520,6 +520,12 @@ impl Settings {
             changed = true;
         }
 
+        // The Small widget size was dropped (too close to Regular to matter).
+        if settings.widget_size == "small" {
+            settings.widget_size = "regular".to_string();
+            changed = true;
+        }
+
         let llm_key = settings.scribe_llm_api_key.trim().to_string();
         if !llm_key.is_empty() {
             secrets
@@ -822,6 +828,19 @@ mod tests {
         assert_eq!(parsed.history_limit, None);
         assert!(parsed.launch_at_login);
         assert_eq!(parsed.onboarding_step, 3);
+    }
+
+    #[test]
+    fn a_small_widget_becomes_regular() {
+        let store = speaktype_stt::MemoryStore::new();
+        let json = serde_json::to_string(&Settings {
+            widget_size: "small".to_string(),
+            ..Settings::default()
+        })
+        .expect("serialize");
+        let (settings, changed) = Settings::load_from(Ok(Some(&json)), &store).expect("load");
+        assert_eq!(settings.widget_size, "regular");
+        assert!(changed);
     }
 
     /// The owner's real file: dictation on F8, and every other shortcut changed
