@@ -18,7 +18,7 @@ const ipc = vi.hoisted(() => {
     getSettings: fn(), saveSettings: fn(), checkServer: fn(), getServerStatus: fn(), unloadModel: fn(),
     loadServer: fn(), serverInfo: fn(), resetWidgetPosition: fn(), openSystemPane: fn(), openModelsFolder: fn(),
     openRecordingsFolder: fn(), clearHistory: fn(), getHistory: fn(), sessionList: fn(), copyToClipboard: fn(),
-    deleteHistoryEntry: fn(), getHistoryAudio: fn(), reprocessHistoryEntry: fn(), getDebugSessions: fn(),
+    deleteHistoryEntry: fn(), getHistoryAudio: fn(), reprocessHistoryEntry: fn(), getDebugSessions: fn(), getDebugAudioSlice: fn(),
     clearDebugSessions: fn(), deleteDebugSession: fn(), checkPermissions: fn(), openOnboarding: fn(),
     startMicTest: fn(), stopMicTest: fn(), getModels: fn(), getInputDevices: fn(), loadModel: fn(),
     queueModelDownload: fn(), pauseModelDownload: fn(), cancelModelDownload: fn(),
@@ -164,16 +164,21 @@ describe('settings pages', () => {
         durationSecs: 9,
         finalChars: 11,
         finalText: 'hello there',
-        chunks: [{ idx: 0, startSecs: 0, endSecs: 9, status: 'ok', chars: 11 }],
-        passes: [{ chunkIdx: 0, pass: 1, rawChars: 11, score: 0.82 }],
+        chunks: [{ idx: 0, startSecs: 0, endSecs: 9, status: 'accepted', chars: 11 }],
+        passes: [{ chunkIdx: 0, pass: 1, rawChars: 11, score: 0.82, segments: [{ text: 'the button', start: 0, end: 2 }] }],
       },
     ]);
+    ipc.getDebugAudioSlice.mockResolvedValue([]);
     render(Advanced);
     const row = await vi.waitFor(() => document.querySelector<HTMLElement>('.record')!);
     row.click();
     await vi.waitFor(() => expect(text()).toContain('hello there'));
-    expect(text()).toContain('Chunk 1 · 0:00–0:09');
-    expect(text()).toContain('pass 1 · 11 chars · score 0.82');
+    expect(text()).toContain('Chunk 1');
+    expect(text()).toContain('0:00–0:09');
+    expect(text()).toContain('Accepted');
+    (document.querySelector('.chunk .head') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(text()).toContain('Pass 1 · score 0.82'));
+    expect(text()).toContain('the button');
   });
 
   it('Advanced unloads the model with the size the menu bar quotes, then loads it now', async () => {

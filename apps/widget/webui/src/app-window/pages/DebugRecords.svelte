@@ -5,6 +5,9 @@
   import { formatDuration } from '../../lib/format';
   import { clearDebugSessions, deleteDebugSession, getDebugSessions } from '../../lib/ipc';
   import Section from '../Section.svelte';
+  import DebugChunk from './debug/DebugChunk.svelte';
+  import Waveform from './debug/Waveform.svelte';
+  import { player } from './debug/audio.svelte';
 
   const records = liveQuery('debug-sessions', getDebugSessions, { invalidateOn: ['dictation-state'] });
   type Record = NonNullable<typeof records.data>[number];
@@ -16,18 +19,9 @@
       .filter(Boolean)
       .join(' · ');
 
-  const span = (start?: number | null, end?: number | null) =>
-    start == null || end == null ? '' : `${formatDuration(Math.floor(start))}–${formatDuration(Math.ceil(end))}`;
 
-  /** The passes that decoded one chunk, as "pass 1 · 212 chars · score 0.82". */
-  const passesFor = (record: Record, idx?: number) =>
-    (record.passes ?? [])
-      .filter((pass) => pass.chunkIdx === idx)
-      .map((pass) =>
-        [`pass ${pass.pass ?? 1}`, `${pass.rawChars ?? 0} chars`, pass.score != null && `score ${pass.score.toFixed(2)}`, pass.reason]
-          .filter(Boolean)
-          .join(' · '),
-      );
+
+  $effect(() => () => player.stop());
 
   async function remove(id: number) {
     await deleteDebugSession(id);
@@ -84,18 +78,15 @@
       {#if expanded}
         <div class="detail">
           <p class="text">{record.finalText || 'No text came out of this dictation.'}</p>
+          {#if record.id != null}
+            <Waveform clip={{ sessionId: record.id, start: null, end: null }} label="the whole recording" />
+          {/if}
           {#if record.chunks?.length}
-            <ol class="chunks">
+            <div class="chunks">
               {#each record.chunks as chunk (chunk.idx)}
-                <li>
-                  <span class="chunk">
-                    Chunk {(chunk.idx ?? 0) + 1}{span(chunk.startSecs, chunk.endSecs) && ` · ${span(chunk.startSecs, chunk.endSecs)}`}
-                    · {chunk.status ?? 'unknown'} · {chunk.chars ?? 0} chars{chunk.reason ? ` · ${chunk.reason}` : ''}
-                  </span>
-                  {#each passesFor(record, chunk.idx) as pass}<span class="pass">{pass}</span>{/each}
-                </li>
+                <DebugChunk sessionId={record.id ?? 0} {chunk} passes={(record.passes ?? []).filter((pass) => pass.chunkIdx === chunk.idx)} />
               {/each}
-            </ol>
+            </div>
           {/if}
         </div>
       {/if}
@@ -132,27 +123,12 @@
     user-select: text;
   }
   .text {
-    margin: 0 0 8px;
+    margin: 0 0 10px;
     color: var(--st-text);
     font-size: var(--st-font-info);
     line-height: 1.45;
   }
   .chunks {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    color: var(--st-text-secondary);
-    font-variant-numeric: tabular-nums;
-  }
-  .chunks li {
-    display: flex;
-    flex-direction: column;
-  }
-  .pass {
-    padding-left: 12px;
-    color: var(--st-text-tertiary);
+    margin-top: 10px;
   }
 </style>
