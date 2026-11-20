@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { flushSync, tick } from 'svelte';
+  import { tick } from 'svelte';
   import { fade } from 'svelte/transition';
   import { AudioLines, Check, EyeOff, History, Mic, Settings, X } from '@lucide/svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -21,7 +21,7 @@
   import { useDictation, type Action } from './dictation.svelte';
   import { duration, reducedMotion } from '@speaktype/ui/motion';
   import Recording from './Recording.svelte';
-  import { EDGE_INSET, createLayout, roomFor, type Box, type Extent } from './windowFit';
+  import { EDGE_INSET, createLayout, sameRegions, type Box, type Extent } from './windowFit';
 
   const SIZES = { small: 30, regular: 40, large: 50 } as const;
   const DRAG_PX = 5;
@@ -58,8 +58,6 @@
   let cardEl = $state<HTMLElement>();
   let menuOpen = $state(false);
   let panel = $state<'mic' | 'model' | null>(null);
-  let opening = $state(false);
-  const menuRoom = $derived(opening || menuOpen || panel !== null);
 
   let server = $state<{ tone: 'accent' | 'danger' | 'success'; label: string } | null>(null);
   let serverTimer: ReturnType<typeof setTimeout> | undefined;
@@ -106,7 +104,6 @@
   const round = $derived(view.kind === 'idle' || view.kind === 'pasted');
   let faceSize = $state<Extent>({ width: 0, height: 0 });
   let cardSize = $state<Extent>({ width: 0, height: 0 });
-  let hovering = $state(false);
   let pill = $state<Box | null>(null);
   let morphing = $state(false);
 
@@ -122,64 +119,41 @@
   $effect(() => observeSize(face, (size) => (faceSize = size)));
   $effect(() => observeSize(cardEl ?? undefined, (size) => (cardSize = size)));
 
-  const target = $derived.by(() => {
-    const room = roomFor({ hovering: hovering && view.kind === 'idle', menuOpen: menuRoom });
-    // The card sits above or below the pill, whichever side has the room.
-    const cardRoom = card === null ? 0 : 2 * (cardSize.height + CARD_GAP) + faceSize.height;
-    return {
-      size: faceSize,
-      room: { width: Math.max(room.width, cardSize.width), height: Math.max(room.height, cardRoom) },
-      inset: round ? 0 : EDGE_INSET,
-    };
-  });
+  const target = $derived({ size: faceSize, inset: round ? 0 : EDGE_INSET });
 
-  const sameBox = (a: Box, b: Box) => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
-
-  /** Draws the pill at `next`; a morph resolves when the pill lands (or at once, without motion). */
-  function show(next: Box, animate: boolean): Promise<void> {
-    const moves = !pill || !sameBox(pill, next);
-    flushSync(() => {
-      morphing = animate && moves && !reducedMotion.current;
-      pill = next;
-    });
-    if (!morphing) return Promise.resolve();
-    return new Promise((resolve) => {
-      const done = () => {
-        clearTimeout(timer);
-        stage?.removeEventListener('transitionend', onEnd);
-        resolve();
-      };
-      const onEnd = (event: TransitionEvent) => event.target === stage && done();
-      const timer = setTimeout(done, duration.morph + 60);
-      stage?.addEventListener('transitionend', onEnd);
-    });
+  /** Draws the pill at `next`; after the first placement, CSS morphs it there. */
+  function show(next: Box) {
+    morphing = pill !== null && !reducedMotion.current;
+    pill = next;
   }
 
-  /** Where the pill is drawn right now, mid-morph included. */
-  function drawn(): Box | null {
-    if (!pill || !stage) return null;
-    const r = stage.getBoundingClientRect();
-    return { x: r.x, y: r.y, width: r.width, height: r.height };
-  }
-
-  const layout = createLayout(show, drawn);
-  const layoutNow = () => layout(target);
-
+  const layout = createLayout(show);
   $effect(() => {
     void target;
-    void tick().then(layoutNow);
+    void tick().then(() => layout(target));
   });
 
-  /** The window grows around the pill before a menu opens, so the menu has room and the pill stays put. */
-  async function reveal(open: () => void) {
-    opening = true;
-    await tick();
-    await layoutNow();
-    open();
-    opening = false;
-  }
+  // Clicks pass through the transparent stage except here: the pill and the card, or the whole
+  // window while a menu is open so a click outside it closes it.
+  let regions: Box[] = [];
+  $effect(() => {
+    const next: Box[] = [];
+    if (menuOpen || panel !== null) next.push({ x: 0, y: 0, width: windowWidth, height: windowHeight });
+    else {
+      if (pill) next.push(pill);
+      void cardLeft;
+      if (cardEl && cardSize.width) {
+        const r = cardEl.getBoundingClientRect();
+        next.push({ x: r.x, y: r.y, width: r.width, height: r.height });
+      }
+    }
+    if (sameRegions(regions, next)) return;
+    regions = next;
+    commands.setWidgetHitRegions(next).catch(report);
+  });
 
   let windowWidth = $state(0);
+  let windowHeight = $state(0);
   const cardAbove = $derived(!pill || pill.y >= cardSize.height + CARD_GAP);
   const cardLeft = $derived.by(() => {
     const half = cardSize.width / 2;
@@ -217,7 +191,7 @@
 
   function onContextMenu(event: MouseEvent) {
     event.preventDefault();
-    void reveal(() => (menuOpen = true));
+    menuOpen = true;
   }
 
   const report = (error: unknown) => console.error('[widget]', error);
@@ -236,11 +210,11 @@
       },
     },
     tryAgain: { label: 'Try again', run: () => toggleRecording(false).catch(report) },
-    chooseMic: { label: 'Choose mic', run: () => void reveal(() => (panel = 'mic')) },
+    chooseMic: { label: 'Choose mic', run: () => (panel = 'mic') },
   };
 </script>
 
-<svelte:window bind:innerWidth={windowWidth} />
+<svelte:window bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
 
 <LayerRoot>
   <div class="widget" style:--size="{size}px" style:--k={size / 40}>
@@ -275,8 +249,6 @@
       style:height="{pill?.height ?? faceSize.height}px"
       onpointerdown={onPointerDown}
       oncontextmenu={onContextMenu}
-      onpointerenter={() => (hovering = true)}
-      onpointerleave={() => (hovering = false)}
     >
       <Halo tone={halo}>
         <div class="pill" class:haloed={halo !== null}>

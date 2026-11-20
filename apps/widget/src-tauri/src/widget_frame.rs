@@ -2,9 +2,13 @@
 //!
 //! `home` is where the person put the bubble: its centre, in logical points.
 //! Every pill is placed around it and kept inside the display's visible frame,
-//! so a bubble parked at the edge still opens into a whole pill. The window is
-//! the pill plus room for its halo, tooltip or menu, and it moves and resizes
-//! in one native call so the pill never jumps while it morphs.
+//! so a bubble parked at the edge still opens into a whole pill.
+//!
+//! The window is a fixed transparent stage around home, big enough for the
+//! pill, its tooltip and its menus, so hovering, opening a menu or morphing
+//! never moves or resizes it (a moving window shifts the pill out from under
+//! the pointer). Clicks pass through the stage except over the regions the
+//! webview reports (the pill, the card, an open menu).
 
 use crate::session_cmds::IpcError;
 use serde::{Deserialize, Serialize};
@@ -12,8 +16,11 @@ use std::collections::VecDeque;
 use std::sync::Mutex;
 use tauri::{PhysicalPosition, WebviewWindow};
 
-/// Room around the pill for its halo.
-pub const MARGIN: f64 = 24.0;
+/// The stage: room for the widest pill and the right-click menu or a picker.
+const STAGE: Extent = Extent {
+    width: 480.0,
+    height: 600.0,
+};
 /// The window the widget starts at (`tauri.conf.json`): the saved position is
 /// the top-left of this square centred on the bubble.
 const SAVED_SQUARE: f64 = 92.0;
@@ -35,14 +42,8 @@ impl ScreenRect {
     fn bottom(&self) -> f64 {
         self.y + self.height
     }
-    fn union(&self, other: &ScreenRect) -> ScreenRect {
-        let (x, y) = (self.x.min(other.x), self.y.min(other.y));
-        ScreenRect {
-            x,
-            y,
-            width: self.right().max(other.right()) - x,
-            height: self.bottom().max(other.bottom()) - y,
-        }
+    fn contains(&self, (x, y): (f64, f64)) -> bool {
+        x >= self.x && x < self.right() && y >= self.y && y < self.bottom()
     }
     fn offset(&self, dx: f64, dy: f64) -> ScreenRect {
         ScreenRect {
@@ -57,13 +58,6 @@ impl ScreenRect {
 pub struct Extent {
     pub width: f64,
     pub height: f64,
-}
-
-/// The pill before and after a layout, in the window's own coordinates.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
-pub struct PillLayout {
-    pub from: ScreenRect,
-    pub to: ScreenRect,
 }
 
 /// Keep `start..start + len` inside `lo..hi`; a span larger than the range
@@ -92,27 +86,26 @@ pub fn place_pill(home: (f64, f64), size: Extent, area: ScreenRect, inset: f64) 
     }
 }
 
-/// The window for `pill`: the pill and `MARGIN` around it, at least `room` in
-/// size, on whole points. Extra room for a tooltip or menu is moved inside
-/// `area` so what opens in it stays on screen; the halo margin may run off the
-/// edge, where nothing is drawn.
-pub fn frame_for(pill: ScreenRect, room: Extent, area: ScreenRect) -> ScreenRect {
-    let width = (pill.width + 2.0 * MARGIN).max(room.width).ceil();
-    let height = (pill.height + 2.0 * MARGIN).max(room.height).ceil();
-    let centred = |start: f64, len: f64, size: f64| start + len / 2.0 - size / 2.0;
-    let mut x = centred(pill.x, pill.width, width);
-    let mut y = centred(pill.y, pill.height, height);
-    if room.width > pill.width + 2.0 * MARGIN {
-        x = clamp_span(x, width, area.x, area.right()).clamp(pill.right() - width, pill.x);
-    }
-    if room.height > pill.height + 2.0 * MARGIN {
-        y = clamp_span(y, height, area.y, area.bottom()).clamp(pill.bottom() - height, pill.y);
-    }
+/// The stage around `home`: centred on it and moved inside `area`, on whole
+/// points. It always holds home, so it holds every pill placed around it.
+pub fn stage_for(home: (f64, f64), area: ScreenRect) -> ScreenRect {
     ScreenRect {
-        x: x.round(),
-        y: y.round(),
-        width,
-        height,
+        x: clamp_span(
+            home.0 - STAGE.width / 2.0,
+            STAGE.width,
+            area.x,
+            area.right(),
+        )
+        .round(),
+        y: clamp_span(
+            home.1 - STAGE.height / 2.0,
+            STAGE.height,
+            area.y,
+            area.bottom(),
+        )
+        .round(),
+        width: STAGE.width,
+        height: STAGE.height,
     }
 }
 
@@ -122,12 +115,21 @@ struct Layout {
     /// The window as we last set it, in logical points.
     frame: Option<ScreenRect>,
     own_moves: VecDeque<(i32, i32)>,
+    /// Where the window takes clicks, in its own coordinates.
+    regions: Vec<ScreenRect>,
+    /// The primary display's height in points, to flip AppKit's bottom-left y.
+    primary_height: f64,
+    /// Whether clicks currently pass through the window.
+    passing: Option<bool>,
 }
 
 static LAYOUT: Mutex<Layout> = Mutex::new(Layout {
     home: None,
     frame: None,
     own_moves: VecDeque::new(),
+    regions: Vec::new(),
+    primary_height: 0.0,
+    passing: None,
 });
 
 fn window_rect(window: &WebviewWindow) -> Option<ScreenRect> {
@@ -170,16 +172,17 @@ fn work_area(window: &WebviewWindow, home: (f64, f64)) -> Option<ScreenRect> {
 /// Move and resize the window in one step. On macOS that is a single
 /// `setFrame:display:`, so the window never shows the new origin at the old
 /// size.
+fn primary_height(window: &WebviewWindow) -> Option<f64> {
+    let primary = window.primary_monitor().ok()??;
+    Some(primary.size().height as f64 / primary.scale_factor())
+}
+
 fn set_frame(window: &WebviewWindow, frame: ScreenRect) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         use objc2_app_kit::NSWindow;
         use objc2_foundation::{NSPoint, NSRect, NSSize};
-        let primary = window
-            .primary_monitor()
-            .map_err(|e| e.to_string())?
-            .ok_or("No display")?;
-        let primary_height = primary.size().height as f64 / primary.scale_factor();
+        let primary_height = primary_height(window).ok_or("No display")?;
         let ns_window = window.ns_window().map_err(|e| e.to_string())?;
         // SAFETY: a sync command runs on the main thread, and the pointer is
         // the live NSWindow (an NSPanel subclass) that Tauri owns.
@@ -204,19 +207,15 @@ fn set_frame(window: &WebviewWindow, frame: ScreenRect) -> Result<(), String> {
     }
 }
 
-/// Place the pill of `size` around home and fit the window to it. `current` is
-/// where the pill is drawn now, in the window's coordinates: the window then
-/// also holds it, so the pill can morph from there. Without it the window hugs
-/// the new pill alone.
+/// Place the pill of `size` around home, inside the stage, and return it in the
+/// window's coordinates. The window only moves when home or the display does.
 #[tauri::command]
 #[specta::specta]
 pub fn layout_widget(
     window: WebviewWindow,
     size: Extent,
-    room: Extent,
     inset: f64,
-    current: Option<ScreenRect>,
-) -> Result<PillLayout, IpcError> {
+) -> Result<ScreenRect, IpcError> {
     let fail = |e: String| IpcError::new("widgetLayout", e);
     let scale = window.scale_factor().map_err(|e| fail(e.to_string()))?;
     let mut layout = LAYOUT.lock().map_err(|e| fail(e.to_string()))?;
@@ -229,10 +228,9 @@ pub fn layout_widget(
         before.y + before.height / 2.0,
     ));
     let area = work_area(&window, home).unwrap_or(before);
-    let to = place_pill(home, size, area, inset);
-    let from = current.map_or(to, |c| c.offset(before.x, before.y));
-    let frame = frame_for(from.union(&to), room, area);
-    if frame != before || layout.frame.is_none() {
+    let frame = stage_for(home, area);
+    if layout.frame != Some(frame) {
+        layout.primary_height = primary_height(&window).unwrap_or(layout.primary_height);
         set_frame(&window, frame).map_err(fail)?;
         if layout.own_moves.len() == PENDING_MOVES {
             layout.own_moves.pop_front();
@@ -243,10 +241,69 @@ pub fn layout_widget(
         ));
         layout.frame = Some(frame);
     }
-    Ok(PillLayout {
-        from: from.offset(-frame.x, -frame.y),
-        to: to.offset(-frame.x, -frame.y),
-    })
+    Ok(place_pill(home, size, area, inset).offset(-frame.x, -frame.y))
+}
+
+/// Where the widget takes clicks, in window coordinates; everywhere else they
+/// reach the app underneath.
+#[tauri::command]
+#[specta::specta]
+pub fn set_widget_hit_regions(window: WebviewWindow, regions: Vec<ScreenRect>) {
+    if let Ok(mut layout) = LAYOUT.lock() {
+        layout.regions = regions;
+    }
+    update_pass_through(&window);
+}
+
+/// Let clicks through unless the pointer is over a hit region. Runs on every
+/// pointer move (see `watch_pointer`) and whenever the regions change.
+fn update_pass_through(window: &WebviewWindow) {
+    #[cfg(target_os = "macos")]
+    {
+        let point = objc2_app_kit::NSEvent::mouseLocation();
+        let Ok(mut layout) = LAYOUT.lock() else {
+            return;
+        };
+        let Some(frame) = layout.frame else {
+            return;
+        };
+        let local = (point.x - frame.x, layout.primary_height - point.y - frame.y);
+        let pass = !layout.regions.iter().any(|r| r.contains(local));
+        if layout.passing == Some(pass) {
+            return;
+        }
+        layout.passing = Some(pass);
+        drop(layout);
+        let _ = window.set_ignore_cursor_events(pass);
+    }
+    #[cfg(not(target_os = "macos"))]
+    let _ = window;
+}
+
+/// Follow the pointer with AppKit's event monitors: the global one while
+/// another app is in front, the local one while SpeakType is. Event-driven, so
+/// an idle pointer costs nothing. Installed once, for the app's lifetime.
+#[cfg(target_os = "macos")]
+pub fn watch_pointer(window: &WebviewWindow) {
+    use block2::RcBlock;
+    use objc2_app_kit::{NSEvent, NSEventMask};
+    use std::ptr::NonNull;
+
+    let mask =
+        NSEventMask::MouseMoved | NSEventMask::LeftMouseDragged | NSEventMask::RightMouseDragged;
+    let global_window = window.clone();
+    let global = RcBlock::new(move |_: NonNull<NSEvent>| update_pass_through(&global_window));
+    let local_window = window.clone();
+    let local = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
+        update_pass_through(&local_window);
+        event.as_ptr()
+    });
+    let monitors = (
+        NSEvent::addGlobalMonitorForEventsMatchingMask_handler(mask, &global),
+        // SAFETY: the handler returns the event it was given, unchanged.
+        unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &local) },
+    );
+    std::mem::forget(monitors);
 }
 
 /// A `Moved` event for the widget. Our own reframes are ignored; any other move
@@ -316,10 +373,6 @@ mod tests {
         width: 172.0,
         height: 40.0,
     };
-    const NO_ROOM: Extent = Extent {
-        width: 0.0,
-        height: 0.0,
-    };
 
     #[test]
     fn a_pill_opens_centred_on_the_bubble_away_from_the_edges() {
@@ -359,41 +412,24 @@ mod tests {
     }
 
     #[test]
-    fn the_window_hugs_the_pill_with_its_halo_margin() {
-        let pill = place_pill((700.0, 500.0), BUBBLE, SCREEN, 0.0);
-        let frame = frame_for(pill, NO_ROOM, SCREEN);
-        assert_eq!(
-            frame,
-            ScreenRect {
-                x: 654.0,
-                y: 454.0,
-                width: 92.0,
-                height: 92.0
-            }
-        );
+    fn the_stage_holds_home_and_stays_on_screen_at_the_edges() {
+        for home in [(700.0, 500.0), (1512.0 - 4.0, 30.0), (4.0, 940.0)] {
+            let stage = stage_for(home, SCREEN);
+            assert!(stage.contains(home), "{home:?} outside {stage:?}");
+            assert!(stage.x >= SCREEN.x && stage.right() <= SCREEN.right());
+            assert!(stage.y >= SCREEN.y && stage.bottom() <= SCREEN.bottom());
+        }
     }
 
     #[test]
-    fn a_menu_near_the_edge_gets_its_room_on_screen_without_losing_the_pill() {
-        let pill = place_pill((1512.0 - 30.0, 900.0), BUBBLE, SCREEN, 0.0);
-        let menu = Extent {
-            width: 460.0,
-            height: 560.0,
-        };
-        let frame = frame_for(pill, menu, SCREEN);
-        assert_eq!(frame.right(), 1512.0);
-        assert_eq!(frame.bottom(), SCREEN.bottom());
-        assert!(frame.x <= pill.x && frame.right() >= pill.right());
-        assert!(frame.y <= pill.y && frame.bottom() >= pill.bottom());
-    }
-
-    #[test]
-    fn a_morph_window_holds_both_the_bubble_and_the_pill() {
-        let home = (1512.0 - 24.0, 500.0);
-        let bubble = place_pill(home, BUBBLE, SCREEN, 0.0);
-        let pill = place_pill(home, RECORDING, SCREEN, 8.0);
-        let frame = frame_for(bubble.union(&pill), NO_ROOM, SCREEN);
-        assert!(frame.x <= pill.x && frame.right() >= bubble.right());
+    fn every_pill_fits_in_the_stage_around_its_home() {
+        let home = (1512.0 - 24.0, 40.0);
+        let stage = stage_for(home, SCREEN);
+        for (size, inset) in [(BUBBLE, 0.0), (RECORDING, 8.0)] {
+            let pill = place_pill(home, size, SCREEN, inset);
+            assert!(pill.x >= stage.x && pill.right() <= stage.right());
+            assert!(pill.y >= stage.y && pill.bottom() <= stage.bottom());
+        }
     }
 
     #[test]

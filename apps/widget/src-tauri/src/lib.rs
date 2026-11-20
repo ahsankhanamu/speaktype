@@ -261,6 +261,7 @@ pub fn run() {
                         logging::log_message("[panel] Widget set as non-activating panel");
                     }
                 });
+                widget_frame::watch_pointer(&window);
             }
 
             let recorder = AudioRecorder::new()?;
@@ -745,6 +746,7 @@ mod ipc_surface {
         "quit_app",
         "save_window_position",
         "layout_widget",
+        "set_widget_hit_regions",
         "reset_widget_position",
         "get_history",
         "delete_history_entry",
@@ -798,6 +800,7 @@ mod ipc_surface {
         "quit_app",
         "save_window_position",
         "layout_widget",
+        "set_widget_hit_regions",
         "reset_widget_position",
         "open_about",
         "open_settings",

@@ -9,17 +9,11 @@ declare global {
   }
 }
 
-type Box = { x: number; y: number; width: number; height: number };
-type LayoutArgs = { size: { width: number; height: number }; current: Box | null };
+type LayoutArgs = { size: { width: number; height: number } };
 
-/** The page plays the widget window: the pill sits in its middle, as it does away from the screen edges. */
-function layout({ size, current }: LayoutArgs) {
-  const to = {
-    x: Math.round((innerWidth - size.width) / 2),
-    y: Math.round((innerHeight - size.height) / 2),
-    ...size,
-  };
-  return { from: current ?? to, to };
+/** The page plays the widget's stage: the pill sits in its middle, as it does away from the screen edges. */
+function layout({ size }: LayoutArgs) {
+  return { x: Math.round((innerWidth - size.width) / 2), y: Math.round((innerHeight - size.height) / 2), ...size };
 }
 
 /** Stands in for the Tauri runtime: commands answer from the fixture, events fire from `emit`. */

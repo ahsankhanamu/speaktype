@@ -4,7 +4,7 @@ import { setBus } from '../lib/data';
 import { FakeBus } from '../lib/data/testBus';
 
 const ipc = vi.hoisted(() => ({
-  commands: { pasteLast: vi.fn(), openSettings: vi.fn() },
+  commands: { pasteLast: vi.fn(), openSettings: vi.fn(), setWidgetHitRegions: vi.fn() },
   getSettings: vi.fn(),
   getOnboardingStatus: vi.fn(),
   toggleRecording: vi.fn(),
@@ -58,11 +58,10 @@ const send = async (phase: string, kind?: string, message = '') => {
   await settle();
 };
 const halo = () => document.querySelector<HTMLElement>('.halo')!.style.boxShadow;
-/** The room the window was last asked to keep around the pill, and the pill's edge inset. */
-const lastFit = () => {
-  const { room, inset } = fit.layout.mock.calls.at(-1)![0];
-  return [room.width, room.height, inset];
-};
+/** How far the last laid-out pill keeps from the screen's edges. */
+const lastInset = () => fit.layout.mock.calls.at(-1)![0].inset;
+/** The window areas that last took clicks. */
+const lastRegions = () => ipc.commands.setWidgetHitRegions.mock.calls.at(-1)?.[0] ?? [];
 
 beforeEach(() => {
   bus = new FakeBus();
@@ -89,6 +88,7 @@ beforeEach(() => {
   ipc.commands.pasteLast.mockResolvedValue(null);
   ipc.commands.openSettings.mockResolvedValue(null);
   fit.layout.mockResolvedValue(undefined);
+  ipc.commands.setWidgetHitRegions.mockResolvedValue(null);
   win.startDragging.mockResolvedValue(undefined);
 });
 
@@ -197,11 +197,11 @@ describe('states on the board', () => {
     await start();
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     await send('recording');
-    const recordingFit = lastFit();
+    const recordingFit = lastInset();
     await send('recording', 'micFallback', 'Switched to MacBook microphone');
     expect(text()).toContain('Switched to MacBook microphone');
     expect(halo()).toBe('var(--st-halo-recording)');
-    expect(lastFit()).toEqual(recordingFit);
+    expect(lastInset()).toEqual(recordingFit);
     vi.advanceTimersByTime(10_000);
     flushSync();
     expect(text()).toContain('Switched to MacBook microphone');
@@ -254,40 +254,34 @@ describe('size and window', () => {
     await vi.waitFor(() => expect(document.querySelector<HTMLElement>('.widget')!.style.getPropertyValue('--size')).toBe(px));
   });
 
-  it('hugs the idle bubble, which may sit right at the screen edge', async () => {
+  it('lets the idle bubble sit right at the screen edge', async () => {
     await start();
-    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 0]));
+    await vi.waitFor(() => expect(lastInset()).toBe(0));
   });
 
   it('keeps an opened pill inside the screen edges', async () => {
     await start();
     await send('recording');
-    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 8]));
+    await vi.waitFor(() => expect(lastInset()).toBe(8));
   });
 
-  it('grows while the idle pill is hovered and shrinks back after', async () => {
+  it('never re-lays out the window for hover, so the bubble cannot move under the pointer', async () => {
     await start();
+    await settle();
+    const calls = fit.layout.mock.calls.length;
     const stage = document.querySelector('.stage')!;
     stage.dispatchEvent(new MouseEvent('pointerenter'));
-    await vi.waitFor(() => expect(lastFit()[1]).toBeGreaterThanOrEqual(120));
     stage.dispatchEvent(new MouseEvent('pointerleave'));
-    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 0]));
-  });
-
-  it('does not grow for hover once recording', async () => {
-    await start();
-    await send('recording');
-    document.querySelector('.stage')!.dispatchEvent(new MouseEvent('pointerenter'));
     await settle();
-    expect(lastFit()).toEqual([0, 0, 8]);
+    expect(fit.layout.mock.calls.length).toBe(calls);
   });
 
-  it('grows while the menu is open and returns to rest when it closes', async () => {
+  it('takes clicks over the whole window while the menu is open, and none of it after', async () => {
     await start();
     document.querySelector('.stage')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
-    await vi.waitFor(() => expect(lastFit()[1]).toBeGreaterThan(500));
+    await vi.waitFor(() => expect(lastRegions()).toEqual([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]));
     button('Hide widget')!.click();
-    await vi.waitFor(() => expect(lastFit()).toEqual([0, 0, 0]));
+    await vi.waitFor(() => expect(lastRegions()).not.toEqual([{ x: 0, y: 0, width: window.innerWidth, height: window.innerHeight }]));
   });
 });
 

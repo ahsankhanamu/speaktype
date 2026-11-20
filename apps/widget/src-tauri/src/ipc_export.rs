@@ -56,6 +56,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::commands::quit_app,
             crate::commands::save_window_position,
             crate::widget_frame::layout_widget,
+            crate::widget_frame::set_widget_hit_regions,
             crate::commands::reset_widget_position,
             crate::commands::get_history,
             crate::commands::delete_history_entry,

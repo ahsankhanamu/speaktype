@@ -81,12 +81,15 @@ export const commands = {
 	quitApp: (options?: InvokeOptions) => __TAURI_INVOKE<void>("quit_app", undefined, options),
 	saveWindowPosition: (options?: InvokeOptions) => __TAURI_INVOKE<null>("save_window_position", undefined, options),
 	/**
-	 *  Place the pill of `size` around home and fit the window to it. `current` is
-	 *  where the pill is drawn now, in the window's coordinates: the window then
-	 *  also holds it, so the pill can morph from there. Without it the window hugs
-	 *  the new pill alone.
+	 *  Place the pill of `size` around home, inside the stage, and return it in the
+	 *  window's coordinates. The window only moves when home or the display does.
 	 */
-	layoutWidget: (size: Extent, room: Extent, inset: number | null, current: ScreenRect | null, options?: InvokeOptions) => __TAURI_INVOKE<PillLayout>("layout_widget", { size, room, inset, current }, options),
+	layoutWidget: (size: Extent, inset: number | null, options?: InvokeOptions) => __TAURI_INVOKE<ScreenRect>("layout_widget", { size, inset }, options),
+	/**
+	 *  Where the widget takes clicks, in window coordinates; everywhere else they
+	 *  reach the app underneath.
+	 */
+	setWidgetHitRegions: (regions: ScreenRect[], options?: InvokeOptions) => __TAURI_INVOKE<void>("set_widget_hit_regions", { regions }, options),
 	resetWidgetPosition: (options?: InvokeOptions) => __TAURI_INVOKE<null>("reset_widget_position", undefined, options),
 	getHistory: (options?: InvokeOptions) => __TAURI_INVOKE<History>("get_history", undefined, options),
 	deleteHistoryEntry: (index: number, options?: InvokeOptions) => __TAURI_INVOKE<null>("delete_history_entry", { index }, options),
@@ -322,12 +325,6 @@ export type PassEvent = {
 	hadMetrics?: boolean,
 	reason?: string,
 	segments?: SegmentDebug[],
-};
-
-/**  The pill before and after a layout, in the window's own coordinates. */
-export type PillLayout = {
-	from: ScreenRect,
-	to: ScreenRect,
 };
 
 /**
