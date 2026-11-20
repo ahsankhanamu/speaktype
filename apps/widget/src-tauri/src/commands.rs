@@ -709,8 +709,15 @@ async fn process_recording(
     app_state_pasting.store(false, Ordering::SeqCst);
 
     let (outcome, state) = controller::finish_outcome(match paste_result {
-        Ok(true) => controller::PasteResult::Pasted,
-        Ok(false) => {
+        Ok(paste::Delivery::Pasted) => controller::PasteResult::Pasted,
+        // Nowhere to paste, or it didn't land: the words are on the clipboard
+        // and the widget says to press ⌘V.
+        Ok(paste::Delivery::Copied) => {
+            log_message("[process] Paste had nowhere to land — transcript kept on clipboard");
+            tones::play(Tone::Error);
+            controller::PasteResult::Copied
+        }
+        Ok(paste::Delivery::Failed) => {
             log_message("[process] Paste not delivered — transcript kept on clipboard");
             tones::play(Tone::Error);
             tray::flash_error(&app);
@@ -1782,10 +1789,10 @@ pub async fn paste_last(app: AppHandle, state: State<'_, AppState>) -> Result<()
     .map_err(|e| IpcError::new("paste", e.to_string()))?;
     state.is_pasting.store(false, Ordering::SeqCst);
 
-    let outcome = if pasted {
-        DictationOutcome::Pasted
-    } else {
-        DictationOutcome::PasteFailed
+    let outcome = match pasted {
+        paste::Delivery::Pasted => DictationOutcome::Pasted,
+        paste::Delivery::Copied => DictationOutcome::Copied,
+        paste::Delivery::Failed => DictationOutcome::PasteFailed,
     };
     let mut history = History::load();
     if let Some(entry) = history.entries.first_mut() {
@@ -1798,13 +1805,16 @@ pub async fn paste_last(app: AppHandle, state: State<'_, AppState>) -> Result<()
         }
         crate::history::emit_changed(&app);
     }
-    if pasted {
-        Ok(())
-    } else {
-        Err(IpcError::new(
+    match pasted {
+        paste::Delivery::Pasted => Ok(()),
+        paste::Delivery::Copied => Err(IpcError::new(
+            "paste",
+            "Nothing to paste into; the text is on your clipboard. Click where it goes and press ⌘V",
+        )),
+        paste::Delivery::Failed => Err(IpcError::new(
             "paste",
             "Could not paste; the text is on your clipboard",
-        ))
+        )),
     }
 }
 

@@ -7,6 +7,7 @@ mod controller;
 mod debug;
 mod download_queue;
 mod downloader;
+mod focus_probe;
 mod format;
 mod history;
 mod hotkey;

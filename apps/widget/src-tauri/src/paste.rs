@@ -1,3 +1,4 @@
+use crate::focus_probe::{self, Focus};
 use crate::logging::log_message;
 use std::time::{Duration, Instant};
 
@@ -349,11 +350,25 @@ fn press_post_paste_keys(post_paste_keys: Option<&str>) {
 /// Paste text into the target window and report whether the keystroke was
 /// delivered. On failure the transcript is deliberately left on the clipboard
 /// so it can still be pasted manually.
+/// How a paste ended.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Delivery {
+    /// ⌘V went to an editable field (confirmed when the app reports text length).
+    Pasted,
+    /// Nothing to paste into, or the text didn't land: it stays on the clipboard.
+    Copied,
+    /// The paste couldn't be attempted (clipboard, permission, or focus).
+    Failed,
+}
+
+/// How long to wait for a pasted field to report its new text.
+const LAND_TIMEOUT: Duration = Duration::from_millis(500);
+
 pub fn paste_text(
     text: &str,
     target_window: Option<&WindowInfo>,
     post_paste_keys: Option<&str>,
-) -> bool {
+) -> Delivery {
     let old_clipboard = arboard::Clipboard::new()
         .ok()
         .and_then(|mut cb| cb.get_text().ok());
@@ -362,12 +377,12 @@ pub fn paste_text(
         Ok(mut clipboard) => {
             if let Err(e) = clipboard.set_text(text) {
                 log_message(&format!("[paste] Failed to set clipboard: {}", e));
-                return false;
+                return Delivery::Failed;
             }
         }
         Err(e) => {
             log_message(&format!("[paste] Failed to open clipboard: {}", e));
-            return false;
+            return Delivery::Failed;
         }
     }
 
@@ -376,40 +391,76 @@ pub fn paste_text(
             "[paste] Accessibility permission missing — text left on clipboard; enable SpeakType \
              under Privacy & Security → Accessibility",
         );
-        return false;
+        return Delivery::Failed;
     }
 
     let Some(window) = target_window else {
         log_message("[paste] No target window — text kept on clipboard");
-        return false;
+        return Delivery::Failed;
     };
     if !focus_window(window) {
         log_message("[paste] Could not focus window — text kept on clipboard");
-        return false;
+        return Delivery::Failed;
     }
 
     // A non-activating panel can hand off focus a beat after activation, so
     // give the target one more moment before posting the keystroke.
     std::thread::sleep(Duration::from_millis(80));
 
-    if !simulate_paste(is_terminal(window)) {
+    // Terminals often draw their own text and hide it from Accessibility, so
+    // they always get the paste.
+    let terminal = is_terminal(window);
+    let before = match window.pid {
+        Some(pid) if !terminal => focus_probe::probe(pid),
+        _ => Focus::Unknown,
+    };
+    if before == Focus::NotEditable {
+        log_message(&format!(
+            "[paste] Nothing editable has focus in {} — text kept on clipboard",
+            window.name
+        ));
+        return Delivery::Copied;
+    }
+
+    if !simulate_paste(terminal) {
         log_message("[paste] Failed to send paste keystroke — text kept on clipboard");
-        return false;
+        return Delivery::Failed;
+    }
+
+    // Wait for the field to report the pasted text, where it reports length.
+    let mut landed = None;
+    if let (Focus::Editable { chars: Some(_) }, Some(pid)) = (before, window.pid) {
+        let deadline = Instant::now() + LAND_TIMEOUT;
+        while Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+            landed = focus_probe::landed(before, focus_probe::probe(pid));
+            if landed == Some(true) {
+                break;
+            }
+        }
+    }
+    if landed == Some(false) {
+        log_message(&format!(
+            "[paste] The text didn't land in {} — kept on clipboard",
+            window.name
+        ));
+        return Delivery::Copied;
     }
 
     press_post_paste_keys(post_paste_keys);
 
-    // Keep the transcript on the clipboard long enough for the target app to
-    // read it, then restore the user's previous clipboard. Done synchronously
-    // so the clipboard monitor sees `is_pasting` for the whole window.
-    if let Some(old) = old_clipboard {
-        std::thread::sleep(Duration::from_millis(600));
-        if let Ok(mut clipboard) = arboard::Clipboard::new() {
-            let _ = clipboard.set_text(old);
+    // Only a paste we saw land gives the clipboard back; otherwise the words
+    // stay on it, so ⌘V still recovers them.
+    if landed == Some(true) {
+        if let Some(old) = old_clipboard {
+            std::thread::sleep(Duration::from_millis(600));
+            if let Ok(mut clipboard) = arboard::Clipboard::new() {
+                let _ = clipboard.set_text(old);
+            }
         }
     }
 
-    true
+    Delivery::Pasted
 }
 
 #[cfg(test)]
