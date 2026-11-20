@@ -29,6 +29,13 @@ describe('createLayout', () => {
     expect(ipc.layoutWidget).toHaveBeenCalledTimes(1);
   });
 
+  it('lays out the same target again when asked, after a drag', async () => {
+    const layout = createLayout(vi.fn());
+    await layout(recording);
+    await layout(recording, true);
+    expect(ipc.layoutWidget).toHaveBeenCalledTimes(2);
+  });
+
   it('skips a target that a newer one replaced before its turn', async () => {
     const show = vi.fn();
     const layout = createLayout(show);

@@ -36,8 +36,9 @@ export function createLayout(show: (box: Box) => void) {
     show(toBox(await commands.layoutWidget(target.size, target.inset)));
   }
 
-  return function layout(target: Target): Promise<void> {
-    if (latest && latest.size.width === target.size.width && latest.size.height === target.size.height && latest.inset === target.inset) {
+  /** `again` lays out an unchanged target too: after a drag, so a bubble left off screen comes back. */
+  return function layout(target: Target, again = false): Promise<void> {
+    if (!again && latest && latest.size.width === target.size.width && latest.size.height === target.size.height && latest.inset === target.inset) {
       return queue;
     }
     latest = target;

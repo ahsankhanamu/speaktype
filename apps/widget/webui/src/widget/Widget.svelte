@@ -176,6 +176,7 @@
     endPress();
     getCurrentWindow()
       .startDragging()
+      .then(() => layout(target, true))
       .then(() => saveWindowPosition())
       .catch((error) => console.error('[widget] drag failed', error));
   }
@@ -333,6 +334,8 @@
 <style>
   :global(html),
   :global(body) {
+    /* The pill is placed in exact window coordinates; a default body margin shifts it. */
+    margin: 0;
     overflow: hidden;
     background: transparent;
     user-select: none;
