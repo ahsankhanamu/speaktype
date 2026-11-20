@@ -43,7 +43,7 @@
   }
 </script>
 
-<Section title="Recent dictation debug records" note="Click a record to see what was heard and how each part was decoded.">
+<Section title="Recent dictation debug records" lede="Click a record to see what was heard and how each part was decoded.">
   <Group>
     {#each records.data ?? [] as record (record.id)}
       {@const expanded = open === record.id}
@@ -95,7 +95,11 @@
     {/each}
   </Group>
   {#if records.data?.length}
-    <div class="clear"><Button size={28} variant="destructive" onclick={clear}>Clear records…</Button></div>
+    <!-- Stays in view at the bottom while the records scroll past. -->
+    <div class="footer">
+      <span>{records.data.length} {records.data.length === 1 ? 'record' : 'records'}</span>
+      <Button size={28} variant="destructive" onclick={clear}>Clear records…</Button>
+    </div>
   {/if}
 </Section>
 
@@ -110,9 +114,18 @@
     outline: none;
     box-shadow: var(--st-focus-ring);
   }
-  .clear {
+  .footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
     display: flex;
-    justify-content: flex-end;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 2px;
+    border-top: 0.5px solid var(--st-separator);
+    background: var(--st-window);
+    color: var(--st-text-secondary);
+    font-size: var(--st-font-caption);
   }
   :global(.st-icon-btn.turned svg) {
     transform: rotate(90deg);
