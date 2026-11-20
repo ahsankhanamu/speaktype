@@ -155,6 +155,41 @@ describe('settings pages', () => {
     await vi.waitFor(() => expect(document.querySelector('.caption.success')?.textContent).toBe('Connected'));
   });
 
+  it('opens and closes every chunk of a record at once', async () => {
+    ipc.getDebugAudioSlice.mockResolvedValue([]);
+    ipc.getDebugSessions.mockResolvedValue([
+      {
+        id: 4,
+        startedAt: '2026-11-19T10:00:00Z',
+        model: 'base',
+        durationSecs: 20,
+        finalChars: 20,
+        finalText: 'two chunks',
+        chunks: [
+          { idx: 0, startSecs: 0, endSecs: 10, status: 'accepted', chars: 10 },
+          { idx: 1, startSecs: 10, endSecs: 20, status: 'accepted', chars: 10 },
+        ],
+        passes: [],
+      },
+    ]);
+    render(Advanced);
+    // The list is cached across renders: wait for this test's record, not the last test's.
+    const record = await vi.waitFor(() => {
+      const el = [...document.querySelectorAll<HTMLElement>('.record')].find((r) => r.textContent?.includes('2 chunks'));
+      expect(el).toBeDefined();
+      return el!;
+    });
+    record.click();
+    flushSync();
+    await vi.waitFor(() => expect(button('Expand all')).toBeDefined());
+    button('Expand all').click();
+    flushSync();
+    await vi.waitFor(() => expect(document.querySelectorAll('.chunk .body').length).toBe(2));
+    button('Collapse all').click();
+    flushSync();
+    await vi.waitFor(() => expect(document.querySelectorAll('.chunk .body').length).toBe(0));
+  });
+
   it('a debug record opens to show its text and how each chunk was decoded', async () => {
     ipc.getDebugSessions.mockResolvedValue([
       {
@@ -170,8 +205,13 @@ describe('settings pages', () => {
     ]);
     ipc.getDebugAudioSlice.mockResolvedValue([]);
     render(Advanced);
-    const row = await vi.waitFor(() => document.querySelector<HTMLElement>('.record')!);
+    const row = await vi.waitFor(() => {
+      const el = [...document.querySelectorAll<HTMLElement>('.record')].find((r) => r.textContent?.includes('11 characters'));
+      expect(el).toBeDefined();
+      return el!;
+    });
     row.click();
+    flushSync();
     await vi.waitFor(() => expect(text()).toContain('hello there'));
     expect(text()).toContain('Chunk 1');
     expect(text()).toContain('0:00–0:09');

@@ -534,6 +534,8 @@ export type Settings = {
 	ink_thickness?: string,
 	/**  Always-on drawing; Phase 2 reads it. */
 	draw_anytime?: boolean,
+	/**  Save each mark as a screenshot (needs Screen Recording). Off: ink only. */
+	save_marks?: boolean,
 	/**  Kept history entries; None = forever. */
 	history_limit?: number | null,
 	/**  Dictations older than this many days are removed; None keeps any age. */

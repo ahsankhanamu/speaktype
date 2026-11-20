@@ -169,7 +169,10 @@ fn set_drawing(app: &AppHandle, active: bool) {
     if DRAWING.swap(active, Ordering::SeqCst) == active {
         return;
     }
-    logging::log_message(&format!("[overlay] Draw key {}", if active { "down" } else { "up" }));
+    logging::log_message(&format!(
+        "[overlay] Draw key {}",
+        if active { "down" } else { "up" }
+    ));
     if active {
         ensure_overlays(app);
     }

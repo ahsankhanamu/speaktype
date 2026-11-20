@@ -5,7 +5,12 @@
   import Waveform from './Waveform.svelte';
   import { player } from './audio.svelte';
 
-  let { sessionId, chunk, passes }: { sessionId: number; chunk: ChunkEvent; passes: PassEvent[] } = $props();
+  let {
+    sessionId,
+    chunk,
+    passes,
+    open = $bindable(false),
+  }: { sessionId: number; chunk: ChunkEvent; passes: PassEvent[]; open?: boolean } = $props();
 
   const STATUS: Record<string, { label: string; tone: 'ok' | 'bad' | 'quiet' }> = {
     accepted: { label: 'Accepted', tone: 'ok' },
@@ -16,7 +21,6 @@
     pipelined: { label: 'Queued', tone: 'quiet' },
   };
 
-  let open = $state(false);
   const start = $derived(chunk.startSecs ?? 0);
   const end = $derived(chunk.endSecs ?? start + (chunk.durationSecs ?? 0));
   const status = $derived(STATUS[chunk.status ?? ''] ?? { label: chunk.status ?? 'Unknown', tone: 'quiet' as const });

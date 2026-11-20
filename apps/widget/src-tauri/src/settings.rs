@@ -135,6 +135,9 @@ pub struct Settings {
     /// Always-on drawing; Phase 2 reads it.
     #[serde(default = "default_draw_anytime")]
     pub draw_anytime: bool,
+    /// Save each mark as a screenshot (needs Screen Recording). Off: ink only.
+    #[serde(default = "default_save_marks")]
+    pub save_marks: bool,
     /// Kept history entries; None = forever.
     #[serde(default = "default_history_limit")]
     pub history_limit: Option<u32>,
@@ -313,6 +316,10 @@ fn default_ink_thickness() -> String {
     "regular".to_string()
 }
 
+fn default_save_marks() -> bool {
+    true
+}
+
 fn default_draw_anytime() -> bool {
     true
 }
@@ -363,6 +370,7 @@ impl Default for Settings {
             ink_color: default_ink_color(),
             ink_thickness: default_ink_thickness(),
             draw_anytime: default_draw_anytime(),
+            save_marks: default_save_marks(),
             history_limit: default_history_limit(),
             history_max_days: None,
             launch_at_login: false,

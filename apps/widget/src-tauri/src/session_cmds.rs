@@ -534,6 +534,15 @@ pub async fn overlay_mark_complete(
         return Ok(());
     };
     crate::narration::touch();
+    let save = app
+        .state::<AppState>()
+        .settings
+        .lock()
+        .map(|s| s.save_marks)
+        .unwrap_or(true);
+    if !save {
+        return Ok(());
+    }
     if !crate::permissions::screen_recording_granted() {
         // The first mark asks once; macOS applies the grant after a relaunch.
         crate::permissions::request_screen_recording();

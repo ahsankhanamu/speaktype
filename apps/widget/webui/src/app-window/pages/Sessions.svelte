@@ -8,6 +8,7 @@
 
   const settings = useSettings();
   const drawAnytime = settings.field('draw_anytime', true);
+  const saveMarks = settings.field('save_marks', true);
   const clipboard = settings.field('scribe_clipboard_monitor', true);
 </script>
 
@@ -26,6 +27,9 @@
     <Group>
       <Row kind="control" label="Draw anytime" caption="Hold the draw key outside a session to start one">
         {#snippet trailing()}<Switch label="Draw anytime" bind:checked={drawAnytime.value} />{/snippet}
+      </Row>
+      <Row kind="control" label="Save marks as screenshots" caption="Off: you still draw while you talk, but nothing is captured and macOS never asks for screen access">
+        {#snippet trailing()}<Switch label="Save marks as screenshots" bind:checked={saveMarks.value} />{/snippet}
       </Row>
       <Row kind="control" label="Shortcuts" caption="Session, screenshot and draw keys live in Keyboard">
         {#snippet trailing()}<Button size={28} onclick={() => navigate('keyboard')}>Open Keyboard…</Button>{/snippet}
