@@ -39,6 +39,14 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/apps/widget/src-tauri/binaries"
           cp bin/whisper-server "$GITHUB_WORKSPACE/apps/widget/src-tauri/binaries/whisper-server-aarch64-apple-darwin"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The Tauri build runs the web UI's build first, which needs the workspace packages.
+      - run: npm ci
+
       - name: Install tauri-cli
         run: cargo install tauri-cli
 
@@ -64,7 +72,7 @@ jobs:
 
       - name: Build signed .dmg
         working-directory: apps/widget
-        run: cargo tauri build
+        run: cargo tauri build --bundles app,dmg
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
