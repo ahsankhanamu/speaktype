@@ -193,14 +193,16 @@ pub fn is_terminal(window: &WindowInfo) -> bool {
     false
 }
 
-/// Send Cmd+V (or Cmd+Shift+V for terminals) as a synthetic keyboard event.
+/// Send ⌘V as a synthetic keyboard event. Every Mac app pastes the clipboard
+/// with ⌘V, terminals included; ⌘⇧V in Terminal is Paste Selection, which
+/// pastes whatever text is selected in the window instead.
 ///
 /// `CGEventPost` requires only the Accessibility grant. The previous
 /// `osascript` approach also required the user to allow SpeakType to control
 /// System Events (Automation), so a granted Accessibility toggle alone was not
 /// enough for pasting to work.
 #[cfg(target_os = "macos")]
-fn simulate_paste(use_shift: bool) -> bool {
+fn simulate_paste() -> bool {
     use core_graphics::event::{CGEvent, CGEventFlags, CGEventTapLocation};
     use core_graphics::event_source::{CGEventSource, CGEventSourceStateID};
 
@@ -214,10 +216,7 @@ fn simulate_paste(use_shift: bool) -> bool {
         }
     };
 
-    let mut flags = CGEventFlags::CGEventFlagCommand;
-    if use_shift {
-        flags |= CGEventFlags::CGEventFlagShift;
-    }
+    let flags = CGEventFlags::CGEventFlagCommand;
 
     let (Ok(down), Ok(up)) = (
         CGEvent::new_keyboard_event(source.clone(), KEY_V, true),
@@ -236,7 +235,7 @@ fn simulate_paste(use_shift: bool) -> bool {
 }
 
 #[cfg(not(target_os = "macos"))]
-fn simulate_paste(_use_shift: bool) -> bool {
+fn simulate_paste() -> bool {
     false
 }
 
@@ -422,7 +421,7 @@ pub fn paste_text(
         return Delivery::Copied;
     }
 
-    if !simulate_paste(terminal) {
+    if !simulate_paste() {
         log_message("[paste] Failed to send paste keystroke — text kept on clipboard");
         return Delivery::Failed;
     }
