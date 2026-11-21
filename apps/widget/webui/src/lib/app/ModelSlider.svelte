@@ -76,8 +76,8 @@
 <style>
   .slider-card {
     --thumb: 26px;
-    padding: 26px 30px 22px;
-    border-radius: 20px;
+    padding: 18px 22px 14px;
+    border-radius: var(--st-radius-card);
     background: var(--st-field);
   }
   .line {
@@ -86,19 +86,16 @@
     gap: 18px;
   }
   .end {
-    width: 96px;
+    flex: none;
     color: var(--st-text-secondary);
     font-size: 13px;
     text-align: right;
-  }
-  .end.start {
-    width: 52px;
-    text-align: left;
   }
   .control {
     position: relative;
     flex: 1;
     height: 22px;
+    container-type: inline-size;
   }
   input {
     position: absolute;
@@ -153,10 +150,17 @@
   }
   .tag {
     position: absolute;
-    top: 32px;
+    top: 28px;
     color: var(--st-text-secondary);
     font-size: var(--st-font-caption);
+    white-space: nowrap;
     transform: translateX(-50%);
+  }
+  /* Too narrow for every name: only the chosen one keeps its label. */
+  @container (max-width: 340px) {
+    .tag:not(.current) {
+      display: none;
+    }
   }
   .tag.current {
     color: var(--st-text);
@@ -167,7 +171,7 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    margin: 42px 0 0;
+    margin: 30px 0 0;
     color: var(--st-text);
     font-size: var(--st-font-body);
     line-height: 1.4;

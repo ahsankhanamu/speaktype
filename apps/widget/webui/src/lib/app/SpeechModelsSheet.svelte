@@ -44,7 +44,7 @@
 
 <style>
   .lead {
-    margin: 0 0 18px;
+    margin: 0 0 14px;
     color: var(--st-text-secondary);
     font-size: var(--st-font-body);
     line-height: 1.45;

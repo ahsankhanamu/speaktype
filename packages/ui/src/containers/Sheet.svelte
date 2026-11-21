@@ -43,16 +43,17 @@
   }
   .sheet {
     --inset: 28px;
+    /* Centred in the window, both ways. */
     position: fixed;
-    top: 72px;
-    inset-inline: 0;
+    inset: 0;
     z-index: var(--st-z-sheet);
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
     width: min(780px, 100% - 48px);
-    max-height: calc(100vh - 96px);
-    margin-inline: auto;
+    height: fit-content;
+    max-height: calc(100vh - 48px);
+    margin: auto;
     overflow: hidden;
     border-radius: var(--st-radius-sheet);
     background: var(--st-group);
@@ -63,25 +64,25 @@
     outline: none;
   }
   header {
-    padding: var(--inset) var(--inset) 16px;
+    padding: 18px var(--inset) 8px;
   }
   header :global([data-dialog-title]) {
     margin: 0;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 700;
     letter-spacing: -0.01em;
   }
   .body {
     flex: 1;
     min-height: 0;
-    padding: 0 var(--inset) 20px;
+    padding: 0 var(--inset) 16px;
     overflow-y: auto;
   }
   footer {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 18px var(--inset) 24px;
+    padding: 12px var(--inset) 14px;
     box-shadow: inset 0 0.5px 0 var(--st-separator);
   }
 </style>

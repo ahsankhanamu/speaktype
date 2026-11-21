@@ -148,7 +148,7 @@
     </Group>
   </Section>
 
-  <div class="restore"><Button size={28} onclick={restore}>Restore defaults…</Button></div>
+  {#snippet footer()}<Button size={28} onclick={restore}>Restore defaults…</Button>{/snippet}
 </Page>
 
 <style>
@@ -160,18 +160,31 @@
     color: var(--st-warning);
     font-size: var(--st-font-caption);
   }
-  /* As in System Settings: one Restore button, bottom right of the pane. */
-  .restore {
-    display: flex;
-    justify-content: flex-end;
-  }
   /* The shortcut and its menu read as one control: a split button. */
   .split {
+    position: relative;
     display: inline-flex;
     align-items: flex-start;
   }
-  .split :global(.st-shortcut .field) {
+  /* One edge and one focus ring around both halves, not one per half. */
+  .split::after {
+    content: '';
+    position: absolute;
+    inset: 0 0 auto;
+    height: var(--st-h-panel-control);
+    border-radius: 14px;
+    box-shadow: inset 0 0 0 0.5px var(--st-edge);
+    pointer-events: none;
+  }
+  .split:has(:global(.field.recording), :focus-visible, .more[data-state='open'])::after {
+    box-shadow: var(--st-focus-ring);
+  }
+  .split:has(:global(.field[data-conflict]))::after {
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--st-warning) 80%, transparent);
+  }
+  .split :global(.st-shortcut .field.field) {
     border-radius: 14px 0 0 14px;
+    box-shadow: none;
   }
   .more {
     display: grid;
@@ -184,15 +197,12 @@
     border-left: 0.5px solid var(--st-separator);
     border-radius: 0 14px 14px 0;
     background: var(--st-inset);
-    box-shadow: inset 0 0 0 0.5px var(--st-edge);
     color: var(--st-text-secondary);
   }
   .more:hover {
     background: var(--st-fill-hover);
   }
-  .more:focus-visible,
-  .more[data-state='open'] {
+  .more:focus-visible {
     outline: none;
-    box-shadow: var(--st-focus-ring);
   }
 </style>
