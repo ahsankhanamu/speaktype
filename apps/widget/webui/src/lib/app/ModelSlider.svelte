@@ -11,7 +11,15 @@
     index = $bindable(),
     activeId,
     oncommit,
-  }: { rows: ModelRow[]; index: number; activeId: string; oncommit: (row: ModelRow) => void } = $props();
+    status = true,
+  }: {
+    rows: ModelRow[];
+    index: number;
+    activeId: string;
+    oncommit: (row: ModelRow) => void;
+    /** The line about the chosen model; off where a list beside it already says so. */
+    status?: boolean;
+  } = $props();
 
   const last = $derived(rows.length - 1);
   const selected = $derived(rows[index]);
@@ -53,7 +61,7 @@
     <span class="end">More accurate</span>
   </div>
 
-  {#if selected}
+  {#if status && selected}
     <p class="live">
       {#if inUse}
         <StatusDot tone="success" label="In use" />
@@ -75,8 +83,8 @@
 
 <style>
   .slider-card {
-    --thumb: 26px;
-    padding: 18px 22px 14px;
+    --thumb: 18px;
+    padding: 18px 22px 30px;
     border-radius: var(--st-radius-card);
     background: var(--st-field);
   }
@@ -118,16 +126,22 @@
       var(--st-track) 0
     );
   }
+  /* Compact at rest, a little larger under the pointer; scaled, so nothing around it moves. */
   input::-webkit-slider-thumb {
     width: var(--thumb);
     height: var(--thumb);
-    margin-top: -10px;
+    margin-top: calc(3px - var(--thumb) / 2);
+    transition: transform var(--st-dur-fast) var(--st-ease-out);
     border-radius: 50%;
     background: #f5f5f7;
     box-shadow:
       0 1px 3px rgba(0, 0, 0, 0.4),
       0 0 0 0.5px rgba(0, 0, 0, 0.2);
     appearance: none;
+  }
+  input:hover::-webkit-slider-thumb,
+  input:active::-webkit-slider-thumb {
+    transform: scale(1.3);
   }
   input:focus-visible::-webkit-slider-thumb {
     box-shadow:
@@ -171,7 +185,7 @@
     align-items: center;
     justify-content: center;
     gap: 10px;
-    margin: 30px 0 0;
+    margin: 30px 0 -16px;
     color: var(--st-text);
     font-size: var(--st-font-body);
     line-height: 1.4;

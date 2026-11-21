@@ -25,6 +25,7 @@
       rows={models.rows}
       bind:index
       activeId={models.activeId}
+      status={false}
       oncommit={(row) => runModelAction('use', row.model.id)}
     />
     <div class="list" role="list" aria-label="All speech models">
