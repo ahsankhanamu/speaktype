@@ -73,7 +73,7 @@
     letter-spacing: -0.01em;
   }
   .body {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     padding: 0 var(--inset) 16px;
     overflow-y: auto;
