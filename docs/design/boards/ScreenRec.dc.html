@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>First session screen recording request</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.s{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;font-size:13px;color:rgba(255,255,255,.88)}
+.cap{font-size:12px;font-weight:600;color:#1d1d1f;margin:0 0 4px}
+.sub{font-size:12px;line-height:1.45;color:#6e6e73;margin:0 0 16px;max-width:360px}
+.menu{width:280px;padding:5px;box-sizing:border-box;border-radius:10px;background:rgba(44,44,46,.97);box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28)}
+.mi{display:flex;align-items:center;gap:8px;height:22px;padding:0 9px;border-radius:4px;white-space:nowrap}
+.mi .k{margin-left:auto;color:rgba(255,255,255,.45);font-size:12px}
+.sep{height:.5px;background:rgba(255,255,255,.12);margin:5px 9px}
+.btn{font:inherit;font-size:13px;height:32px;padding:0 18px;border-radius:16px;border:0;cursor:pointer;white-space:nowrap}
+.pri{background:#0a84ff;color:#fff;font-weight:500}
+.sec{background:#3a3a3c;color:rgba(255,255,255,.9);box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4)}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="s" style="width:660px;height:640px;box-sizing:border-box;background:#e8e8ea;padding:44px 48px;display:block">
+
+  <section>
+    <p class="cap">Step 5 · at your first session: Screen Recording</p>
+    <p class="sub">Asked once, at the moment it's needed, never during onboarding. Choosing "Not now" still starts the session with voice and copied text.</p>
+    <div role="dialog" aria-labelledby="sr-t" style="width:520px;border-radius:12px;background:#1e1e1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12),0 20px 50px rgba(0,0,0,.3);padding:28px 28px 20px;box-sizing:border-box">
+      <div style="display:flex;gap:18px">
+        <div style="width:56px;height:56px;border-radius:13px;flex:none;background:#161616;position:relative;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12)">
+          <span style="position:absolute;left:10px;top:12px;width:36px;height:24px;border-radius:3px;background:#fbfbfa"></span>
+          <span style="position:absolute;left:16px;top:16px;width:22px;height:14px;border:2px solid #ef643c;border-radius:50%"></span>
+          <span style="position:absolute;left:22px;bottom:9px;width:12px;height:3px;border-radius:2px;background:rgba(255,255,255,.4)"></span>
+        </div>
+        <div>
+          <h2 id="sr-t" style="margin:0;font-size:15px;font-weight:600;color:#fff">Let SpeakType see what you draw on</h2>
+          <p style="margin:6px 0 0;line-height:1.5;color:rgba(255,255,255,.6)">To turn your marks into screenshots, macOS needs you to allow Screen Recording. SpeakType only captures the moment you draw, never video, and it stays on this Mac.</p>
+        </div>
+      </div>
+      <ol style="margin:18px 0 0 74px;padding:0 0 0 16px;line-height:1.7;color:rgba(255,255,255,.7)">
+        <li>Click <span style="color:#fff">Open System Settings</span></li>
+        <li>Turn on <span style="color:#fff">SpeakType</span></li>
+        <li>Come back. Your session starts automatically.</li>
+      </ol>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:20px">
+        <button class="btn sec" type="button">Not now</button>
+        <button class="btn pri" type="button">Open System Settings</button>
+      </div>
+    </div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":660,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

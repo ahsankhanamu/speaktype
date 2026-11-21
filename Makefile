@@ -2,7 +2,7 @@
 
 include make/config.mk
 
-.PHONY: dev dev-fast build clean install install-python setup notary-setup server assets help
+.PHONY: dev dev-fast build clean install install-python setup notary-setup server assets help verify
 
 # ─── App (apps/widget) ───────────────────────────────────────────────────────
 
@@ -31,6 +31,16 @@ screenshots: ## Rebuild webui and capture fresh framed settings/onboarding scree
 
 assets: screenshots ## Regenerate README showcase images and demo animation
 	.venv/bin/python tools/assets/compose_showcase.py
+
+verify: ## Every check a change must pass before review (Rust + webui + design system)
+	cargo fmt --all --check
+	cargo clippy --workspace --all-targets -- -D warnings
+	cargo test --workspace
+	npm run -ws --if-present check
+	npm run -ws --if-present lint
+	npm run -ws --if-present test
+	npm -w @speaktype/ui run visual
+	npm -w speaktype-webui run visual
 
 # ─── Setup & Utility ──────────────────────────────────────────────────────────
 

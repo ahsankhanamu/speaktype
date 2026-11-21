@@ -1,4 +1,5 @@
-import { getSettings, listenEvent } from './ipc';
+import { getSettings } from './ipc';
+import { busListen } from './data/bus';
 
 const MEDIA = '(prefers-color-scheme: dark)';
 let currentPref: 'auto' | 'light' | 'dark' = 'auto';
@@ -83,7 +84,7 @@ export async function startTheme() {
   applyTheme('auto');
   const pref = await loadThemeFromSettings();
   try {
-    await listenEvent('theme:changed', (payload: unknown) => {
+    await busListen('theme:changed', (payload: unknown) => {
       const theme = payload && typeof payload === 'object'
         ? (payload as Record<string, unknown>).theme
         : (typeof payload === 'string' ? payload : null);

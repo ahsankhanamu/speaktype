@@ -24,8 +24,29 @@ mod macos {
         static kCFBooleanTrue: *const c_void;
     }
 
+    #[link(name = "CoreGraphics", kind = "framework")]
+    extern "C" {
+        fn CGPreflightScreenCaptureAccess() -> bool;
+        fn CGRequestScreenCaptureAccess() -> bool;
+    }
+
     extern "C" {
         static kAXTrustedCheckOptionPrompt: *const c_void;
+    }
+
+    /// Whether Screen Recording is granted. Never prompts, so it is safe to poll.
+    pub fn screen_recording_granted() -> bool {
+        unsafe { CGPreflightScreenCaptureAccess() }
+    }
+
+    /// Show the one-time system prompt (or add the app to the Screen Recording
+    /// list), and return whether it is granted now. macOS only reports a grant
+    /// after a relaunch, so a `false` here still means "the user was asked".
+    pub fn request_screen_recording() -> bool {
+        unsafe {
+            CGRequestScreenCaptureAccess();
+            CGPreflightScreenCaptureAccess()
+        }
     }
 
     fn current_exe_path() -> String {
@@ -166,8 +187,8 @@ mod macos {
     pub fn check_microphone() -> bool {
         use std::process::Command;
         use std::sync::mpsc;
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let script = r#"
             use framework "AVFoundation"
@@ -178,8 +199,10 @@ mod macos {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let result = Command::new("osascript")
-                .arg("-l").arg("AppleScript")
-                .arg("-e").arg(script)
+                .arg("-l")
+                .arg("AppleScript")
+                .arg("-e")
+                .arg(script)
                 .output();
             let _ = tx.send(result);
         });
@@ -194,8 +217,8 @@ mod macos {
     pub fn request_microphone() -> bool {
         use std::process::Command;
         use std::sync::mpsc;
-        use std::time::Duration;
         use std::thread;
+        use std::time::Duration;
 
         let script = r#"
             use framework "AVFoundation"
@@ -212,8 +235,10 @@ mod macos {
         let (tx, rx) = mpsc::channel();
         thread::spawn(move || {
             let result = Command::new("osascript")
-                .arg("-l").arg("AppleScript")
-                .arg("-e").arg(script)
+                .arg("-l")
+                .arg("AppleScript")
+                .arg("-e")
+                .arg(script)
                 .output();
             let _ = tx.send(result);
         });
@@ -232,7 +257,8 @@ mod macos {
 #[cfg(target_os = "macos")]
 pub use macos::{
     accessibility_exe_path, check_accessibility, check_microphone, is_bundled, is_dev_binary,
-    request_microphone, responsible_app_name, responsible_app_path,
+    request_microphone, request_screen_recording, responsible_app_name, responsible_app_path,
+    screen_recording_granted,
 };
 
 #[cfg(not(target_os = "macos"))]
@@ -273,4 +299,14 @@ pub fn check_microphone() -> bool {
 #[cfg(not(target_os = "macos"))]
 pub fn request_microphone() -> bool {
     true
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn screen_recording_granted() -> bool {
+    false
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn request_screen_recording() -> bool {
+    false
 }

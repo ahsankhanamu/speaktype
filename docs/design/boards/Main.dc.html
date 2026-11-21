@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SpeakType design language</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.dl{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.85);font-size:13px}
+.sec{font-size:13px;font-weight:600;color:rgba(255,255,255,.85);margin:0 0 10px 2px}
+.grp{background:#2a2a2c;border-radius:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.06)}
+.r{display:flex;align-items:center;gap:12px;min-height:40px;padding:6px 14px;position:relative;white-space:nowrap}
+.r + .r::before{content:"";position:absolute;left:14px;right:0;top:0;height:.5px;background:rgba(255,255,255,.09)}
+.sw{width:22px;height:22px;border-radius:6px;flex:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)}
+.nm{flex:1;color:rgba(255,255,255,.88)}
+.hx{font-size:12px;color:rgba(255,255,255,.45);font-variant-numeric:tabular-nums}
+.lbl{width:118px;flex:none;font-size:12px;color:rgba(255,255,255,.45)}
+.spec{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;color:#fff}
+.btn{font:inherit;height:28px;padding:0 14px;border-radius:14px;border:0;cursor:pointer;white-space:nowrap}
+.b2{background:#3a3a3c;box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4);color:rgba(255,255,255,.9)}
+.b1{background:#0a84ff;box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 .5px 1px rgba(0,0,0,.4);color:#fff}
+.kc{font-size:13px;font-weight:500;min-width:24px;height:24px;padding:0 6px;box-sizing:border-box;border-radius:6px;background:linear-gradient(180deg,#535357,#404044);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 1px 0 rgba(0,0,0,.65),0 1px 3px rgba(0,0,0,.3);color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.toggle{width:38px;height:22px;border-radius:11px;position:relative;flex:none}
+.toggle i{position:absolute;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+.note{font-size:11px;color:rgba(255,255,255,.45)}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="dl" style="width:1280px;height:800px;box-sizing:border-box;background:#1e1e1e;padding:44px 48px;display:flex;flex-direction:column;gap:28px">
+  <header style="display:flex;align-items:center;gap:14px">
+    <div style="width:44px;height:44px;border-radius:10px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 1px 2px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+    </div>
+    <div>
+      <h1 style="margin:0;font-size:22px;font-weight:600;letter-spacing:-.018em;color:#fff">SpeakType design language</h1>
+      <p style="margin:2px 0 0;color:rgba(255,255,255,.5)">Feels like part of macOS. Colour means something: blue acts, orange is ink and "live".</p>
+    </div>
+  </header>
+
+  <div style="display:grid;grid-template-columns:300px 420px minmax(0,1fr);gap:28px;flex:1;min-height:0">
+    <section>
+      <p class="sec">Colour</p>
+      <div class="grp">
+        <div class="r"><span class="sw" style="background:#1e1e1e"></span><span class="nm">Window</span><span class="hx">#1E1E1E</span></div>
+        <div class="r"><span class="sw" style="background:#2a2a2c"></span><span class="nm">Group</span><span class="hx">#2A2A2C</span></div>
+        <div class="r"><span class="sw" style="background:#3a3a3c"></span><span class="nm">Control</span><span class="hx">#3A3A3C</span></div>
+        <div class="r"><span class="sw" style="background:#0a84ff"></span><span class="nm">Accent · action, focus</span><span class="hx">#0A84FF</span></div>
+        <div class="r"><span class="sw" style="background:#ef643c"></span><span class="nm">Ink · live</span><span class="hx">#EF643C</span></div>
+        <div class="r"><span class="sw" style="background:#30d158"></span><span class="nm">Success</span><span class="hx">#30D158</span></div>
+        <div class="r"><span class="sw" style="background:#ff9f0a"></span><span class="nm">Attention</span><span class="hx">#FF9F0A</span></div>
+        <div class="r"><span class="sw" style="background:#ff453a"></span><span class="nm">Recording · danger</span><span class="hx">#FF453A</span></div>
+      </div>
+      <p class="note" style="margin:10px 2px 0;line-height:1.5;white-space:normal">Light mode uses the matching macOS light values. Status colour appears as a dot or icon, never a filled banner.</p>
+    </section>
+
+    <section>
+      <p class="sec">Type · SF Pro, system only</p>
+      <div class="grp">
+        <div class="r" style="min-height:52px"><span class="lbl">Large title 26/600</span><span class="spec" style="font-size:26px;font-weight:600;letter-spacing:-.022em">Try it once.</span></div>
+        <div class="r" style="min-height:46px"><span class="lbl">Title 20/600</span><span class="spec" style="font-size:20px;font-weight:600;letter-spacing:-.015em">Sessions</span></div>
+        <div class="r"><span class="lbl">Headline 13/600</span><span class="spec" style="font-weight:600">Shortcuts</span></div>
+        <div class="r"><span class="lbl">Body 13/400</span><span class="spec">Start or stop a session</span></div>
+        <div class="r"><span class="lbl">Callout 15/400</span><span class="spec" style="font-size:15px;color:rgba(255,255,255,.6)">Press, talk, press again.</span></div>
+        <div class="r"><span class="lbl">Caption 11/400</span><span class="spec" style="font-size:11px;color:rgba(255,255,255,.45)">Let go to click and scroll normally</span></div>
+        <div class="r"><span class="lbl">Mono 12/400</span><span class="spec" style="font:12px ui-monospace,SFMono-Regular,Menlo,monospace;color:rgba(255,255,255,.75)">TypeError: cannot read 'id'</span></div>
+      </div>
+      <p class="note" style="margin:10px 2px 0;line-height:1.5;white-space:normal">Text colour steps: 100% · 85% · 60% · 45% white. Spacing on a 4 pt grid. Radius 6 controls, 10 groups, 12 windows.</p>
+    </section>
+
+    <section>
+      <p class="sec">Controls</p>
+      <div class="grp">
+        <div class="r"><span class="nm">Push buttons</span><button class="btn b2" type="button">Cancel</button><button class="btn b1" type="button">Copy</button></div>
+        <div class="r"><span class="nm">Keyboard focus</span><button class="btn b2" type="button" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)">Focused</button></div>
+        <div class="r"><span class="nm">Segmented</span>
+          <span style="display:inline-flex;padding:3px;border-radius:17px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)"><button class="btn" type="button" style="height:26px;padding:0 14px;border-radius:13px;background:rgba(255,255,255,.18);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)">Timeline</button><button class="btn" type="button" style="height:26px;padding:0 14px;border-radius:13px;background:transparent;color:rgba(255,255,255,.7)">Result</button></span>
+        </div>
+        <div class="r"><span class="nm">Switch</span><span class="toggle" style="background:#0a84ff"><i style="right:2px"></i></span></div>
+        <div class="r"><span class="nm">Select</span>
+          <button class="btn b2" type="button" style="display:inline-flex;align-items:center;gap:8px;padding:0 10px 0 6px;height:28px;border-radius:14px;min-width:170px">
+            <span class="kc" style="height:18px;min-width:18px;font-size:11px">⌥</span><span style="flex:1;text-align:left">Right Option</span>
+            <svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg>
+          </button>
+        </div>
+        <div class="r"><span class="nm">Shortcut</span><span style="display:inline-flex;gap:3px;padding:4px 6px;border-radius:15px;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12)"><span class="kc">⌥</span><span class="kc">⌘</span><span class="kc">K</span></span></div>
+        <div class="r"><span class="nm">Status</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6)"><span style="width:7px;height:7px;border-radius:50%;background:#30d158"></span>Ready</span>
+          <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:rgba(255,255,255,.6)"><span style="width:7px;height:7px;border-radius:50%;background:#ff9f0a"></span>Off</span>
+          <span style="font-size:10px;font-weight:600;letter-spacing:.02em;padding:1px 5px;border-radius:4px;color:rgba(255,255,255,.7);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.3)">PRO</span>
+        </div>
+      </div>
+      <div style="margin-top:14px;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 12px;border-radius:10px;background:#2c2c2e;box-shadow:0 0 0 .5px rgba(255,255,255,.12),0 6px 16px rgba(0,0,0,.35);white-space:nowrap">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="#30d158" stroke-width="1.5"></circle><path d="M5 8.2l2 2 4-4.4" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="flex:1">Copied with 3 images</span>
+        <button class="btn" type="button" style="background:transparent;color:#4da3ff;padding:0 6px">Undo</button>
+      </div>
+      <p class="note" style="margin:10px 2px 0;line-height:1.5;white-space:normal">Focus ring hugs the control like macOS: 1.5 pt, accent blue. All controls are capsules; every state of every control is on the Components board.</p>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

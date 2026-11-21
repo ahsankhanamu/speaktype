@@ -1,0 +1,41 @@
+{
+  "name": "@speaktype/ui",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "svelte": "./src/index.ts",
+  "exports": {
+    ".": {
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tokens.css": "./src/tokens/tokens.css",
+    "./motion": "./src/motion/index.ts"
+  },
+  "scripts": {
+    "check": "svelte-check --tsconfig ./tsconfig.json",
+    "test": "vitest run",
+    "gallery": "vite",
+    "visual": "playwright test",
+    "visual:update": "playwright test --update-snapshots",
+    "screens": "node scripts/screens.mjs"
+  },
+  "peerDependencies": {
+    "@lucide/svelte": "^1.39.0",
+    "bits-ui": "^2.19.0",
+    "svelte": "^5.19.0"
+  },
+  "devDependencies": {
+    "@lucide/svelte": "^1.39.0",
+    "@playwright/test": "^1.49.0",
+    "@sveltejs/vite-plugin-svelte": "^5.0.3",
+    "@testing-library/svelte": "^5.2.0",
+    "bits-ui": "^2.19.0",
+    "jsdom": "^26.0.0",
+    "svelte": "^5.19.0",
+    "svelte-check": "^4.1.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.1.0",
+    "vitest": "^3.0.5"
+  }
+}

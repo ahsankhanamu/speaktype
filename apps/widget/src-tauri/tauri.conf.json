@@ -16,8 +16,8 @@
       {
         "label": "main",
         "title": "SpeakType",
-        "width": 72,
-        "height": 88,
+        "width": 92,
+        "height": 92,
         "resizable": false,
         "decorations": false,
         "transparent": true,
@@ -27,7 +27,13 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data:; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' http://127.0.0.1:*; script-src 'self'"
+      "csp": "default-src 'self'; img-src 'self' data: asset: http://asset.localhost https://asset.localhost; media-src 'self' blob: data:; style-src 'self' 'unsafe-inline'; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:*; script-src 'self'",
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$HOME/Library/Application Support/speaktype/**"
+        ]
+      }
     }
   },
   "bundle": {

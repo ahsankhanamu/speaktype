@@ -1,4 +1,5 @@
 use crate::logging;
+use serde::{Deserialize, Serialize};
 use tauri::{PhysicalPosition, WebviewWindow};
 
 const CORNER_MARGIN_X: i32 = 20;
@@ -6,6 +7,121 @@ const CORNER_MARGIN_X: i32 = 20;
 const CORNER_MARGIN_Y: i32 = 36;
 #[cfg(not(target_os = "macos"))]
 const CORNER_MARGIN_Y: i32 = 20;
+
+/// A display's visible frame in physical pixels: below the menu bar, above the
+/// Dock, so a corner position never sits under either.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Region {
+    pub x: i32,
+    pub y: i32,
+    pub width: u32,
+    pub height: u32,
+}
+
+/// A window size in physical pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Size {
+    pub width: u32,
+    pub height: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "camelCase")]
+pub struct Point {
+    pub x: i32,
+    pub y: i32,
+}
+
+/// Gap between the widget and the edges of the visible frame (spec: 16 pt).
+pub const CORNER_INSET: i32 = 16;
+
+/// The Settings → Appearance "Widget position" choices, plus `custom` once the
+/// user has dragged the widget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[serde(rename_all = "snake_case")]
+pub enum WidgetCorner {
+    BottomRight,
+    BottomCenter,
+    TopRight,
+    BottomLeft,
+    Custom,
+}
+
+impl WidgetCorner {
+    /// `None` for `custom` and anything unrecognised: those keep the saved
+    /// position instead of snapping to a corner.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "bottom_right" => Some(Self::BottomRight),
+            "bottom_center" => Some(Self::BottomCenter),
+            "top_right" => Some(Self::TopRight),
+            "bottom_left" => Some(Self::BottomLeft),
+            _ => None,
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::BottomRight => "bottom_right",
+            Self::BottomCenter => "bottom_center",
+            Self::TopRight => "top_right",
+            Self::BottomLeft => "bottom_left",
+            Self::Custom => "custom",
+        }
+    }
+}
+
+/// The widget's top-left origin for `corner`: `CORNER_INSET` from the visible
+/// frame's edges. A window wider than the frame still starts at the left edge.
+pub fn corner_origin(visible: Region, size: Size, corner: WidgetCorner) -> Point {
+    let left = visible.x + CORNER_INSET;
+    let right = visible.x + visible.width as i32 - size.width as i32 - CORNER_INSET;
+    let top = visible.y + CORNER_INSET;
+    let bottom = visible.y + visible.height as i32 - size.height as i32 - CORNER_INSET;
+    let (x, y) = match corner {
+        WidgetCorner::Custom | WidgetCorner::BottomLeft => (left, bottom),
+        WidgetCorner::BottomCenter => (
+            (visible.x + visible.width as i32 - size.width as i32) / 2,
+            bottom,
+        ),
+        WidgetCorner::TopRight => (right, top),
+        WidgetCorner::BottomRight => (right, bottom),
+    };
+    Point { x, y }
+}
+
+/// The visible frame of the display the widget is on (the active display).
+pub fn visible_frame(window: &WebviewWindow) -> Option<Region> {
+    let monitor = window.current_monitor().ok().flatten()?;
+    let area = monitor.work_area();
+    Some(Region {
+        x: area.position.x,
+        y: area.position.y,
+        width: area.size.width,
+        height: area.size.height,
+    })
+}
+
+/// Place the widget at `corner` and return the position, for the caller to
+/// store.
+pub fn place_at_corner(window: &WebviewWindow, corner: WidgetCorner) -> Option<Point> {
+    let visible = visible_frame(window)?;
+    let (width, height) = window_outer_size(window);
+    let point = corner_origin(
+        visible,
+        Size {
+            width: width as u32,
+            height: height as u32,
+        },
+        corner,
+    );
+    move_window(window, point.x, point.y)
+        .map_err(|e| logging::log_message(&format!("[window] Could not place at corner: {e}")))
+        .ok()?;
+    Some(point)
+}
 
 fn monitor_for_window(window: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
     let monitor = window
@@ -15,15 +131,15 @@ fn monitor_for_window(window: &WebviewWindow) -> Option<(i32, i32, i32, i32)> {
         .or_else(|| window.current_monitor().ok().flatten())?;
     let pos = monitor.position();
     let size = monitor.size();
-    Some((
-        pos.x,
-        pos.y,
-        size.width as i32,
-        size.height as i32,
-    ))
+    Some((pos.x, pos.y, size.width as i32, size.height as i32))
 }
 
+/// The size placement works with. For the widget that is the square around
+/// the bubble, not its (much larger) click-through stage.
 fn window_outer_size(window: &WebviewWindow) -> (i32, i32) {
+    if window.label() == "main" {
+        return crate::widget_frame::square_size(window);
+    }
     window
         .outer_size()
         .ok()
@@ -122,11 +238,17 @@ pub fn clamp_to_visible_screens(window: &WebviewWindow, x: f64, y: f64) -> (f64,
 
 pub fn apply_saved_position(window: &WebviewWindow, x: f64, y: f64) -> (f64, f64) {
     let (cx, cy) = clamp_to_visible_screens(window, x, y);
-    let _ = window.set_position(tauri::Position::Physical(PhysicalPosition {
-        x: cx as i32,
-        y: cy as i32,
-    }));
+    let _ = move_window(window, cx as i32, cy as i32);
     (cx, cy)
+}
+
+/// Put a window's top-left at `x, y` (physical). For the widget, that is
+/// where the square around the bubble goes; its stage follows.
+fn move_window(window: &WebviewWindow, x: i32, y: i32) -> tauri::Result<()> {
+    if window.label() == "main" {
+        return crate::widget_frame::move_square_to(window, PhysicalPosition::new(x, y));
+    }
+    window.set_position(tauri::Position::Physical(PhysicalPosition { x, y }))
 }
 
 pub fn place_at_default_position(window: &WebviewWindow) -> (f64, f64) {
@@ -138,6 +260,81 @@ pub fn place_at_default_position(window: &WebviewWindow) -> (f64, f64) {
     apply_saved_position(window, x, y)
 }
 
-pub fn reset_to_default_position(window: &WebviewWindow) -> (f64, f64) {
-    place_at_default_position(window)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A 1512 × 950 Retina frame below a 38 px menu bar.
+    fn visible() -> Region {
+        Region {
+            x: 0,
+            y: 38,
+            width: 1512,
+            height: 912,
+        }
+    }
+
+    const SIZE: Size = Size {
+        width: 96,
+        height: 96,
+    };
+
+    #[test]
+    fn widget_corner_frames() {
+        let frame = visible();
+        assert_eq!(
+            corner_origin(frame, SIZE, WidgetCorner::BottomRight),
+            Point { x: 1400, y: 838 }
+        );
+        assert_eq!(
+            corner_origin(frame, SIZE, WidgetCorner::BottomCenter),
+            Point { x: 708, y: 838 }
+        );
+        assert_eq!(
+            corner_origin(frame, SIZE, WidgetCorner::TopRight),
+            Point { x: 1400, y: 54 }
+        );
+        assert_eq!(
+            corner_origin(frame, SIZE, WidgetCorner::BottomLeft),
+            Point { x: 16, y: 838 }
+        );
+    }
+
+    #[test]
+    fn corner_origin_uses_the_offset_display_and_the_inset() {
+        let second = Region {
+            x: 1512,
+            y: 0,
+            width: 1280,
+            height: 800,
+        };
+        assert_eq!(
+            corner_origin(second, SIZE, WidgetCorner::TopRight),
+            Point { x: 2680, y: 16 }
+        );
+        assert_eq!(
+            corner_origin(second, SIZE, WidgetCorner::BottomLeft),
+            Point { x: 1528, y: 688 }
+        );
+    }
+
+    #[test]
+    fn widget_corner_wire_names() {
+        for (corner, wire) in [
+            (WidgetCorner::BottomRight, "bottom_right"),
+            (WidgetCorner::BottomCenter, "bottom_center"),
+            (WidgetCorner::TopRight, "top_right"),
+            (WidgetCorner::BottomLeft, "bottom_left"),
+            (WidgetCorner::Custom, "custom"),
+        ] {
+            assert_eq!(corner.as_str(), wire);
+            assert_eq!(serde_json::to_value(corner).unwrap(), wire);
+        }
+        assert_eq!(
+            WidgetCorner::parse("bottom_center"),
+            Some(WidgetCorner::BottomCenter)
+        );
+        assert_eq!(WidgetCorner::parse("custom"), None);
+        assert_eq!(WidgetCorner::parse("middle"), None);
+    }
 }

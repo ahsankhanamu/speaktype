@@ -208,7 +208,8 @@ async fn run_download(
         match &result {
             Ok(_) => break result,
             Err(e)
-                if downloader::classify_download_error(e) == downloader::DownloadErrorKind::UserStop =>
+                if downloader::classify_download_error(e)
+                    == downloader::DownloadErrorKind::UserStop =>
             {
                 break result;
             }
@@ -253,7 +254,7 @@ async fn run_download(
                     json!({
                         "model": model,
                         "phase": "retrying",
-                        "message": format!("Connection lost — retrying in {}s… ({}/{})", wait, attempt, MAX_ATTEMPTS),
+                        "message": downloader::retry_message(wait, attempt, MAX_ATTEMPTS),
                         "attempt": attempt,
                         "max_attempts": MAX_ATTEMPTS,
                         "bytes_downloaded": have,
@@ -376,11 +377,7 @@ async fn run_download(
     try_start_next(app, settings);
 }
 
-async fn load_model_after_download(
-    app: &AppHandle,
-    settings: &Arc<Mutex<Settings>>,
-    model: &str,
-) {
+async fn load_model_after_download(app: &AppHandle, settings: &Arc<Mutex<Settings>>, model: &str) {
     let _ = app.emit(
         "model:progress",
         json!({

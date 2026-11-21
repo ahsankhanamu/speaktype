@@ -94,6 +94,15 @@ ensure_librsvg() {
     brew install librsvg
 }
 
+ensure_llama_cpp() {
+    if command -v llama-server >/dev/null 2>&1; then
+        echo "   ✓ llama-server (local Scribe LLM)"
+        return 0
+    fi
+    echo "   ⚠ llama-server not found — the Scribe tab's local-LLM option needs it."
+    echo "     Optional (only for local document generation): brew install llama.cpp"
+}
+
 ensure_system_xattr() {
     local xattr_path=""
     xattr_path="$(command -v xattr 2>/dev/null || true)"
@@ -113,7 +122,7 @@ ensure_system_xattr() {
 
 ensure_rust() {
     speaktype_load_rust_env
-    local toolchain_file="$PROJECT_ROOT/apps/widget/rust-toolchain.toml"
+    local toolchain_file="$PROJECT_ROOT/rust-toolchain.toml"
     local channel="1.93.1"
     if [ -f "$toolchain_file" ]; then
         channel="$(sed -n 's/^channel = "\(.*\)"/\1/p' "$toolchain_file" | head -1)"
@@ -202,6 +211,8 @@ if [ "$(uname -s)" = "Darwin" ]; then
 
     ensure_whisper_src "$WHISPER_SRC"
     echo "   ✓ whisper.cpp at $WHISPER_SRC"
+
+    ensure_llama_cpp
 fi
 
 echo "═══════════════════════════════════════════════════════════════"

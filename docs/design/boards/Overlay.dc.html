@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Show and Tell overlay</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.o{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;font-size:13px}
+.pill{background:rgba(40,40,42,.96);border-radius:999px;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.25),0 6px 18px rgba(0,0,0,.3);display:flex;align-items:center;white-space:nowrap;color:rgba(255,255,255,.88)}
+.hb{font:inherit;font-size:12px;height:26px;padding:0 10px;border-radius:13px;border:0;background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;flex:none}
+.n{font-size:12px;color:rgba(255,255,255,.6);font-variant-numeric:tabular-nums}
+.tool{width:28px;height:28px;border-radius:7px;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0}
+.dot{width:14px;height:14px;border-radius:50%;flex:none}
+.web{font-family:-apple-system,BlinkMacSystemFont,sans-serif;color:#1d1d1f}
+a{color:#0066cc}a:hover{color:#004499}
+</style>
+</helmet>
+<div class="o" style="width:1440px;height:900px;position:relative;overflow:hidden;background:linear-gradient(160deg,#5a6b8c 0%,#3c4a66 55%,#2a3347 100%)">
+  <div style="position:absolute;left:0;right:0;top:0;height:26px;background:rgba(30,30,34,.5);display:flex;align-items:center;padding:0 14px;gap:18px;font-size:13px;color:rgba(255,255,255,.92)">
+    <span style="font-weight:600">Safari</span><span>File</span><span>Edit</span><span>View</span><span>History</span>
+    <span style="margin-left:auto;display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:50%;background:#ef643c"></span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg></span>
+    <span>Wed 18 Nov  10:42</span>
+  </div>
+
+  <div class="web" style="position:absolute;left:150px;top:86px;width:880px;height:760px;border-radius:10px;background:#fff;box-shadow:0 0 0 .5px rgba(0,0,0,.35),0 22px 60px rgba(0,0,0,.4);overflow:hidden">
+    <div style="height:44px;background:#f3f3f2;box-shadow:inset 0 -.5px 0 rgba(0,0,0,.12);display:flex;align-items:center;padding:0 14px;gap:8px">
+      <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+      <span style="margin:0 auto;width:340px;height:26px;border-radius:7px;background:#e8e8e7;font-size:12px;color:#6e6e73;display:flex;align-items:center;justify-content:center">localhost:5173/checkout</span>
+    </div>
+    <div style="display:flex;height:716px">
+      <div style="flex:1;padding:40px 44px">
+        <p style="margin:0;font-size:12px;color:#86868b">Step 3 of 3</p>
+        <p style="margin:4px 0 24px;font-size:26px;font-weight:600;letter-spacing:-.02em">Checkout</p>
+        <div style="display:flex;flex-direction:column;gap:12px;max-width:420px">
+          <label style="font-size:12px;color:#6e6e73">Name on card<div style="margin-top:4px;height:40px;border-radius:8px;box-shadow:inset 0 0 0 1px #d2d2d7;padding:0 12px;display:flex;align-items:center;font-size:14px;color:#1d1d1f">Ada Lovelace</div></label>
+          <label style="font-size:12px;color:#6e6e73">Card number<div style="margin-top:4px;height:40px;border-radius:8px;box-shadow:inset 0 0 0 1px #d2d2d7;padding:0 12px;display:flex;align-items:center;font-size:14px;color:#1d1d1f">4242 4242 4242 4242</div></label>
+        </div>
+        <div style="margin-top:36px;width:360px;position:relative;height:96px">
+          <div style="display:flex;justify-content:space-between;font-size:13px;color:#6e6e73;padding-bottom:8px"><span>Shipping</span><span>$10.00</span></div>
+          <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:600;padding-top:10px;box-shadow:inset 0 .5px 0 #d2d2d7"><span>Total</span><span>$128.00</span></div>
+          <div style="position:absolute;left:150px;top:30px;height:42px;width:210px;border-radius:10px;background:#1d1d1f;color:#fff;font-size:14px;font-weight:500;display:flex;align-items:center;justify-content:center">Pay $128.00</div>
+        </div>
+        <p style="margin:64px 0 10px;font-size:13px;font-weight:600">You might also like</p>
+        <div style="display:flex;gap:18px;max-width:460px">
+          <div style="flex:1;height:96px;border-radius:10px;background:#f2f2f4"></div><div style="flex:1;height:96px;border-radius:10px;background:#f2f2f4"></div><div style="flex:1;height:96px;border-radius:10px;background:#f2f2f4"></div>
+        </div>
+      </div>
+      <div style="width:260px;background:#fafafa;box-shadow:inset .5px 0 0 #e5e5ea;padding:40px 24px">
+        <p style="margin:0 0 16px;font-size:13px;font-weight:600">Order summary</p>
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:12px"><span style="width:44px;height:44px;border-radius:8px;background:#ececef"></span><span style="font-size:13px">Linen overshirt<br><span style="font-size:11px;color:#86868b">$84.00</span></span></div>
+        <div style="display:flex;gap:10px;align-items:center"><span style="width:44px;height:44px;border-radius:8px;background:#ececef"></span><span style="font-size:13px">Canvas tote<br><span style="font-size:11px;color:#86868b">$34.00</span></span></div>
+      </div>
+    </div>
+  </div>
+
+  <svg style="position:absolute;left:0;top:0" width="1440" height="900" viewBox="0 0 1440 900" fill="none" aria-hidden="true">
+    <path d="M 340 530 C 352 500, 470 488, 560 494 C 625 498, 650 516, 645 538 C 638 566, 560 578, 470 574 C 390 571, 336 560, 340 538 C 342 528, 354 520, 366 516" stroke="#ef643c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"></path>
+    <path d="M 810 432 C 770 452, 720 476, 676 506" stroke="#ef643c" stroke-width="4.5" stroke-linecap="round"></path>
+    <path d="M 690 486 L 672 509 L 701 512" stroke="#ef643c" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"></path>
+  </svg>
+
+  <div style="position:absolute;left:812px;top:410px;display:flex;flex-direction:column;align-items:flex-start;gap:8px">
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5" fill="#ef643c" stroke="#fff" stroke-width="2"></circle></svg>
+    <div class="pill" style="border-radius:10px;padding:4px;gap:2px" role="toolbar" aria-label="Ink tools">
+      <button class="tool" type="button" aria-label="Pen" aria-pressed="true" style="background:rgba(255,255,255,.14)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg></button>
+      <button class="tool" type="button" aria-label="Arrow"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M5 19L19 5M10 5h9v9"></path></svg></button>
+      <button class="tool" type="button" aria-label="Rectangle"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2.2" aria-hidden="true"><rect x="4" y="6" width="16" height="12" rx="2"></rect></svg></button>
+      <button class="tool" type="button" aria-label="Highlighter"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.7)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20h7M14 4l6 6-8 8H6v-6z"></path></svg></button>
+      <span style="width:.5px;height:16px;background:rgba(255,255,255,.2);margin:0 5px"></span>
+      <span class="dot" style="background:#ef643c;box-shadow:0 0 0 1.5px #fff"></span>
+      <span class="dot" style="background:#ffd60a;margin-left:8px"></span>
+      <span class="dot" style="background:#0a84ff;margin:0 7px 0 8px"></span>
+    </div>
+  </div>
+
+  <div style="position:absolute;left:50%;top:40px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:10px">
+    <div class="pill" style="height:42px;padding:0 7px 0 14px;gap:12px">
+      <span style="width:7px;height:7px;border-radius:50%;background:#ef643c"></span>
+      <span class="n" style="color:#fff">01:12</span>
+      <span style="width:.5px;height:18px;background:rgba(255,255,255,.2)"></span>
+      <span class="n" style="display:flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef643c" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 20l4-1 11-11-3-3L5 16z"></path></svg>2</span>
+      <span class="n" style="display:flex;align-items:center;gap:4px"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="2"></rect><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"></path></svg>1</span>
+      <span class="hb" style="background:rgba(239,100,60,.22);color:#ffd2c2">Drawing</span>
+      <button class="hb" type="button" style="background:#fff;color:#1d1d1f;font-weight:500">Stop</button>
+    </div>
+    <div style="max-width:520px;background:rgba(28,28,30,.82);border-radius:8px;padding:7px 12px;font-size:13px;line-height:1.45;color:rgba(255,255,255,.92);text-align:center">
+      <span style="color:rgba(255,255,255,.55)">…on mobile widths </span>the Pay button sits on top of the total — it should drop below it
+    </div>
+  </div>
+
+  <div class="pill" style="position:absolute;right:28px;top:44px;border-radius:12px;padding:8px 14px 8px 8px;gap:10px">
+    <span style="width:64px;height:40px;border-radius:5px;background:#fbfbfa;position:relative;overflow:hidden;box-shadow:0 0 0 .5px rgba(0,0,0,.5)"><span style="position:absolute;left:8px;top:20px;width:30px;height:2px;background:#d2d2d7"></span><span style="position:absolute;left:24px;top:24px;width:28px;height:8px;border-radius:2px;background:#1d1d1f"></span><span style="position:absolute;left:16px;top:16px;width:42px;height:20px;border:1.5px solid #ef643c;border-radius:50%"></span></span>
+    <span style="display:flex;flex-direction:column;gap:1px"><span style="font-weight:500;color:#fff">Mark 2 added</span><span style="font-size:11px;color:rgba(255,255,255,.55)">⌘Z to undo</span></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

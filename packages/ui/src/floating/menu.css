@@ -1,0 +1,118 @@
+.st-aligned {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: var(--st-z-popover);
+  visibility: hidden;
+  pointer-events: auto;
+  display: flex;
+  max-height: calc(100vh - 16px);
+}
+
+
+.st-aligned > .st-menu {
+  flex: 1;
+}
+
+.st-menu {
+  box-sizing: border-box;
+  min-width: 0;
+  max-height: inherit;
+  padding: 5px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: 10px;
+  background: var(--st-popover);
+  box-shadow: var(--st-elevation-popover);
+  color: var(--st-text);
+  font-family: var(--st-font-family);
+  font-size: var(--st-font-body);
+  outline: none;
+  z-index: var(--st-z-popover);
+}
+
+.st-menu-item {
+  display: flex;
+  align-items: center;
+  /* macOS menu metrics: 24 pt rows, a narrow check column, text close to it. */
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: var(--menu-item-height, 24px);
+  padding: 0 8px;
+  border-radius: 5px;
+  color: var(--st-text);
+  user-select: none;
+  outline: none;
+}
+
+/* A menu without checkable items has no check column (MenuItem renders it). */
+.st-menu:not(:has([role='menuitemradio'], [role='menuitemcheckbox'])) .st-menu-check {
+  display: none;
+}
+
+.st-menu-item[data-highlighted] {
+  background: var(--st-accent);
+  color: #fff;
+}
+
+.st-menu-item.destructive:not([data-highlighted]) {
+  color: var(--st-danger-text);
+}
+
+.st-menu-item[data-disabled] {
+  color: var(--st-text-tertiary);
+}
+
+.st-menu-separator {
+  height: 0.5px;
+  margin: 5px 8px;
+  background: var(--st-separator);
+}
+
+.st-menu-empty {
+  padding: 5px 7px;
+  color: var(--st-text-secondary);
+}
+
+.st-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  min-width: 200px;
+  height: var(--st-h-panel-control);
+  padding: 0 12px 0 14px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--st-fill);
+  box-shadow: inset 0 0 0 0.5px var(--st-edge);
+  color: var(--st-text);
+  font: inherit;
+  font-size: var(--st-font-info);
+  transition: background-color var(--st-dur-fast) var(--st-ease-out);
+}
+
+.st-trigger:hover:not(:disabled) {
+  background: var(--st-fill-hover);
+}
+
+.st-trigger:focus-visible,
+.st-trigger[data-state='open'] {
+  outline: none;
+  box-shadow: var(--st-focus-ring);
+}
+
+.st-trigger:disabled {
+  opacity: 0.45;
+}
+
+.st-trigger > .label {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+}
+
+.st-trigger > svg {
+  flex: none;
+  color: var(--st-text-secondary);
+}

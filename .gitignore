@@ -60,6 +60,7 @@ config.local.py
 .env.local
 *.bak
 CLAUDE.md
+.commandcode/
 docs-local/
 make/local.mk
 
@@ -69,3 +70,18 @@ assets/source/widgets/
 # ─── Screenshot harness ─────────────────────────────────────────────────────
 .screenshot-chrome-profile/
 assets/source/screenshots/raw/
+
+# agent handoffs (reports are kept)
+.handoff/*
+!.handoff/*/
+.handoff/*/*
+!.handoff/*/REPORT.md
+
+# workspaces
+node_modules/
+test-results/
+playwright-report/
+.claude/worktrees/
+
+# visual test screenshots (made locally by Playwright, never committed)
+**/tests/visual/__screenshots__/

@@ -1,0 +1,298 @@
+{
+ "v": 3,
+ "attachments": {},
+ "boards": {
+  "Main.dc.html": {
+   "h": 800,
+   "w": 1280,
+   "x": 0,
+   "y": 0,
+   "title": "Design language"
+  },
+  "Widget.dc.html": {
+   "h": 1200,
+   "w": 1280,
+   "x": 1360,
+   "y": 0,
+   "title": "Widget, session bar & quick review",
+   "is_interactive": true
+  },
+  "Overlay.dc.html": {
+   "h": 900,
+   "w": 1440,
+   "x": 0,
+   "y": 2120,
+   "title": "Show & Tell — drawing on the live screen"
+  },
+  "Timeline.dc.html": {
+   "h": 860,
+   "w": 1280,
+   "x": 1520,
+   "y": 2120,
+   "radius": 12,
+   "title": "SpeakType window — History · Timeline tab",
+   "is_interactive": true
+  },
+  "Prompt.dc.html": {
+   "h": 860,
+   "w": 1280,
+   "x": 0,
+   "y": 3420,
+   "radius": 12,
+   "title": "SpeakType window — History · Details tab",
+   "is_interactive": true
+  },
+  "Onboarding.dc.html": {
+   "h": 780,
+   "w": 960,
+   "x": 4080,
+   "y": 4680,
+   "radius": 12,
+   "title": "Onboarding 5 — Try it",
+   "is_interactive": true
+  },
+  "Settings.dc.html": {
+   "h": 640,
+   "w": 960,
+   "x": 1360,
+   "y": 3420,
+   "radius": 12,
+   "title": "SpeakType window — Sessions settings",
+   "is_interactive": true
+  },
+  "SettingsDictation.dc.html": {
+   "h": 760,
+   "w": 960,
+   "x": 2400,
+   "y": 3420,
+   "radius": 12,
+   "title": "SpeakType window — Dictation & speech models",
+   "is_interactive": true
+  },
+  "Website.dc.html": {
+   "expand": "fill",
+   "h": 3100,
+   "w": 1440,
+   "x": 0,
+   "y": 7260,
+   "title": "Website — landing page"
+  },
+  "OnboardingSteps.dc.html": {
+   "h": 640,
+   "w": 3000,
+   "x": 0,
+   "y": 4680,
+   "title": "Onboarding 1–3 — Welcome · Microphone · Accessibility",
+   "is_interactive": true
+  },
+  "System.dc.html": {
+   "h": 640,
+   "w": 1240,
+   "x": 0,
+   "y": 5840,
+   "title": "Menu bar menu · History empty state",
+   "is_interactive": true
+  },
+  "SettingsPermissions.dc.html": {
+   "h": 720,
+   "w": 960,
+   "x": 3440,
+   "y": 3420,
+   "radius": 12,
+   "title": "SpeakType window — Permissions (with tests)",
+   "is_interactive": true
+  },
+  "Components.dc.html": {
+   "h": 1860,
+   "w": 1440,
+   "x": 2720,
+   "y": 0,
+   "title": "Components — buttons, fields, dropdowns, choices, status",
+   "is_interactive": true
+  },
+  "Report.dc.html": {
+   "h": 1000,
+   "w": 1280,
+   "x": 4480,
+   "y": 3420,
+   "radius": 12,
+   "is_interactive": true,
+   "title": "Report a problem (from History → Details)"
+  },
+  "SettingsProviders.dc.html": {
+   "h": 900,
+   "w": 1040,
+   "x": 5840,
+   "y": 3420,
+   "radius": 12,
+   "is_interactive": true,
+   "title": "SpeakType window — Providers (speech to text)"
+  },
+  "ModelsSheet.dc.html": {
+   "h": 980,
+   "w": 1040,
+   "x": 6960,
+   "y": 3420,
+   "radius": 16,
+   "is_interactive": true,
+   "title": "Speech models sheet (Dictation → Manage models…)"
+  },
+  "Updates.dc.html": {
+   "h": 820,
+   "w": 1880,
+   "x": 1320,
+   "y": 5840,
+   "title": "Software updates — where they show and when"
+  },
+  "SettingsAppearance.dc.html": {
+   "h": 920,
+   "w": 1040,
+   "x": 8080,
+   "y": 3420,
+   "radius": 12,
+   "is_interactive": true,
+   "title": "SpeakType window — Appearance"
+  },
+  "ScreenRec.dc.html": {
+   "x": 5100,
+   "y": 4680,
+   "w": 660,
+   "h": 640,
+   "title": "Onboarding 6 — first session: Screen Recording (just in time)"
+  },
+  "OnboardingModel.dc.html": {
+   "x": 3060,
+   "y": 4680,
+   "w": 960,
+   "h": 640,
+   "radius": 12,
+   "is_interactive": true,
+   "title": "Onboarding 4 — Speech model"
+  },
+  "Components-light.dc.html": {
+   "x": 4240,
+   "y": 0,
+   "w": 1440,
+   "h": 1860,
+   "is_interactive": true,
+   "title": "Light mode — Components (for approval)"
+  },
+  "SettingsAppearance-light.dc.html": {
+   "x": 5760,
+   "y": 0,
+   "w": 1040,
+   "h": 920,
+   "radius": 12,
+   "is_interactive": true,
+   "title": "Light mode — SpeakType window · Appearance (for approval)"
+  }
+ },
+ "createdOnFiles": {
+  "at": "2026-11-18T12:00:00Z",
+  "v": 1
+ },
+ "designSystems": [],
+ "launch": {
+  "view": "canvas"
+ },
+ "notes": {
+  "t1": {
+   "kind": "title1",
+   "maxW": 6800,
+   "text": "Foundations",
+   "w": 240,
+   "x": 0,
+   "y": -300
+  },
+  "t2": {
+   "kind": "title1",
+   "maxW": 2800,
+   "text": "Say it. Show it.",
+   "w": 240,
+   "x": 0,
+   "y": 1960
+  },
+  "t3": {
+   "kind": "title1",
+   "maxW": 9120,
+   "text": "History, setup and settings",
+   "w": 240,
+   "x": 0,
+   "y": 3120
+  },
+  "t4": {
+   "kind": "title1",
+   "maxW": 1440,
+   "text": "Website",
+   "w": 240,
+   "x": 0,
+   "y": 7020
+  },
+  "t5": {
+   "kind": "title1",
+   "maxW": 5760,
+   "text": "First run, step by step",
+   "w": 240,
+   "x": 0,
+   "y": 4440
+  },
+  "nav": {
+   "x": 9200,
+   "y": 3420,
+   "w": 420,
+   "size": "m",
+   "fill": "blue",
+   "text": "How you get around\n\n• One SpeakType window. Its sidebar holds History and every settings page, so nothing is orphaned.\n• Menu bar → History… (⌘Y) or Settings… (⌘,) opens that window on the right page.\n• Session bar → Review → quick review panel → \"Open in History\" jumps to that session's Timeline.\n• Inside History: Timeline · Result · Details tabs switch in place.\n• Press Play on any window board and click the sidebar, tabs or links to move between boards."
+  },
+  "t6": {
+   "kind": "title1",
+   "maxW": 3200,
+   "text": "Menu bar, updates and empty states",
+   "w": 240,
+   "x": 0,
+   "y": 5600
+  },
+  "flow": {
+   "x": 0,
+   "y": 4530,
+   "w": 1400,
+   "size": "m",
+   "fill": "blue",
+   "text": "How first run is presented: one 960 × 640 window, centred. Each step slides in from the right; Back and Continue at the bottom right. Continue unlocks only when a required step is done (mic and Accessibility auto-detect and move on by themselves). Quitting midway resumes at the same step next launch, and the widget shows a 'Finish setup' dot until done. Step 6 (Screen Recording) isn't part of the window: it appears the first time you start a session."
+  },
+  "light": {
+   "x": 5760,
+   "y": 1000,
+   "w": 1040,
+   "size": "m",
+   "fill": "blue",
+   "text": "Light mode, derived from the approved dark boards with Apple's light system colours: window #F5F5F7, groups white, controls #E5E5EA, blue #007AFF, warning #FF9500, red #FF3B30, green #34C759. Hairlines and shadows are about half as strong as in dark. Things that stay the same in both themes: the floating widget/HUD (always dark), ink colours, and theme previews. Follows macOS by default; Appearance › Auto / Light / Dark overrides."
+  }
+ },
+ "order": [
+  "Main.dc.html",
+  "Widget.dc.html",
+  "Components.dc.html",
+  "Components-light.dc.html",
+  "SettingsAppearance-light.dc.html",
+  "Overlay.dc.html",
+  "Timeline.dc.html",
+  "Prompt.dc.html",
+  "Settings.dc.html",
+  "SettingsDictation.dc.html",
+  "SettingsPermissions.dc.html",
+  "Report.dc.html",
+  "SettingsProviders.dc.html",
+  "ModelsSheet.dc.html",
+  "SettingsAppearance.dc.html",
+  "OnboardingSteps.dc.html",
+  "OnboardingModel.dc.html",
+  "Onboarding.dc.html",
+  "ScreenRec.dc.html",
+  "System.dc.html",
+  "Updates.dc.html",
+  "Website.dc.html"
+ ],
+ "pages": [],
+ "title": "SpeakType Launch Designs"
+}

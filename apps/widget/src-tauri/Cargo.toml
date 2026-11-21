@@ -7,12 +7,14 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = ["macos-private-api", "tray-icon", "devtools", "image-png"] }
+tauri = { version = "2", features = ["macos-private-api", "tray-icon", "devtools", "image-png", "protocol-asset"] }
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-opener = "2"
+tauri-plugin-autostart = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
 chrono = "0.4"
 dirs = "6"
 reqwest = { version = "0.12", features = ["json", "multipart", "stream", "blocking"] }
@@ -22,13 +24,33 @@ futures-util = "0.3.32"
 tauri-plugin-shell = "2.3.5"
 scopeguard = "1.2"
 flate2 = "1"
+rusqlite = { version = "0.40", features = ["bundled"] }
+speaktype-session = { path = "../../../crates/speaktype-session" }
+speaktype-stt = { path = "../../../crates/speaktype-stt" }
+speaktype-capture = { path = "../../../crates/speaktype-capture" }
+thiserror = "2"
+# Exact pins: tauri-specta 2.0.0-rc.29 is the current Tauri-2-compatible line
+# (2026-11-13) and itself requires specta =2.0.0-rc.28 / specta-typescript ^0.0.15.
+specta = { version = "=2.0.0-rc.28", features = ["derive", "serde_json"] }
+tauri-specta = { version = "=2.0.0-rc.29", features = ["derive", "typescript"] }
+specta-typescript = "=0.0.15"
+
+[dev-dependencies]
+wiremock = "0.6"
+tokio = { version = "1", features = ["full", "test-util"] }
+tauri = { version = "2", features = ["test"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+libc = "0.2"
+signal-hook = { version = "0.3", default-features = false, features = ["iterator"] }
 core-foundation = "0.10"
 core-graphics = "0.24"
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3", features = ["NSApplication", "NSRunningApplication", "NSWorkspace", "NSWindow", "NSPanel", "NSResponder"] }
 objc2-foundation = "0.3"
+objc2-local-authentication = "0.3"
+block2 = "0.6"
+apple-vision = "0.16"
 
 [features]
 default = ["custom-protocol"]

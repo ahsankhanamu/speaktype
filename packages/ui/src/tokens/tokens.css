@@ -1,0 +1,196 @@
+:root {
+  color-scheme: dark;
+
+  --st-window: #28282b;
+  --st-group: #313134;
+  --st-control: #3d3d40;
+  --st-sidebar: #1e1e20;
+  --st-sidebar-edge: rgba(255, 255, 255, 0.1);
+  --st-popover: #333336;
+  --st-inset: #1c1c1e;
+  --st-track: #4a4a4d;
+  --st-shadow: rgba(0, 0, 0, 0.5);
+  --st-text: rgba(255, 255, 255, 0.88);
+  --st-text-secondary: rgba(255, 255, 255, 0.55);
+  --st-text-tertiary: rgba(255, 255, 255, 0.4);
+  --st-separator: rgba(255, 255, 255, 0.08);
+  --st-edge: rgba(255, 255, 255, 0.14);
+  --st-fill: rgba(255, 255, 255, 0.08);
+  --st-fill-hover: rgba(255, 255, 255, 0.13);
+  --st-fill-pressed: rgba(255, 255, 255, 0.18);
+  --st-field: rgba(255, 255, 255, 0.06);
+  --st-hover: rgba(255, 255, 255, 0.1);
+  --st-accent: #0a84ff;
+  --st-accent-hover: #2a93ff;
+  --st-accent-pressed: #0070d9;
+  --st-link: #4da3ff;
+  --st-live: #ef643c;
+  --st-warning: #ff9f0a;
+  --st-danger: #ff453a;
+  --st-danger-text: #ff6961;
+  --st-success-text: #30d158;
+  --st-success: #30d158;
+  --st-keycap: linear-gradient(180deg, #535357, #404044);
+  --st-keycap-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14), 0 1px 0 rgba(0, 0, 0, 0.65), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --st-keycap-text: rgba(255, 255, 255, 0.88);
+  --st-elevation-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 0 0 1px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.28);
+  --st-elevation-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.16), 0 0 0 1px rgba(0, 0, 0, 0.5), 0 24px 60px rgba(0, 0, 0, 0.45);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+
+  --st-window: #ffffff;
+  --st-group: #f4f4f6;
+  --st-control: #e5e5ea;
+  --st-sidebar: #efeff1;
+  --st-sidebar-edge: rgba(0, 0, 0, 0.1);
+  --st-popover: #ffffff;
+  --st-inset: #f1f1f4;
+  --st-track: #d1d1d6;
+  --st-shadow: rgba(0, 0, 0, 0.12);
+  --st-text: rgba(0, 0, 0, 0.88);
+  --st-text-secondary: rgba(0, 0, 0, 0.55);
+  --st-text-tertiary: rgba(0, 0, 0, 0.4);
+  --st-separator: rgba(0, 0, 0, 0.1);
+  --st-edge: rgba(0, 0, 0, 0.14);
+  --st-fill: rgba(0, 0, 0, 0.06);
+  --st-fill-hover: rgba(0, 0, 0, 0.1);
+  --st-fill-pressed: rgba(0, 0, 0, 0.15);
+  --st-field: rgba(0, 0, 0, 0.04);
+  --st-hover: rgba(0, 0, 0, 0.08);
+  --st-accent: #007aff;
+  --st-accent-hover: #1a8aff;
+  --st-accent-pressed: #0062cc;
+  --st-link: #007aff;
+  --st-live: #ef643c;
+  --st-warning: #ff9500;
+  --st-danger: #ff3b30;
+  --st-danger-text: #d70015;
+  --st-success-text: #248a3d;
+  --st-success: #34c759;
+  --st-keycap: #ffffff;
+  --st-keycap-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 1.5px rgba(0, 0, 0, 0.07);
+  --st-keycap-text: rgba(0, 0, 0, 0.66);
+  --st-elevation-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.14);
+  --st-elevation-sheet: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 24px 60px rgba(0, 0, 0, 0.2);
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+
+    --st-window: #ffffff;
+    --st-group: #f4f4f6;
+    --st-control: #e5e5ea;
+    --st-sidebar: #efeff1;
+    --st-sidebar-edge: rgba(0, 0, 0, 0.1);
+    --st-popover: #ffffff;
+    --st-inset: #f1f1f4;
+    --st-track: #d1d1d6;
+    --st-shadow: rgba(0, 0, 0, 0.12);
+    --st-text: rgba(0, 0, 0, 0.88);
+    --st-text-secondary: rgba(0, 0, 0, 0.55);
+    --st-text-tertiary: rgba(0, 0, 0, 0.4);
+    --st-separator: rgba(0, 0, 0, 0.1);
+    --st-edge: rgba(0, 0, 0, 0.14);
+    --st-fill: rgba(0, 0, 0, 0.06);
+    --st-fill-hover: rgba(0, 0, 0, 0.1);
+    --st-fill-pressed: rgba(0, 0, 0, 0.15);
+    --st-field: rgba(0, 0, 0, 0.04);
+    --st-hover: rgba(0, 0, 0, 0.08);
+    --st-accent: #007aff;
+    --st-accent-hover: #1a8aff;
+    --st-accent-pressed: #0062cc;
+    --st-link: #007aff;
+    --st-live: #ef643c;
+    --st-warning: #ff9500;
+    --st-danger: #ff3b30;
+    --st-danger-text: #d70015;
+    --st-success-text: #248a3d;
+    --st-success: #34c759;
+    --st-keycap: #ffffff;
+    --st-keycap-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 1px 1.5px rgba(0, 0, 0, 0.07);
+    --st-keycap-text: rgba(0, 0, 0, 0.66);
+    --st-elevation-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 4px 12px rgba(0, 0, 0, 0.14);
+    --st-elevation-sheet: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 24px 60px rgba(0, 0, 0, 0.2);
+  }
+}
+
+:root {
+  --st-focus-ring: 0 0 0 1.5px rgba(10, 132, 255, 0.85);
+  --st-halo-recording: 0 0 28px rgb(255 69 58 / 0.34), 0 10px 26px rgba(0, 0, 0, 0.16);
+  --st-halo-active: 0 0 28px rgb(10 132 255 / 0.34), 0 10px 26px rgba(0, 0, 0, 0.16);
+  --st-halo-warning: 0 0 28px rgb(176 104 36 / 0.5), 0 10px 26px rgba(0, 0, 0, 0.16);
+  --st-halo-success: 0 0 28px rgb(48 209 88 / 0.34), 0 10px 26px rgba(0, 0, 0, 0.16);
+
+  --st-radius-tile: 6px;
+  --st-radius-selection: 8px;
+  --st-radius-popover: 10px;
+  --st-radius-card: 12px;
+  --st-radius-card-lg: 14px;
+  --st-radius-window: 18px;
+  --st-radius-sheet: 28px;
+
+  /* macOS metrics: 13 pt text, 24 pt controls, 40 pt form rows. */
+  --st-h-row-control: 24px;
+  --st-h-panel-control: 28px;
+  --st-row-info: 32px;
+  --st-row-control: 40px;
+  --st-row-icon: 52px;
+
+  --st-font-body: 13px;
+  --st-font-caption: 11px;
+  --st-font-info: 12px;
+  --st-font-section: 13px;
+  --st-font-title: 20px;
+  --st-font-sidebar: 13px;
+  --st-font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+
+  --st-z-sheet: 900;
+  --st-z-popover: 1000;
+  --st-z-tooltip: 1050;
+  --st-z-toast: 1100;
+
+  --st-dur-fast: 120ms;
+  --st-dur-base: 160ms;
+  --st-dur-slow: 200ms;
+  --st-dur-ink: 250ms;
+  --st-dur-morph: 320ms;
+  --st-ease-out: cubic-bezier(0.2, 0, 0, 1);
+  /* The widget pill growing from and settling back into its bubble: fast start, long soft landing. */
+  --st-ease-morph: cubic-bezier(0.32, 0.72, 0, 1);
+
+  --st-scrim: rgba(0, 0, 0, 0.4);
+
+  --st-ink-orange: #ef643c;
+  --st-ink-red: #ff453a;
+  --st-ink-amber: #ff9f0a;
+  --st-ink-green: #30d158;
+  --st-ink-blue: #0a84ff;
+  --st-ink-purple: #bf5af2;
+  --st-ink-white: #ffffff;
+  --st-ink-highlighter: #ffd60a;
+}
+
+/* Everything you can click shows the pointing hand; disabled controls keep the arrow. */
+:where(
+    button,
+    a[href],
+    summary,
+    select,
+    input[type='range'],
+    input[type='checkbox'],
+    input[type='radio'],
+    [role='button'],
+    [role='menuitem'],
+    [role='menuitemradio'],
+    [role='menuitemcheckbox'],
+    [role='option'],
+    [role='radio'],
+    [role='switch'],
+    [role='checkbox'],
+    [role='tab']
+  ):not(:disabled, [aria-disabled='true'], [data-disabled]) {
+  cursor: pointer;
+}

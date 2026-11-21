@@ -58,6 +58,7 @@ speaktype
 - Smart paste — Ctrl+Shift+V in terminals, Ctrl+V elsewhere
 - Model picker — tiny through large-v3, downloaded once for offline use
 - History and settings — hotkey, models, server options
+- **Scribe** (*experimental*) — capture dictation, screenshots, and copied text into a session, then export or LLM-assemble a document ([docs/scribe.md](docs/scribe.md))
 
 ## Choose your path
 

@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Onboarding welcome, microphone and accessibility</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.ob{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.85);font-size:13px}
+.win{width:960px;height:640px;background:#1e1e1e;border-radius:12px;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12),0 20px 50px rgba(0,0,0,.25);display:flex;flex-direction:column;position:relative;flex:none}
+.tl{position:absolute;top:18px;left:18px;display:flex;gap:8px}
+.tl span{width:12px;height:12px;border-radius:50%}
+.body{flex:1;display:grid;grid-template-columns:400px minmax(0,1fr);min-height:0}
+.left{padding:88px 48px 0 56px;display:flex;flex-direction:column}
+.step{margin:0 0 14px;font-size:13px;color:rgba(255,255,255,.45)}
+.h1{margin:0;font-size:26px;line-height:1.2;font-weight:600;letter-spacing:-.022em;color:#fff}
+.p{margin:12px 0 0;font-size:15px;line-height:1.5;color:rgba(255,255,255,.6);max-width:300px}
+.stage{margin:14px 14px 0 0;border-radius:10px;background:#161616;position:relative;overflow:hidden}
+.foot{height:60px;flex:none;display:flex;align-items:center;padding:0 16px 0 56px;gap:10px}
+.btn{font:inherit;font-size:13px;height:32px;padding:0 18px;border-radius:16px;border:0;cursor:pointer;white-space:nowrap}
+.pri{background:#0a84ff;color:#fff;font-weight:500}
+.btn{transition:background-color .12s ease-out;cursor:default}
+.pri:not(:disabled):hover{background:#2a93ff}.pri:not(:disabled):active{background:#0070d9}
+.btn:not(.pri):not(:disabled):hover{background:rgba(255,255,255,.13) !important}.btn:not(.pri):not(:disabled):active{background:rgba(255,255,255,.18) !important}
+.btn:focus-visible{outline:none;box-shadow:0 0 0 1.5px rgba(10,132,255,.85)}
+.sec{background:#3a3a3c;color:rgba(255,255,255,.9);box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4)}
+.ghost{background:transparent;color:rgba(255,255,255,.6)}
+.note{font-size:12px;color:rgba(255,255,255,.4)}
+.lvl{width:6px;border-radius:3px}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="ob" style="width:3000px;height:640px;display:flex;gap:60px">
+
+  <section class="win" aria-label="Welcome">
+    <div class="tl" aria-hidden="true"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+    <div class="body">
+      <div class="left">
+        <div style="width:64px;height:64px;border-radius:15px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);box-shadow:inset 0 .5px 0 rgba(255,255,255,.2),0 2px 6px rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;margin-bottom:28px">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg>
+        </div>
+        <h1 class="h1">Welcome to SpeakType.</h1>
+        <p class="p">Talk instead of typing, anywhere on your Mac. When words aren't enough, draw on your screen while you explain.</p>
+        <p class="note" style="margin-top:auto;margin-bottom:28px">Takes about a minute. Everything stays on this Mac.</p>
+      </div>
+      <div class="stage" aria-label="Preview">
+        <div style="position:absolute;left:44px;right:44px;top:70px;bottom:120px;border-radius:10px;background:#fbfbfa;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.35);overflow:hidden">
+          <div style="height:36px;background:#f2f2f1;box-shadow:inset 0 -.5px 0 rgba(0,0,0,.12)"></div>
+          <div style="padding:22px 26px;font-size:15px;line-height:1.55;color:#1d1d1f">
+            <p style="margin:0 0 8px;font-size:12px;color:#86868b">To: Sam</p>
+            Quick update — the checkout fix is live. Can you retest on your phone when you get a moment?
+          </div>
+          <svg style="position:absolute;left:26px;top:70px" width="300" height="80" viewBox="0 0 300 80" fill="none" aria-hidden="true"><path d="M8 54 C 60 66, 180 68, 268 50" stroke="#ef643c" stroke-width="3" stroke-linecap="round"></path></svg>
+        </div>
+        <div style="position:absolute;left:50%;bottom:52px;transform:translateX(-50%);height:40px;padding:0 16px;border-radius:20px;background:rgba(40,40,42,.96);box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 6px 18px rgba(0,0,0,.4);display:flex;align-items:center;gap:7px" aria-hidden="true">
+          <span style="width:6px;height:6px;border-radius:50%;background:#ef643c"></span>
+          <span style="display:flex;align-items:center;gap:2px;height:14px"><span style="width:2px;height:5px;border-radius:1px;background:rgba(255,255,255,.85)"></span><span style="width:2px;height:11px;border-radius:1px;background:rgba(255,255,255,.85)"></span><span style="width:2px;height:14px;border-radius:1px;background:rgba(255,255,255,.85)"></span><span style="width:2px;height:7px;border-radius:1px;background:rgba(255,255,255,.85)"></span></span>
+        </div>
+      </div>
+    </div>
+    <footer class="foot" style="height:68px;padding-right:20px"><span style="flex:1"></span><button class="btn pri" type="button">Get started</button></footer>
+  </section>
+
+  <section class="win" aria-label="Microphone">
+    <div class="tl" aria-hidden="true"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+    <div class="body">
+      <div class="left">
+        <p class="step">Step 1 of 4</p>
+        <h1 class="h1">Let SpeakType hear you.</h1>
+        <p class="p">Your voice turns into text right here on this Mac. Nothing is recorded or sent anywhere.</p>
+        <div style="margin-top:32px;display:flex;align-items:center;gap:10px">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="#30d158" stroke-width="1.5"></circle><path d="M5 8.2l2 2 4-4.4" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          <span>Microphone allowed. Say something.</span>
+        </div>
+        <p class="note" style="margin-top:8px;margin-left:24px">Pick the one you'll use on the right. You can change it anytime from the widget.</p>
+      </div>
+      <div class="stage" aria-label="Choose a microphone" style="display:flex;flex-direction:column;justify-content:center;padding:0 40px;gap:10px" role="radiogroup">
+          <label style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;background:rgba(10,132,255,.16);box-shadow:inset 0 0 0 1.5px #0a84ff;cursor:pointer">
+            <span style="width:18px;height:18px;border-radius:50%;flex:none;background:radial-gradient(circle,#fff 0 3.5px,#0a84ff 4px)"></span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;color:#fff">MacBook Pro Microphone</span><span style="font-size:12px;color:rgba(255,255,255,.5)">Built in · hearing you now</span></span>
+            <span style="display:flex;align-items:flex-end;gap:2px;height:16px" role="img" aria-label="Hearing you"><span style="width:3px;height:6px;border-radius:1px;background:#30d158"></span><span style="width:3px;height:10px;border-radius:1px;background:#30d158"></span><span style="width:3px;height:15px;border-radius:1px;background:#30d158"></span><span style="width:3px;height:16px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:16px;border-radius:1px;background:rgba(255,255,255,.2)"></span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1);cursor:pointer">
+            <span style="width:18px;height:18px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3)"></span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;color:#fff">AirPods Pro</span><span style="font-size:12px;color:rgba(255,255,255,.5)">Bluetooth · lower quality while in use</span></span>
+            <span style="display:flex;align-items:flex-end;gap:2px;height:16px" role="img" aria-label="Quiet"><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span></span>
+          </label>
+          <label style="display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:14px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.1);cursor:pointer">
+            <span style="width:18px;height:18px;border-radius:50%;flex:none;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3)"></span>
+            <span style="flex:1;display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;color:#fff">Studio Display Microphone</span><span style="font-size:12px;color:rgba(255,255,255,.5)">USB</span></span>
+            <span style="display:flex;align-items:flex-end;gap:2px;height:16px" role="img" aria-label="Quiet"><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span><span style="width:3px;height:4px;border-radius:1px;background:rgba(255,255,255,.2)"></span></span>
+          </label>
+          <p style="margin:6px 4px 0;font-size:12px;color:rgba(255,255,255,.5)">Talk for a second. The bars move on the microphone that hears you.</p>
+      </div>
+    </div>
+    <footer class="foot" style="height:68px;padding-right:20px">
+      <span class="note" style="display:flex;align-items:center;gap:8px"><span style="width:60px;height:3px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden;display:inline-block"><span style="display:block;width:64%;height:3px;background:rgba(255,255,255,.55)"></span></span>Downloading the Fast speech model</span>
+      <span style="flex:1"></span>
+      <button class="btn" type="button" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)">Back</button>
+      <button class="btn pri" type="button">Continue</button>
+    </footer>
+  </section>
+
+  <section class="win" aria-label="Accessibility">
+    <div class="tl" aria-hidden="true"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+    <div class="body">
+      <div class="left">
+        <p class="step">Step 2 of 4</p>
+        <h1 class="h1">Let SpeakType type for you.</h1>
+        <p class="p">macOS calls this Accessibility. It lets SpeakType put your words into the app you're using.</p>
+        <div style="margin-top:28px"><button class="btn sec" type="button">Open System Settings</button></div>
+        <p class="note" style="margin-top:12px;display:flex;align-items:center;gap:8px">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.45)" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"></path></svg>
+          Waiting for you to switch it on. We'll continue automatically.
+        </p>
+      </div>
+      <div class="stage" aria-label="Where to find it">
+        <div style="position:absolute;left:40px;right:40px;top:64px;border-radius:10px;background:#1e1e1e;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 12px 30px rgba(0,0,0,.45);overflow:hidden">
+          <div style="height:40px;display:flex;align-items:center;padding:0 14px;gap:7px;background:#262628">
+            <span style="width:10px;height:10px;border-radius:50%;background:#4a4a4d"></span><span style="width:10px;height:10px;border-radius:50%;background:#4a4a4d"></span><span style="width:10px;height:10px;border-radius:50%;background:#4a4a4d"></span>
+            <span style="margin-left:12px;font-weight:600;color:rgba(255,255,255,.85)">‹  Accessibility</span>
+          </div>
+          <div style="padding:16px">
+            <p style="margin:0 0 10px;font-size:12px;color:rgba(255,255,255,.55)">Allow the apps below to control your computer.</p>
+            <div style="background:#2a2a2c;border-radius:10px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.06)">
+              <div style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px">
+                <span style="width:22px;height:22px;border-radius:5px;background:#5e5ce6"></span><span style="flex:1;color:rgba(255,255,255,.8)">Raycast</span>
+                <span style="width:38px;height:22px;border-radius:11px;background:#0a84ff;position:relative"><span style="position:absolute;right:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff"></span></span>
+              </div>
+              <div style="display:flex;align-items:center;gap:10px;height:44px;padding:0 14px;position:relative;box-shadow:inset 0 .5px 0 rgba(255,255,255,.09);background:rgba(10,132,255,.12);border-radius:0 0 10px 10px">
+                <span style="width:22px;height:22px;border-radius:5px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);display:flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg></span>
+                <span style="flex:1;color:#fff;font-weight:500">SpeakType</span>
+                <span style="width:38px;height:22px;border-radius:11px;background:#4a4a4d;position:relative;box-shadow:0 0 0 1.5px rgba(10,132,255,.85)"><span style="position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#fff"></span></span>
+              </div>
+            </div>
+            <p style="margin:12px 0 0;font-size:12px;color:rgba(255,255,255,.55)">Turn on <span style="color:#fff">SpeakType</span>. You may need your Mac password.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="foot" style="height:68px;padding-right:20px">
+      <span class="note">Fast model ready</span>
+      <span style="flex:1"></span>
+      <button class="btn" type="button" style="background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)">Back</button>
+      <a class="btn pri" href="OnboardingModel.dc.html" style="opacity:.4;cursor:default;text-decoration:none;display:inline-flex;align-items:center" aria-disabled="true" title="Enabled once Accessibility is on (in this mockup it links to the next step)">Continue</a>
+    </footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":3000,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

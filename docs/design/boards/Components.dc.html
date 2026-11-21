@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SpeakType components</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.c{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.88);font-size:14px}
+.sec{font-size:15px;font-weight:600;color:#fff;margin:0 0 4px}
+.cap{font-size:12px;color:rgba(255,255,255,.5);margin:0 0 14px;line-height:1.45}
+.card{background:#2a2a2c;border-radius:16px;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.06);padding:18px 20px}
+.lbl{font-size:11px;color:rgba(255,255,255,.45);margin:8px 0 0;text-align:center;white-space:nowrap}
+.row{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.cell{display:flex;flex-direction:column;align-items:center}
+.b{font:inherit;font-size:13px;height:32px;padding:0 18px;border-radius:16px;border:0;cursor:pointer;white-space:nowrap;display:inline-flex;align-items:center;gap:8px}
+.b.sm{height:28px;padding:0 14px;border-radius:14px}
+.pri{background:#0a84ff;color:#fff;font-weight:600}
+.sec2{background:rgba(255,255,255,.08);color:rgba(255,255,255,.9);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)}
+.pl{background:transparent;color:#4da3ff;padding:0 10px}
+.dst{background:rgba(255,255,255,.08);color:#ff6961;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)}
+.field{font:inherit;font-size:14px;height:32px;padding:0 14px;border-radius:16px;border:0;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff;width:220px;box-sizing:border-box;display:flex;align-items:center}
+.ph{color:rgba(255,255,255,.4)}
+.trig{font:inherit;font-size:13px;height:32px;padding:0 12px 0 14px;border-radius:16px;border:0;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);color:#fff;display:inline-flex;align-items:center;gap:10px;min-width:200px;box-sizing:border-box;cursor:pointer}
+.kc{font-size:13px;font-weight:500;min-width:24px;height:24px;padding:0 6px;box-sizing:border-box;border-radius:6px;background:linear-gradient(180deg,#535357,#404044);box-shadow:inset 0 1px 0 rgba(255,255,255,.14),0 1px 0 rgba(0,0,0,.65),0 1px 3px rgba(0,0,0,.3);color:#fff;display:inline-flex;align-items:center;justify-content:center;line-height:1}
+.item{display:flex;align-items:center;gap:10px;min-height:32px;padding:4px 10px;border-radius:8px}
+.tog{width:38px;height:22px;border-radius:11px;position:relative;flex:none;display:inline-block}
+.tog i{position:absolute;top:2px;width:18px;height:18px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35)}
+.seg{display:inline-flex;padding:3px;border-radius:17px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14)}
+.seg span{font-size:13px;height:26px;padding:0 14px;border-radius:13px;display:inline-flex;align-items:center;color:rgba(255,255,255,.7)}
+.seg .on{background:rgba(255,255,255,.18);color:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+.dot{width:8px;height:8px;border-radius:50%;flex:none}
+.b{transition:background-color .12s ease-out,box-shadow .12s ease-out}
+.b.pri:not(:disabled):hover{background:#2a93ff}.b.pri:not(:disabled):active{background:#0070d9}
+.b.sec2:not(:disabled):hover{background:rgba(255,255,255,.13)}.b.sec2:not(:disabled):active{background:rgba(255,255,255,.18)}
+.b.pl:not(:disabled):hover{background:rgba(10,132,255,.12)}.b.pl:not(:disabled):active{background:rgba(10,132,255,.2)}
+.b.dst:not(:disabled):hover{background:rgba(255,255,255,.13)}.b.dst:not(:disabled):active{background:rgba(255,255,255,.18)}
+.b:focus-visible{outline:none;box-shadow:0 0 0 1.5px rgba(10,132,255,.85)}
+.b{cursor:default}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="c" style="width:1440px;height:1860px;box-sizing:border-box;background:#1e1e1e;padding:44px 48px;display:flex;flex-direction:column;gap:22px">
+  <header>
+    <h1 style="margin:0;font-size:24px;font-weight:700;letter-spacing:-.022em;color:#fff">Components</h1>
+    <p style="margin:4px 0 0;color:rgba(255,255,255,.55)">Every control, every state. Built on bits-ui (shadcn-style, composable). Capsules everywhere: 32 pt in panels and toolbars, 28 pt inside settings rows.</p>
+  </header>
+
+  <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px">
+    <section class="card" style="grid-column:1 / -1">
+      <p class="sec">Buttons</p>
+      <p class="cap">One primary per view. Secondary for everything else. Plain for in-text actions. Destructive = a normal button with a red label (as macOS does), never filled red and never the default; say Delete when something is destroyed, Remove when it only leaves a list.</p>
+      <div class="row">
+        <div class="cell"><button class="b pri" type="button">Copy</button><p class="lbl">Primary</p></div>
+        <div class="cell"><button class="b sec2" type="button">Show in Finder</button><p class="lbl">Secondary</p></div>
+        <div class="cell"><button class="b pl" type="button">Open in History</button><p class="lbl">Plain</p></div>
+        <div class="cell"><button class="b dst" type="button">Delete</button><p class="lbl">Destructive</p></div>
+        <div class="cell"><button class="b sm sec2" type="button">Change…</button><p class="lbl">Small · 28 pt</p></div>
+      </div>
+      <div style="margin-top:18px;display:grid;grid-template-columns:120px repeat(5,minmax(0,1fr));gap:12px 16px;align-items:center;max-width:1100px">
+        <span></span><span style="font-size:11px;color:rgba(255,255,255,.45);text-align:center">Idle</span><span style="font-size:11px;color:rgba(255,255,255,.45);text-align:center">Hover</span><span style="font-size:11px;color:rgba(255,255,255,.45);text-align:center">Pressed</span><span style="font-size:11px;color:rgba(255,255,255,.45);text-align:center">Focus</span><span style="font-size:11px;color:rgba(255,255,255,.45);text-align:center">Disabled</span>
+        <span style="font-size:12px;color:rgba(255,255,255,.6)">Primary</span><span style="text-align:center"><button class="b sm pri demo" type="button" style="">Copy</button></span><span style="text-align:center"><button class="b sm pri demo" type="button" style="background:#2a93ff">Copy</button></span><span style="text-align:center"><button class="b sm pri demo" type="button" style="background:#0070d9">Copy</button></span><span style="text-align:center"><button class="b sm pri demo" type="button" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)">Copy</button></span><span style="text-align:center"><button class="b sm pri" type="button" disabled style="opacity:.4;cursor:default">Copy</button></span>
+        <span style="font-size:12px;color:rgba(255,255,255,.6)">Secondary</span><span style="text-align:center"><button class="b sm sec2 demo" type="button" style="">Show in Finder</button></span><span style="text-align:center"><button class="b sm sec2 demo" type="button" style="background:rgba(255,255,255,.13)">Show in Finder</button></span><span style="text-align:center"><button class="b sm sec2 demo" type="button" style="background:rgba(255,255,255,.18)">Show in Finder</button></span><span style="text-align:center"><button class="b sm sec2 demo" type="button" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)">Show in Finder</button></span><span style="text-align:center"><button class="b sm sec2" type="button" disabled style="opacity:.4;cursor:default">Show in Finder</button></span>
+        <span style="font-size:12px;color:rgba(255,255,255,.6)">Plain</span><span style="text-align:center"><button class="b sm pl demo" type="button" style="">Open in History</button></span><span style="text-align:center"><button class="b sm pl demo" type="button" style="background:rgba(10,132,255,.12)">Open in History</button></span><span style="text-align:center"><button class="b sm pl demo" type="button" style="background:rgba(10,132,255,.2)">Open in History</button></span><span style="text-align:center"><button class="b sm pl demo" type="button" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)">Open in History</button></span><span style="text-align:center"><button class="b sm pl" type="button" disabled style="opacity:.4;cursor:default">Open in History</button></span>
+        <span style="font-size:12px;color:rgba(255,255,255,.6)">Destructive</span><span style="text-align:center"><button class="b sm dst demo" type="button" style="">Delete</button></span><span style="text-align:center"><button class="b sm dst demo" type="button" style="background:rgba(255,255,255,.13)">Delete</button></span><span style="text-align:center"><button class="b sm dst demo" type="button" style="background:rgba(255,255,255,.18)">Delete</button></span><span style="text-align:center"><button class="b sm dst demo" type="button" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)">Delete</button></span><span style="text-align:center"><button class="b sm dst" type="button" disabled style="opacity:.4;cursor:default">Delete</button></span>
+      </div>
+      <p class="cap" style="margin:14px 0 0">Behaviour: colour changes ease over 120 ms; pressed is one step darker with no movement (macOS buttons don't shift); the cursor stays an arrow, as on macOS; focus ring only for keyboard focus; disabled is 40% opacity, ignores hover and press, and keeps its label readable. Buttons on this board respond for real in Play mode.</p>
+      <div style="margin-top:18px;display:flex;gap:24px;align-items:flex-start">
+        <div role="alertdialog" aria-labelledby="al-t" style="width:300px;border-radius:16px;background:#2c2c2e;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28);padding:20px;text-align:center">
+          <p id="al-t" style="margin:0;font-size:14px;font-weight:600;color:#fff">Delete this session?</p>
+          <p style="margin:6px 0 16px;font-size:12px;line-height:1.45;color:rgba(255,255,255,.6)">Its marks, audio and prompt are deleted from this Mac. This can't be undone.</p>
+          <div style="display:flex;gap:8px"><button class="b sm dst" type="button" style="flex:1;justify-content:center">Delete</button><button class="b sm pri" type="button" style="flex:1;justify-content:center">Cancel</button></div>
+        </div>
+        <p class="cap" style="max-width:420px;margin:6px 0 0">Irreversible actions (delete a session, clear all history, reset permissions) confirm in an alert where Cancel is the default (blue, Return) and Delete is red. Undoable ones (delete a mark, remove a clip) happen at once with an Undo toast and no alert.</p>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="sec">Text fields</p>
+      <p class="cap">Pill for single-line fields and search; 12 pt corners for multi-line. Errors say what to do, under the field.</p>
+      <div class="row">
+        <div class="cell"><span class="field"><span class="ph">Session name</span></span><p class="lbl">Empty</p></div>
+        <div class="cell"><span class="field" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)">Checkout bug<span style="width:1.5px;height:16px;background:#0a84ff;margin-left:1px"></span></span><p class="lbl">Focused</p></div>
+        <div class="cell"><span class="field" style="box-shadow:inset 0 0 0 1px rgba(255,105,97,.8)">~/Desktop/missing</span><p class="lbl" style="color:#ff6961">That folder doesn't exist</p></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <div class="cell"><span class="field" style="gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span class="ph">Search</span></span><p class="lbl">Search</p></div>
+        <div class="cell"><span class="field" style="opacity:.45">Read only</span><p class="lbl">Disabled</p></div>
+        <div class="cell"><span style="width:220px;height:56px;border-radius:12px;background:rgba(255,255,255,.06);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.14);padding:8px 12px;box-sizing:border-box;font-size:13px;line-height:1.4">Two lines of text wrap here instead of scrolling sideways.</span><p class="lbl">Multi-line</p></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="sec">Dropdown (Select)</p>
+      <p class="cap">Trigger · Value · Content · Item · Separator, composable. Content renders in a portal at the window root, with the shared popover shadow.</p>
+      <div class="row" style="gap:28px">
+        <div class="cell" style="align-items:flex-start">
+          <button class="trig" type="button" aria-haspopup="listbox"><span class="kc" style="height:20px;min-width:20px;font-size:11px">⌥</span><span style="flex:1;text-align:left">Right Option</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+          <p class="lbl">Closed</p>
+          <button class="trig" type="button" disabled style="opacity:.45;margin-top:10px"><span style="flex:1;text-align:left">Not available</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+          <p class="lbl">Disabled</p>
+        </div>
+        <div class="cell" style="align-items:flex-start">
+          <button class="trig" type="button" aria-expanded="true" style="box-shadow:0 0 0 1.5px rgba(10,132,255,.85)"><span style="flex:1;text-align:left">Bug report</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></button>
+          <div role="listbox" style="margin-top:6px;width:240px;padding:5px;box-sizing:border-box;border-radius:12px;background:#2c2c2e;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28);font-size:13px">
+            <div class="item" role="option" aria-selected="false">Auto</div>
+            <div class="item" role="option" aria-selected="true"><span style="flex:1">Bug report</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg></div>
+            <div class="item" role="option" aria-selected="false" style="background:#0a84ff;color:#fff">Feature request</div>
+            <div class="item" role="option" aria-disabled="true" style="color:rgba(255,255,255,.35)">Code review · Pro</div>
+            <div style="height:.5px;background:rgba(255,255,255,.12);margin:5px 10px"></div>
+            <div class="item" role="option" aria-selected="false" style="color:rgba(255,255,255,.75)">More templates…</div>
+          </div>
+        </div>
+      </div>
+      <p class="sec" style="margin-top:22px">Combobox</p>
+      <p class="cap">A dropdown you can type into, for long lists like Language or Microphone. Typing filters; matches are bold; Return picks the highlighted one.</p>
+      <div class="row" style="gap:28px">
+        <div class="cell" style="align-items:flex-start">
+          <span class="field" style="width:220px;gap:8px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span style="flex:1">Automatic</span><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></span>
+          <p class="lbl">Closed</p>
+          <span class="field" style="width:220px;gap:8px;margin-top:10px;box-shadow:0 0 0 1.5px rgba(10,132,255,.85)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span style="flex:1">xyz<span style="display:inline-block;width:1.5px;height:15px;background:#0a84ff;vertical-align:-2px"></span></span></span>
+          <div style="margin-top:6px;width:220px;padding:10px 12px;box-sizing:border-box;border-radius:12px;background:#2c2c2e;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28);font-size:13px;color:rgba(255,255,255,.55)">No languages match “xyz”</div>
+          <p class="lbl">No results</p>
+        </div>
+        <div class="cell" style="align-items:flex-start">
+          <span class="field" role="combobox" aria-expanded="true" style="width:240px;gap:8px;box-shadow:0 0 0 1.5px rgba(10,132,255,.85)"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span style="flex:1">port<span style="display:inline-block;width:1.5px;height:15px;background:#0a84ff;vertical-align:-2px"></span></span><span style="font-size:11px;color:rgba(255,255,255,.4)">2</span></span>
+          <div role="listbox" style="margin-top:6px;width:240px;padding:5px;box-sizing:border-box;border-radius:12px;background:#2c2c2e;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28);font-size:13px">
+            <div class="item" role="option" aria-selected="false" style="background:#0a84ff;color:#fff"><span style="flex:1"><b>Port</b>uguese</span><span style="font-size:11px;color:rgba(255,255,255,.75)">pt</span></div>
+            <div class="item" role="option" aria-selected="true"><span style="flex:1">Portuguese (Brazil)</span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg></div>
+          </div>
+          <p class="lbl">Open, filtered</p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" style="display:flex;flex-direction:column;gap:16px">
+      <div>
+        <p class="sec">Choices and toggles</p>
+        <p class="cap" style="margin-bottom:10px">Segmented for 2–4 views; switch for on/off settings; radio list for picking one of several described options.</p>
+        <div class="row" style="align-items:center;gap:22px">
+          <span class="seg" role="tablist"><span class="on">Timeline</span><span>Result</span><span>Details</span></span>
+          <span class="tog" style="background:#0a84ff" role="switch" aria-checked="true" aria-label="On"><i style="right:2px"></i></span>
+          <span class="tog" style="background:#4a4a4d" role="switch" aria-checked="false" aria-label="Off"><i style="left:2px"></i></span>
+          <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:18px;height:18px;border-radius:50%;background:radial-gradient(circle,#fff 0 3.5px,#0a84ff 4px)"></span>Selected</span>
+          <span style="display:inline-flex;align-items:center;gap:8px"><span style="width:18px;height:18px;border-radius:50%;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3)"></span>Not selected</span>
+        </div>
+      </div>
+
+      <div>
+        <p class="sec">Checkbox</p>
+        <p class="cap" style="margin-bottom:10px">For picking several things at once, like what to include in a report or which items to delete. A switch is for a single setting that takes effect immediately.</p>
+        <div class="row" style="align-items:center;gap:22px">
+          <span style="display:inline-flex;align-items:center;gap:8px" role="checkbox" aria-checked="true"><span style="width:18px;height:18px;border-radius:5px;background:#0a84ff;display:inline-flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg></span>Checked</span>
+          <span style="display:inline-flex;align-items:center;gap:8px" role="checkbox" aria-checked="false"><span style="width:18px;height:18px;border-radius:5px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3)"></span>Unchecked</span>
+          <span style="display:inline-flex;align-items:center;gap:8px" role="checkbox" aria-checked="mixed"><span style="width:18px;height:18px;border-radius:5px;background:#0a84ff;display:inline-flex;align-items:center;justify-content:center"><span style="width:8px;height:2px;border-radius:1px;background:#fff"></span></span>Some selected</span>
+          <span style="display:inline-flex;align-items:center;gap:8px;color:rgba(255,255,255,.4)" role="checkbox" aria-checked="true" aria-disabled="true"><span style="width:18px;height:18px;border-radius:5px;background:#0a84ff;opacity:.4;display:inline-flex;align-items:center;justify-content:center"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg></span>Disabled</span>
+          <span style="display:inline-flex;align-items:center;gap:8px" role="checkbox" aria-checked="false"><span style="width:18px;height:18px;border-radius:5px;box-shadow:inset 0 0 0 1.5px rgba(255,255,255,.3),0 0 0 1.5px rgba(10,132,255,.85)"></span>Focus</span>
+        </div>
+      </div>
+      <div>
+        <p class="sec">Shortcut field</p>
+        <p class="cap" style="margin-bottom:10px">Click to record. Keys always in Apple's order: ⌃ ⌥ ⇧ ⌘.</p>
+        <div class="row" style="align-items:center;gap:22px">
+          <span style="display:inline-flex;gap:3px;padding:4px 6px;border-radius:15px;background:#1c1c1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12)"><span class="kc">⌥</span><span class="kc">⌘</span><span class="kc">K</span></span>
+          <span style="display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:15px;background:#1c1c1e;box-shadow:0 0 0 1.5px rgba(10,132,255,.85);font-size:13px;color:rgba(255,255,255,.6)">Press a shortcut…</span>
+          <span style="display:inline-flex;flex-direction:column;gap:4px"><span style="display:inline-flex;gap:3px;padding:4px 6px;border-radius:15px;background:#1c1c1e;box-shadow:inset 0 0 0 1px rgba(255,159,10,.8)"><span class="kc">⌥</span><span class="kc">⌘</span><span class="kc">S</span></span><span style="font-size:11px;color:#ff9f0a">Already used for screenshots</span></span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="sec">Status and progress</p>
+      <p class="cap">Status is a dot plus plain words, never a filled banner. Progress is a thin bar with real numbers.</p>
+      <div class="row" style="gap:26px;align-items:center">
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px"><span class="dot" style="background:#30d158"></span>In use</span>
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px"><span class="dot" style="background:#ff9f0a"></span>Off</span>
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px"><span class="dot" style="background:#ff453a"></span>Couldn't download</span>
+        <span style="display:inline-flex;align-items:center;gap:7px;font-size:13px"><span class="dot" style="background:#ef643c"></span>Session live</span>
+        <span style="font-size:10px;font-weight:600;letter-spacing:.03em;padding:2px 6px;border-radius:5px;color:rgba(255,255,255,.75);box-shadow:inset 0 0 0 .5px rgba(255,255,255,.3)">PRO</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:16px">
+        <span style="flex:1;max-width:300px;height:4px;border-radius:2px;background:rgba(255,255,255,.12);overflow:hidden"><span style="display:block;width:38%;height:4px;border-radius:2px;background:#0a84ff"></span></span>
+        <span style="font-size:12px;color:rgba(255,255,255,.5);font-variant-numeric:tabular-nums">580 MB of 1.5 GB · about 2 min left</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <p class="sec">Floating feedback</p>
+      <p class="cap">Toasts confirm and offer undo. Popovers and menus share one tight shadow. Only the widget pill uses a soft status halo.</p>
+      <div class="row" style="gap:20px;align-items:center">
+        <div style="display:flex;align-items:center;gap:10px;padding:8px 8px 8px 14px;border-radius:14px;background:#2c2c2e;box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28);font-size:13px;white-space:nowrap">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="7" stroke="#30d158" stroke-width="1.5"></circle><path d="M5 8.2l2 2 4-4.4" stroke="#30d158" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          Copied with 3 images<button class="b sm pl" type="button" style="height:26px">Undo</button>
+        </div>
+        <div style="height:40px;padding:0 16px;border-radius:20px;background:rgba(40,40,42,.96);box-shadow:0 0 28px rgba(48,209,88,.34),0 10px 26px rgba(0,0,0,.16);display:flex;align-items:center;gap:8px;font-size:12px"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#30d158" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg>Pasted</div>
+      </div>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1860}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

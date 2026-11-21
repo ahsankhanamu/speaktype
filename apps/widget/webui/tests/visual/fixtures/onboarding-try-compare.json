@@ -1,0 +1,99 @@
+{
+  "get_settings": {
+    "model": "base",
+    "language": "auto",
+    "input_device": "MacBook Pro Microphone",
+    "shortcuts": { "dictation": "Super+Control", "session": "Option+Super+K", "screenshot": "Option+Super+S", "drawKey": "right_option" },
+    "onboarding_step": 4
+  },
+  "get_onboarding_status": {
+    "microphone": true,
+    "accessibility": true,
+    "model": true,
+    "active_model": "base",
+    "exe_path": "/Applications/SpeakType.app/Contents/MacOS/speaktype",
+    "is_dev": false,
+    "is_bundled": true,
+    "responsible_app": "",
+    "responsible_app_path": "/Applications/SpeakType.app"
+  },
+  "get_input_devices": {
+    "devices": [
+      {
+        "name": "MacBook Pro Microphone",
+        "label": "MacBook Pro Microphone (48 kHz)",
+        "is_default": true
+      },
+      {
+        "name": "AirPods Pro",
+        "label": "AirPods Pro (Bluetooth hands-free, 16 kHz)",
+        "is_default": false
+      },
+      {
+        "name": "Studio Display Microphone",
+        "label": "Studio Display Microphone (48 kHz)",
+        "is_default": false
+      }
+    ],
+    "default": "MacBook Pro Microphone"
+  },
+  "get_models": {
+    "available": [
+      {
+        "id": "tiny",
+        "size_bytes": 0,
+        "downloaded": false
+      },
+      {
+        "id": "base",
+        "size_bytes": 157286400,
+        "downloaded": true
+      },
+      {
+        "id": "small",
+        "size_bytes": 524288000,
+        "downloaded": true
+      },
+      {
+        "id": "medium",
+        "size_bytes": 0,
+        "downloaded": false
+      },
+      {
+        "id": "large-v3-turbo",
+        "size_bytes": 0,
+        "downloaded": false
+      },
+      {
+        "id": "large-v3",
+        "size_bytes": 0,
+        "downloaded": false
+      }
+    ],
+    "downloading": [],
+    "waiting": [],
+    "progress": []
+  },
+  "$events": [
+    {
+      "event": "mic-levels",
+      "payload": {
+        "levels": [
+          {
+            "device": "MacBook Pro Microphone",
+            "level": 0.45
+          },
+          {
+            "device": "AirPods Pro",
+            "level": 0
+          },
+          {
+            "device": "Studio Display Microphone",
+            "level": 0.01
+          }
+        ]
+      }
+    }
+  ],
+  "reprocess_preview": "Hi, this is my first note with SpeakType. It actually works."
+}

@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Software update flow</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.u{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;font-size:14px;color:rgba(255,255,255,.88)}
+.cap{font-size:13px;font-weight:600;color:#1d1d1f;margin:0 0 4px}
+.sub{font-size:12px;line-height:1.45;color:#6e6e73;margin:0 0 14px;max-width:340px}
+.n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:10px;background:#1d1d1f;color:#fff;font-size:11px;font-weight:600;margin-right:6px}
+.dark{background:#262628;border-radius:14px;box-shadow:0 0 0 .5px rgba(0,0,0,.4),0 10px 30px rgba(0,0,0,.18)}
+.approw{display:flex;align-items:center;gap:10px;height:52px;padding:0 10px;border-radius:8px}
+.icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(180deg,#4a4a4e,#2c2c2f);display:flex;align-items:center;justify-content:center;flex:none;position:relative}
+.dot{position:absolute;right:-3px;top:-3px;width:10px;height:10px;border-radius:5px;background:#0a84ff;box-shadow:0 0 0 2px #262628}
+.b{font:inherit;font-size:13px;height:28px;padding:0 14px;border-radius:14px;border:0;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;cursor:default}
+.pri{background:#0a84ff;color:#fff;font-weight:600}
+.sec2{background:rgba(255,255,255,.1);color:#fff}
+.mi{display:flex;align-items:center;gap:8px;height:24px;padding:0 9px;border-radius:5px;white-space:nowrap;font-size:13px}
+.sep{height:.5px;background:rgba(255,255,255,.12);margin:5px 9px}
+.r{display:flex;align-items:center;gap:12px;min-height:46px;padding:6px 16px;position:relative}
+.r + .r::before{content:"";position:absolute;left:16px;right:16px;top:0;height:.5px;background:rgba(255,255,255,.08)}
+.tog{width:38px;height:22px;border-radius:11px;position:relative;flex:none;display:inline-block}
+.tog i{position:absolute;top:2px;width:18px;height:18px;border-radius:50%;background:#fff}
+</style>
+</helmet>
+<div class="u" style="width:1880px;height:820px;box-sizing:border-box;background:#e8e8ea;padding:40px 44px;display:grid;grid-template-columns:330px 330px 620px minmax(0,1fr);column-gap:40px">
+
+  <section>
+    <p class="cap"><span class="n">1</span>Quietly in the background</p>
+    <p class="sub">SpeakType checks once a day and downloads updates on its own. Nothing pops up. The app row in the sidebar shows the state.</p>
+    <div class="dark" style="padding:8px;display:flex;flex-direction:column;gap:6px">
+      <div class="approw"><span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg></span><span style="display:flex;flex-direction:column"><b style="font-size:15px">SpeakType</b><span style="font-size:12px;color:rgba(255,255,255,.5)">Version 1.0 · Up to date</span></span></div>
+      <div class="approw"><span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg></span><span style="display:flex;flex-direction:column"><b style="font-size:15px">SpeakType</b><span style="font-size:12px;color:rgba(255,255,255,.5);display:flex;align-items:center;gap:6px"><span style="width:60px;height:3px;border-radius:2px;background:rgba(255,255,255,.15);overflow:hidden;display:inline-block"><span style="display:block;width:55%;height:3px;background:#0a84ff"></span></span>Downloading 1.1</span></span></div>
+      <div class="approw" style="background:rgba(10,132,255,.12)"><span class="icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg><span class="dot"></span></span><span style="display:flex;flex-direction:column;flex:1"><b style="font-size:15px">SpeakType</b><span style="font-size:12px;color:#64b5ff">Update ready · 1.1</span></span><button class="b pri" type="button" style="height:24px;padding:0 10px;font-size:12px">Restart</button></div>
+    </div>
+    <p class="sub" style="margin-top:12px">Up to date → downloading → ready. Clicking the row opens About with release notes.</p>
+  </section>
+
+  <section>
+    <p class="cap"><span class="n">2</span>A gentle nudge in the menu bar</p>
+    <p class="sub">When an update is ready, the menu bar icon gets a small blue dot and the menu offers it first. The widget never shows updates.</p>
+    <div style="height:26px;border-radius:6px 6px 0 0;background:rgba(30,30,34,.85);display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:0 12px;color:#fff;font-size:13px">
+      <span style="position:relative;display:flex;align-items:center;justify-content:center;width:26px;height:20px;border-radius:4px;background:rgba(255,255,255,.2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg><span style="position:absolute;right:2px;top:2px;width:6px;height:6px;border-radius:3px;background:#0a84ff"></span></span>
+      <span>10:42</span>
+    </div>
+    <div role="menu" style="margin-top:4px;width:100%;padding:5px;box-sizing:border-box;border-radius:10px;background:rgba(44,44,46,.97);box-shadow:0 0 0 .5px rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28)">
+      <div class="mi" style="height:auto;padding:6px 9px;flex-direction:column;align-items:flex-start;gap:1px"><b>SpeakType</b><span style="font-size:11px;color:rgba(255,255,255,.5)">Ready · Balanced model</span></div>
+      <div class="sep"></div>
+      <div class="mi" role="menuitem" style="background:#0a84ff;color:#fff"><span style="width:7px;height:7px;border-radius:4px;background:#fff"></span>Restart to update to 1.1</div>
+      <div class="sep"></div>
+      <div class="mi" role="menuitem">Start dictation<span style="margin-left:auto;color:rgba(255,255,255,.45);font-size:12px">⌃⌘</span></div>
+      <div class="mi" role="menuitem">Start a session<span style="margin-left:auto;color:rgba(255,255,255,.45);font-size:12px">⌥⌘K</span></div>
+      <div class="mi" role="menuitem">History…<span style="margin-left:auto;color:rgba(255,255,255,.45);font-size:12px">⌘Y</span></div>
+      <div class="mi" role="menuitem">Settings…<span style="margin-left:auto;color:rgba(255,255,255,.45);font-size:12px">⌘,</span></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="cap"><span class="n">3</span>The update sheet, only when you choose</p>
+    <p class="sub" style="max-width:560px">Opens from "Restart" or the menu item, or once, at launch, after an update has waited 3 days. Never during dictation or a session.</p>
+    <div role="dialog" aria-labelledby="up-t" style="border-radius:28px;background:#2a2a2c;box-shadow:0 0 0 .5px rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.3);padding:28px 30px 24px">
+      <div style="display:flex;gap:16px;align-items:flex-start">
+        <span class="icon" style="width:56px;height:56px;border-radius:14px"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0M12 18v3"></path></svg></span>
+        <div>
+          <h2 id="up-t" style="margin:0;font-size:18px;font-weight:700;color:#fff">SpeakType 1.1 is ready</h2>
+          <p style="margin:4px 0 0;font-size:13px;color:rgba(255,255,255,.55)">Downloaded and verified. Restarting takes a couple of seconds; your sessions and settings are kept.</p>
+        </div>
+      </div>
+      <div style="margin-top:18px;padding:14px 18px;border-radius:16px;background:rgba(255,255,255,.05);font-size:14px;line-height:1.6">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#fff">What's new</p>
+        <ul style="margin:0;padding-left:18px;color:rgba(255,255,255,.8)">
+          <li>Draw arrows and boxes, not just freehand marks</li>
+          <li>Faster Balanced model on Apple silicon</li>
+          <li>Fixes a paste issue in Terminal</li>
+        </ul>
+        <p style="margin:8px 0 0;font-size:13px"><a href="#" style="color:#4da3ff;text-decoration:none">Full release notes</a></p>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;margin-top:20px">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:rgba(255,255,255,.7)"><span style="width:18px;height:18px;border-radius:5px;background:#0a84ff;display:inline-flex;align-items:center;justify-content:center"><svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8.5l3.2 3L13 4.5"></path></svg></span>Install updates automatically</label>
+        <span style="flex:1"></span>
+        <button class="b sec2" type="button" style="height:32px;padding:0 18px;border-radius:16px">Later</button>
+        <button class="b pri" type="button" style="height:32px;padding:0 18px;border-radius:16px">Restart now</button>
+      </div>
+      <p style="margin:12px 0 0;font-size:12px;color:rgba(255,255,255,.45)">If a session is running: "Restart after this session" replaces Restart now.</p>
+    </div>
+  </section>
+
+  <section>
+    <p class="cap"><span class="n">4</span>About · Software Update</p>
+    <p class="sub">Where people control it. Opened from the app row.</p>
+    <div class="dark" style="padding:6px 0">
+      <div class="r"><span style="flex:1;display:flex;flex-direction:column;gap:1px"><b style="font-weight:400">Version 1.0 (124)</b><span style="font-size:12px;color:#64b5ff">1.1 is ready to install</span></span><button class="b pri" type="button">Restart</button></div>
+      <div class="r"><span style="flex:1">Check for updates automatically</span><span class="tog" style="background:#0a84ff"><i style="right:2px"></i></span></div>
+      <div class="r"><span style="flex:1">Download and install automatically</span><span class="tog" style="background:#0a84ff"><i style="right:2px"></i></span></div>
+      <div class="r"><span style="flex:1;display:flex;flex-direction:column;gap:1px"><b style="font-weight:400">Last checked</b><span style="font-size:12px;color:rgba(255,255,255,.5)">Today at 09:12</span></span><button class="b sec2" type="button">Check now</button></div>
+    </div>
+    <p class="sub" style="margin-top:12px">Failure states use the same row: "Couldn't check. You're offline." with Try again, or "Download failed" with Retry. Updates are signed and verified before they're offered.</p>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1880,"height":820}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

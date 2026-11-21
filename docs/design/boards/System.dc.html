@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menu bar and empty state</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.s{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;font-size:13px;color:rgba(255,255,255,.88)}
+.cap{font-size:12px;font-weight:600;color:#1d1d1f;margin:0 0 4px}
+.sub{font-size:12px;line-height:1.45;color:#6e6e73;margin:0 0 16px;max-width:360px}
+.menu{width:280px;padding:5px;box-sizing:border-box;border-radius:10px;background:rgba(44,44,46,.97);box-shadow:0 0 0 .5px rgba(255,255,255,.14),0 0 0 1px rgba(0,0,0,.55),0 4px 12px rgba(0,0,0,.28)}
+.mi{display:flex;align-items:center;gap:8px;height:22px;padding:0 9px;border-radius:4px;white-space:nowrap}
+.mi .k{margin-left:auto;color:rgba(255,255,255,.45);font-size:12px}
+.sep{height:.5px;background:rgba(255,255,255,.12);margin:5px 9px}
+.btn{font:inherit;font-size:13px;height:32px;padding:0 18px;border-radius:16px;border:0;cursor:pointer;white-space:nowrap}
+.pri{background:#0a84ff;color:#fff;font-weight:500}
+.sec{background:#3a3a3c;color:rgba(255,255,255,.9);box-shadow:inset 0 .5px 0 rgba(255,255,255,.1),0 .5px 1px rgba(0,0,0,.4)}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="s" style="width:1240px;height:640px;box-sizing:border-box;background:#e8e8ea;padding:44px 48px;display:grid;grid-template-columns:340px minmax(0,1fr);column-gap:56px">
+
+  <section>
+    <p class="cap">Menu bar</p>
+    <p class="sub">The menu bar icon keeps today's states (idle, recording, transcribing, error flash) and adds orange for a live session.</p>
+    <div style="height:26px;border-radius:6px 6px 0 0;background:rgba(30,30,34,.85);display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:0 12px;width:280px;box-sizing:border-box;color:#fff;font-size:13px">
+      <span style="display:flex;align-items:center;justify-content:center;width:26px;height:20px;border-radius:4px;background:rgba(255,255,255,.2)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"></rect><path d="M5 11a7 7 0 0 0 14 0"></path></svg></span>
+      <span>10:42</span>
+    </div>
+    <div class="menu" role="menu" aria-label="SpeakType" style="margin-top:4px">
+      <div class="mi" style="height:auto;padding:6px 9px;align-items:flex-start;flex-direction:column;gap:1px"><span style="font-weight:600">SpeakType</span><span style="font-size:11px;color:rgba(255,255,255,.5)">Ready · Balanced model</span></div>
+      <div class="sep"></div>
+      <div class="mi" role="menuitem">Start dictation<span class="k">⌃⌘</span></div>
+      <div class="mi" role="menuitem" style="background:#0a84ff;color:#fff">Start a session<span class="k" style="color:rgba(255,255,255,.8)">⌥⌘K</span></div>
+      <div class="sep"></div>
+      <div class="mi" role="menuitem">Paste last dictation again</div>
+      <a class="mi" role="menuitem" href="Prompt.dc.html" style="color:inherit;text-decoration:none">History…<span class="k">⌘Y</span></a>
+      <div class="sep"></div>
+      <a class="mi" role="menuitem" href="Settings.dc.html" style="color:inherit;text-decoration:none">Settings…<span class="k">⌘,</span></a>
+      <div class="mi" role="menuitem">Hide widget</div>
+      <div class="mi" role="menuitem">Check for updates…</div>
+      <div class="mi" role="menuitem">About SpeakType</div>
+      <div class="sep"></div>
+      <div class="mi" role="menuitem">Quit SpeakType<span class="k">⌘Q</span></div>
+    </div>
+  </section>
+
+  <section>
+    <p class="cap">History — nothing yet</p>
+    <p class="sub">Teaches the two shortcuts instead of showing a blank window.</p>
+    <div style="width:100%;height:420px;border-radius:12px;background:#1e1e1e;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12),0 20px 50px rgba(0,0,0,.25);display:flex;flex-direction:column;overflow:hidden">
+      <div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 16px;background:#262628;box-shadow:inset 0 -.5px 0 rgba(0,0,0,.6)">
+        <span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span>
+        <span style="font-weight:600;margin-left:12px">History</span>
+      </div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;padding:0 40px">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+        <p style="margin:6px 0 0;font-size:15px;font-weight:600;color:#fff">Nothing here yet</p>
+        <p style="margin:0;line-height:1.5;color:rgba(255,255,255,.55);max-width:320px">Everything you dictate or capture in a session shows up here, so you can find it later.</p>
+        <p style="margin:10px 0 0;font-size:12px;color:rgba(255,255,255,.5)">Dictate with <span style="color:#fff">⌃⌘</span> · Start a session with <span style="color:#fff">⌥⌘K</span></p>
+      </div>
+    </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1240,"height":640}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

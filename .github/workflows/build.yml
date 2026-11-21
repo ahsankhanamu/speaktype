@@ -17,7 +17,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: apps/widget/src-tauri
+          workspaces: . -> apps/widget/src-tauri/target
 
       - name: Install cmake
         run: brew install cmake
@@ -51,6 +51,13 @@ jobs:
       - name: Install tauri-cli
         run: cargo install tauri-cli
 
-      - name: Compile check
-        working-directory: apps/widget/src-tauri
-        run: cargo check
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install JS dependencies
+        run: npm ci && npx -w @speaktype/ui playwright install chromium
+
+      - name: Verify (fmt, clippy, tests, type checks, visual)
+        run: make verify

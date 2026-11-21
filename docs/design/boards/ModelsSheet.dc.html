@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Speech models sheet</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+.ms{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased;color:rgba(255,255,255,.88);font-size:14px}
+.row{display:flex;align-items:center;gap:14px;min-height:60px;padding:0 4px;position:relative}
+.row + .row::before{content:"";position:absolute;left:52px;right:0;top:0;height:.5px;background:rgba(255,255,255,.09)}
+.ic{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:none;box-shadow:inset 0 .5px 0 rgba(255,255,255,.25)}
+.nm{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.nm b{font-size:15px;font-weight:500;color:#fff}
+.nm span{font-size:12px;color:rgba(255,255,255,.5)}
+.st{font-size:14px;color:rgba(255,255,255,.75);white-space:nowrap;display:flex;align-items:center;gap:8px}
+.pop{width:26px;height:26px;border-radius:13px;background:rgba(255,255,255,.1);display:inline-flex;align-items:center;justify-content:center;flex:none}
+.b{font:inherit;font-size:13px;height:28px;padding:0 14px;border-radius:14px;border:0;cursor:default;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;transition:background-color .12s ease-out}
+.sec2{background:rgba(255,255,255,.1);color:#fff}.sec2:hover{background:rgba(255,255,255,.15)}
+.pri{background:#0a84ff;color:#fff;font-weight:600;height:32px;padding:0 22px;border-radius:16px;font-size:14px}.pri:hover{background:#2a93ff}
+.tick{position:absolute;top:50%;width:4px;height:4px;border-radius:2px;background:rgba(255,255,255,.35);transform:translate(-50%,-50%)}
+a{color:#4da3ff}a:hover{color:#7cbcff}
+</style>
+</helmet>
+<div class="ms" style="width:1040px;height:980px;background:#1e1e1e;border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.12);position:relative">
+  <div aria-hidden="true" style="position:absolute;inset:0;display:flex">
+    <div style="width:244px;background:#262628;padding:20px">
+      <div style="display:flex;gap:8px"><span style="width:12px;height:12px;border-radius:50%;background:#ff5f57"></span><span style="width:12px;height:12px;border-radius:50%;background:#febc2e"></span><span style="width:12px;height:12px;border-radius:50%;background:#28c840"></span></div>
+      <div style="margin-top:22px;height:32px;border-radius:16px;background:rgba(255,255,255,.07)"></div>
+      <div style="margin-top:80px;height:32px;border-radius:7px;background:#0a84ff;opacity:.9"></div>
+    </div>
+    <div style="flex:1;padding:44px 28px"><div style="width:140px;height:22px;border-radius:6px;background:rgba(255,255,255,.12)"></div><div style="margin-top:28px;height:200px;border-radius:16px;background:#2a2a2c"></div><div style="margin-top:20px;height:120px;border-radius:16px;background:#2a2a2c"></div></div>
+  </div>
+  <div aria-hidden="true" style="position:absolute;inset:0;background:rgba(0,0,0,.42)"></div>
+
+  <section role="dialog" aria-modal="true" aria-labelledby="ms-t" style="position:absolute;left:50%;top:84px;transform:translateX(-50%);width:780px;border-radius:28px;background:#2a2a2c;box-shadow:0 0 0 .5px rgba(255,255,255,.16),0 0 0 1px rgba(0,0,0,.5),0 24px 60px rgba(0,0,0,.45);display:flex;flex-direction:column;overflow:hidden">
+    <header style="padding:30px 32px 18px">
+      <h2 id="ms-t" style="margin:0;font-size:18px;font-weight:700;letter-spacing:-.01em;color:#fff">Speech models</h2>
+      <p style="margin:6px 0 0;font-size:14px;line-height:1.45;color:rgba(255,255,255,.62)">Slide toward Accurate for better results with names, accents and noisy rooms. Faster models download quicker and use less memory.</p>
+    </header>
+
+    <div style="margin:0 24px;padding:26px 30px 22px;border-radius:20px;background:rgba(255,255,255,.045)">
+      <div style="display:flex;align-items:center;gap:18px">
+        <span style="font-size:13px;color:rgba(255,255,255,.6);width:52px">Faster</span>
+        <div style="position:relative;flex:1;height:22px" role="slider" aria-label="Speed and accuracy" aria-valuetext="Balanced">
+          <span style="position:absolute;left:0;right:0;top:50%;height:6px;margin-top:-3px;border-radius:3px;background:rgba(255,255,255,.14)"></span>
+          <span style="position:absolute;left:0;width:40%;top:50%;height:6px;margin-top:-3px;border-radius:3px;background:#0a84ff"></span>
+          <span class="tick" style="left:0%"></span><span class="tick" style="left:20%"></span><span class="tick" style="left:40%"></span><span class="tick" style="left:60%"></span><span class="tick" style="left:80%"></span><span class="tick" style="left:100%"></span>
+          <span style="position:absolute;left:40%;top:50%;width:26px;height:26px;border-radius:13px;background:#f5f5f7;transform:translate(-50%,-50%);box-shadow:0 1px 3px rgba(0,0,0,.4),0 0 0 .5px rgba(0,0,0,.2)"></span>
+        </div>
+        <span style="font-size:13px;color:rgba(255,255,255,.6);width:96px;text-align:right">More accurate</span>
+      </div>
+      <div style="position:relative;height:18px;margin:8px 114px 0 70px;font-size:12px;color:rgba(255,255,255,.55)">
+        <span style="position:absolute;left:20%;transform:translateX(-50%)">Fast</span>
+        <span style="position:absolute;left:40%;transform:translateX(-50%);color:#fff;font-weight:500">Balanced</span>
+        <span style="position:absolute;left:80%;transform:translateX(-50%)">Accurate</span>
+      </div>
+      <div style="margin-top:18px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:14px;color:rgba(255,255,255,.85)">
+        <span style="width:8px;height:8px;border-radius:50%;background:#30d158"></span>
+        Balanced is in use · about 0.6 s to write out 10 s of speech on this Mac · ~500 MB · switching models takes a few seconds
+      </div>
+    </div>
+
+    <div style="padding:10px 28px 4px" role="list" aria-label="All speech models">
+      <div class="row" role="listitem">
+        <span class="ic" style="background:linear-gradient(180deg,#8e8e93,#636366)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 10v4M10 7v10M14 9v6M18 11v2"></path></svg></span>
+        <span class="nm"><b>Tiny</b><span>Smallest download, least accurate · ~75 MB</span></span>
+        <span class="st">Paused at 41%<button class="b sec2" type="button">Resume</button></span>
+      </div>
+      <div class="row" role="listitem">
+        <span class="ic" style="background:linear-gradient(180deg,#64d2ff,#0a84ff)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 10v4M10 7v10M14 9v6M18 11v2"></path></svg></span>
+        <span class="nm"><b>Fast</b><span>Base · quickest for short messages · ~150 MB</span></span>
+        <span class="st">Downloaded<span class="pop" role="button" aria-haspopup="menu" aria-label="Fast model options"><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></span></span>
+      </div>
+      <div class="row" role="listitem" style="background:rgba(10,132,255,.1);border-radius:14px;margin:0 -8px;padding:0 12px">
+        <span class="ic" style="background:linear-gradient(180deg,#5ac8fa,#007aff)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 11v2M8 8v8M12 5v14M16 8v8M20 11v2"></path></svg></span>
+        <span class="nm"><b>Balanced</b><span>Small · best for most people · ~500 MB</span></span>
+        <span class="st" style="color:#fff"><span style="width:8px;height:8px;border-radius:50%;background:#30d158"></span>In use<span class="pop" role="button" aria-haspopup="menu" aria-label="Balanced model options"><svg width="9" height="13" viewBox="0 0 10 14" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 5l3-3 3 3M2 9l3 3 3-3"></path></svg></span></span>
+      </div>
+      <div class="row" role="listitem">
+        <span class="ic" style="background:linear-gradient(180deg,#bf5af2,#5e5ce6)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 10v4M10 7v10M14 9v6M18 11v2"></path></svg></span>
+        <span class="nm"><b>Medium</b><span>Medium · good on Macs with 16 GB or more · ~1.5 GB</span></span>
+        <span class="st"><button class="b sec2" type="button"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"></path></svg>Download</button></span>
+      </div>
+      <div class="row" role="listitem">
+        <span class="ic" style="background:linear-gradient(180deg,#ff9f0a,#ff6a3d)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 11v2M8 8v8M12 5v14M16 8v8M20 11v2"></path></svg></span>
+        <span class="nm"><b>Accurate</b><span>Large v3 Turbo · names, accents, noisy rooms · ~1.5 GB</span></span>
+        <span class="st" style="gap:10px">
+          <svg width="22" height="22" viewBox="0 0 22 22" aria-label="38 percent downloaded" role="img"><circle cx="11" cy="11" r="9" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="2.5"></circle><circle cx="11" cy="11" r="9" fill="none" stroke="#0a84ff" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="21.5 56.5" transform="rotate(-90 11 11)"></circle></svg>
+          <span style="font-variant-numeric:tabular-nums">580 MB of 1.5 GB · 2 min</span>
+          <span class="pop" role="button" aria-label="Pause download"><svg width="10" height="10" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3" width="3" height="10" rx="1" fill="#fff"></rect><rect x="9.5" y="3" width="3" height="10" rx="1" fill="#fff"></rect></svg></span>
+        </span>
+      </div>
+      <div class="row" role="listitem">
+        <span class="ic" style="background:linear-gradient(180deg,#ff6961,#ff375f)"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M3 11v2M7 8v8M11 4v16M15 7v10M19 10v4"></path></svg></span>
+        <span class="nm"><b>Most accurate</b><span>Large v3 · every language · needs 16 GB of memory · ~3 GB</span></span>
+        <span class="st"><span style="width:8px;height:8px;border-radius:50%;background:#ff9f0a"></span>Connection lost · retrying in 8 s (2 of 5)</span>
+      </div>
+    </div>
+
+    <footer style="display:flex;align-items:center;gap:12px;padding:18px 32px 24px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.08)">
+      <span style="font-size:13px;color:rgba(255,255,255,.5)">Using 650 MB · English or multilingual follows your Language setting</span>
+      <span style="flex:1"></span>
+      <button class="b pri" type="button">Done</button>
+    </footer>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1040,"height":980}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

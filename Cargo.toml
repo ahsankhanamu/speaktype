@@ -1,0 +1,8 @@
+[workspace]
+members = [
+    "apps/widget/src-tauri",
+    "crates/speaktype-capture",
+    "crates/speaktype-session",
+    "crates/speaktype-stt",
+]
+resolver = "2"

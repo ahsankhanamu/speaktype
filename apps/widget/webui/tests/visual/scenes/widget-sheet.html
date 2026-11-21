@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Widget states</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        font: 12px -apple-system, sans-serif;
+      }
+      body {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px 0;
+        width: 1140px;
+      }
+      figure {
+        margin: 0;
+        width: 380px;
+      }
+      iframe {
+        display: block;
+        width: 380px;
+        height: 124px;
+        border: 0;
+      }
+      figcaption {
+        padding: 0 0 6px;
+        text-align: center;
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      const theme = new URLSearchParams(location.search).get('theme') ?? 'dark';
+      document.body.style.background = theme === 'light' ? '#e8e8ea' : '#2b2b2d';
+      document.body.style.color = theme === 'light' ? '#1d1d1f' : '#fff';
+      const states = ['idle', 'recording', 'transcribing', 'preparing', 'no-speech', 'busy', 'pasted', 'copied', 'mic-unavailable', 'mic-fallback', 'server-error', 'long-audio'];
+      for (const state of states) {
+        const figure = document.createElement('figure');
+        figure.innerHTML = `<iframe src="widget.html?state=${state}&theme=${theme}"></iframe><figcaption>${state}</figcaption>`;
+        document.body.append(figure);
+      }
+    </script>
+  </body>
+</html>

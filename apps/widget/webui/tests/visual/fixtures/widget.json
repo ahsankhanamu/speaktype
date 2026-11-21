@@ -1,0 +1,67 @@
+{
+  "get_settings": {
+    "model": "base",
+    "language": "auto",
+    "input_device": "MacBook Pro Microphone",
+    "shortcuts": { "dictation": "Super+Control", "session": "Option+Super+K", "screenshot": "Option+Super+S", "drawKey": "right_option" },
+    "widget_size": "regular",
+    "onboarding_step": 4
+  },
+  "get_onboarding_status": {
+    "microphone": true,
+    "accessibility": true,
+    "model": true,
+    "active_model": "base",
+    "exe_path": "/Applications/SpeakType.app/Contents/MacOS/speaktype",
+    "is_dev": false,
+    "is_bundled": true,
+    "responsible_app": "",
+    "responsible_app_path": "/Applications/SpeakType.app"
+  },
+  "get_input_devices": {
+    "devices": [
+      { "name": "MacBook Pro Microphone", "label": "MacBook Pro Microphone (48 kHz)", "is_default": true },
+      { "name": "AirPods Pro", "label": "AirPods Pro (Bluetooth hands-free, 16 kHz)", "is_default": false },
+      { "name": "Studio Display Microphone", "label": "Studio Display Microphone (48 kHz)", "is_default": false }
+    ],
+    "default": "MacBook Pro Microphone"
+  },
+  "get_models": {
+    "available": [
+      { "id": "tiny", "size_bytes": 0, "downloaded": false },
+      { "id": "base", "size_bytes": 157286400, "downloaded": true },
+      { "id": "small", "size_bytes": 0, "downloaded": true },
+      { "id": "medium", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3-turbo", "size_bytes": 0, "downloaded": false },
+      { "id": "large-v3", "size_bytes": 0, "downloaded": false }
+    ],
+    "downloading": [],
+    "waiting": [],
+    "progress": []
+  },
+  "plugin:window|scale_factor": 1,
+  "plugin:window|inner_size": { "width": 168, "height": 120 },
+  "plugin:window|outer_position": { "x": 0, "y": 0 },
+  "$states": {
+    "idle": [],
+    "recording": [
+      { "event": "dictation-state", "payload": { "phase": "recording", "notice": null } },
+      { "event": "sidecar:audio_level", "payload": { "level": 0.04, "peak": 0.1 } }
+    ],
+    "transcribing": [{ "event": "dictation-state", "payload": { "phase": "transcribing", "notice": null } }],
+    "preparing": [{ "event": "dictation-state", "payload": { "phase": "preparing", "notice": null } }],
+    "no-speech": [{ "event": "dictation-state", "payload": { "phase": "error", "notice": { "kind": "noSpeech", "message": "Didn't catch that" } } }],
+    "busy": [{ "event": "dictation-state", "payload": { "phase": "error", "notice": { "kind": "busy", "message": "Still working on the last one" } } }],
+    "pasted": [{ "event": "dictation-state", "payload": { "phase": "done", "notice": { "kind": "pasted", "message": "Pasted" } } }],
+    "copied": [{ "event": "dictation-state", "payload": { "phase": "done", "notice": { "kind": "copiedNotPasted", "message": "Copied. Press ⌘V to paste" } } }],
+    "mic-unavailable": [{ "event": "dictation-state", "payload": { "phase": "error", "notice": { "kind": "micUnavailable", "message": "Microphone unavailable" } } }],
+    "mic-fallback": [{ "event": "dictation-state", "payload": { "phase": "done", "notice": { "kind": "micFallback", "message": "Switched to MacBook microphone" } } }],
+    "server-error": [{ "event": "dictation-state", "payload": { "phase": "error", "notice": { "kind": "serverError", "message": "Speech model couldn't start" } } }],
+    "long-audio": [
+      { "event": "dictation-state", "payload": { "phase": "transcribing", "notice": null } },
+      { "event": "dictation:long-audio", "payload": { "duration_secs": 130 } }
+    ],
+    "all-set": [{ "event": "onboarding:finished", "payload": { "hotkey": "Super+Control" } }],
+    "server-starting": [{ "event": "server:starting", "payload": {} }]
+  }
+}

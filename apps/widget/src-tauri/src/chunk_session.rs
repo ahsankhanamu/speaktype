@@ -9,12 +9,14 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::async_runtime::JoinHandle;
+use tauri::{AppHandle, Runtime};
 use tokio::sync::Mutex as AsyncMutex;
 
 const MONITOR_INTERVAL: Duration = Duration::from_millis(150);
 const MAX_PROMPT_CHARS: usize = 800;
 
-pub struct ChunkSession {
+pub struct ChunkSession<R: Runtime> {
+    app: AppHandle<R>,
     settings: Settings,
     _sample_rate: u32,
     _buffer: Arc<Mutex<Vec<f32>>>,
@@ -29,8 +31,9 @@ pub struct ChunkSession {
     monitor_handle: Mutex<Option<JoinHandle<()>>>,
 }
 
-impl ChunkSession {
+impl<R: Runtime> ChunkSession<R> {
     pub fn start(
+        app: AppHandle<R>,
         settings: Settings,
         sample_rate: u32,
         buffer: Arc<Mutex<Vec<f32>>>,
@@ -45,6 +48,7 @@ impl ChunkSession {
         let pipelined = Arc::new(AtomicBool::new(false));
 
         let session = Self {
+            app: app.clone(),
             settings: settings.clone(),
             _sample_rate: sample_rate,
             _buffer: buffer.clone(),
@@ -138,6 +142,7 @@ impl ChunkSession {
                 }
 
                 spawn_chunk_task(
+                    app.clone(),
                     settings.clone(),
                     sample_rate,
                     chunk,
@@ -196,17 +201,21 @@ impl ChunkSession {
             }
             log_message("[chunk] Short recording — single-shot transcription");
             debug::capture_audio(&samples, sample_rate);
-            debug::update_meta(
-                samples.len() as f64 / sample_rate as f64,
-                "single_shot",
-            );
-            return transcribe_samples(&samples, sample_rate, &self.settings, None, None)
-                .await
-                .ok()
-                .map(|report| {
-                    debug::finish_session(&report.clean_text);
-                    report.clean_text
-                });
+            debug::update_meta(samples.len() as f64 / sample_rate as f64, "single_shot");
+            return transcribe_samples(
+                &self.app,
+                &samples,
+                sample_rate,
+                &self.settings,
+                None,
+                None,
+            )
+            .await
+            .ok()
+            .map(|report| {
+                debug::finish_session(&report.clean_text);
+                report.clean_text
+            });
         }
 
         if !tail.is_empty() {
@@ -221,6 +230,7 @@ impl ChunkSession {
                 ));
                 debug::record_final_tail(idx, start_secs, end_secs);
                 spawn_chunk_task(
+                    self.app.clone(),
                     self.settings.clone(),
                     sample_rate,
                     tail,
@@ -268,16 +278,13 @@ impl ChunkSession {
             combined.len()
         ));
         debug::capture_audio(&samples, sample_rate);
-        debug::update_meta(
-            samples.len() as f64 / sample_rate as f64,
-            "live_pipelined",
-        );
+        debug::update_meta(samples.len() as f64 / sample_rate as f64, "live_pipelined");
         debug::finish_session(&combined);
         Some(combined)
     }
 }
 
-impl Drop for ChunkSession {
+impl<R: Runtime> Drop for ChunkSession<R> {
     fn drop(&mut self) {
         self.stop_monitor.store(true, Ordering::SeqCst);
         if let Ok(mut guard) = self.monitor_handle.lock() {
@@ -286,7 +293,9 @@ impl Drop for ChunkSession {
     }
 }
 
-fn spawn_chunk_task(
+#[allow(clippy::too_many_arguments)]
+fn spawn_chunk_task<R: Runtime>(
+    app: AppHandle<R>,
     settings: Settings,
     sample_rate: u32,
     chunk: Vec<f32>,
@@ -313,24 +322,29 @@ fn spawn_chunk_task(
             }
         }
 
-        let prompt = prompt_tail.lock().ok().map(|p| p.clone()).unwrap_or_default();
+        let prompt = prompt_tail
+            .lock()
+            .ok()
+            .map(|p| p.clone())
+            .unwrap_or_default();
         let prompt_ref = if prompt.is_empty() {
             None
         } else {
             Some(prompt.as_str())
         };
 
-        match transcribe_samples(&chunk, sample_rate, &settings, prompt_ref, Some(idx)).await {
+        match transcribe_samples(&app, &chunk, sample_rate, &settings, prompt_ref, Some(idx)).await
+        {
             Ok(report) if !report.is_empty() => {
                 let text = report.clean_text.clone();
                 if let Ok(mut results) = chunk_results.lock() {
-                    if results.contains_key(&idx) {
+                    if let std::collections::btree_map::Entry::Vacant(e) = results.entry(idx) {
+                        e.insert(text.clone());
+                    } else {
                         log_message(&format!(
                             "[chunk] Chunk {} result already stored — ignoring duplicate",
                             idx
                         ));
-                    } else {
-                        results.insert(idx, text.clone());
                     }
                 }
                 // Only fully clean chunks seed the next prompt: feeding salvaged
@@ -379,7 +393,8 @@ fn spawn_chunk_task(
     });
 }
 
-async fn transcribe_samples(
+async fn transcribe_samples<R: Runtime>(
+    app: &AppHandle<R>,
     samples: &[f32],
     sample_rate: u32,
     settings: &Settings,
@@ -389,11 +404,12 @@ async fn transcribe_samples(
     let normalized = audio::normalize_audio(samples);
     let duration_secs = normalized.len() as f64 / sample_rate as f64;
     let wav = audio::to_wav(&normalized, sample_rate)?;
-    transcribe::transcribe_verified(wav, settings, duration_secs, prompt, debug_chunk).await
+    transcribe::transcribe_verified(app, wav, settings, duration_secs, prompt, debug_chunk).await
 }
 
 /// Transcribe long audio by splitting on phrase boundaries (fallback when no live session).
-pub async fn transcribe_chunked(
+pub async fn transcribe_chunked<R: Runtime>(
+    app: &AppHandle<R>,
     samples: Vec<f32>,
     sample_rate: u32,
     settings: &Settings,
@@ -402,7 +418,7 @@ pub async fn transcribe_chunked(
     let chunks = audio::split_on_phrase_boundaries(&samples, sample_rate);
     if chunks.len() <= 1 {
         let wav = audio::to_wav(&audio::normalize_audio(&samples), sample_rate)?;
-        return transcribe::transcribe(wav, settings, duration_secs).await;
+        return transcribe::transcribe(app, wav, settings, duration_secs).await;
     }
 
     log_message(&format!(
@@ -423,7 +439,16 @@ pub async fn transcribe_chunked(
         } else {
             Some(prompt_tail.as_str())
         };
-        match transcribe_samples(chunk, sample_rate, settings, prompt_ref, Some(i as u32)).await {
+        match transcribe_samples(
+            app,
+            chunk,
+            sample_rate,
+            settings,
+            prompt_ref,
+            Some(i as u32),
+        )
+        .await
+        {
             Ok(report) if !report.is_empty() => {
                 let text = report.clean_text.clone();
                 parts.push(text.trim().to_string());
@@ -469,10 +494,13 @@ mod tests {
     use super::*;
     use crate::settings::Settings;
 
-    fn test_session() -> ChunkSession {
-        let settings = Settings::default();
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        ChunkSession::start(settings, 16_000, buffer)
+    fn test_session() -> ChunkSession<tauri::test::MockRuntime> {
+        ChunkSession::start(
+            tauri::test::mock_app().handle().clone(),
+            Settings::default(),
+            16_000,
+            Arc::new(Mutex::new(Vec::new())),
+        )
     }
 
     #[test]

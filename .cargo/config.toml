@@ -1,0 +1,3 @@
+[build]
+# Keep build output where the build, DMG and release scripts expect it.
+target-dir = "apps/widget/src-tauri/target"
