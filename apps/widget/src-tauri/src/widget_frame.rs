@@ -304,11 +304,18 @@ pub fn watch_pointer(window: &WebviewWindow) {
     // Moves only: during a drag the regions are stale, and the button-up is
     // followed by a move that settles the state.
     let mask = NSEventMask::MouseMoved | NSEventMask::LeftMouseUp;
+    let on_event = |window: &WebviewWindow, event: NonNull<NSEvent>| {
+        // SAFETY: AppKit hands the monitor a live event for the call's duration.
+        if unsafe { event.as_ref() }.r#type() == objc2_app_kit::NSEventType::LeftMouseUp {
+            settle(window);
+        }
+        update_pass_through(window);
+    };
     let global_window = window.clone();
-    let global = RcBlock::new(move |_: NonNull<NSEvent>| update_pass_through(&global_window));
+    let global = RcBlock::new(move |event: NonNull<NSEvent>| on_event(&global_window, event));
     let local_window = window.clone();
     let local = RcBlock::new(move |event: NonNull<NSEvent>| -> *mut NSEvent {
-        update_pass_through(&local_window);
+        on_event(&local_window, event);
         event.as_ptr()
     });
     let monitors = (
@@ -317,6 +324,34 @@ pub fn watch_pointer(window: &WebviewWindow) {
         unsafe { NSEvent::addLocalMonitorForEventsMatchingMask_handler(mask, &local) },
     );
     std::mem::forget(monitors);
+}
+
+/// Asks the widget to lay out again.
+pub const RELAYOUT_EVENT: &str = "widget:relayout";
+
+/// After a button-up, a widget dropped near an edge hangs its stage past the
+/// screen (a drag ends after `startDragging` returns, so the layout that
+/// followed it ran too early): ask for a layout, which pulls the stage back on
+/// screen so its pill and menus aren't cut off.
+fn settle(window: &WebviewWindow) {
+    let Some(current) = window_rect(window) else {
+        return;
+    };
+    let Some(home) = LAYOUT
+        .lock()
+        .ok()
+        .and_then(|l| l.home_offset)
+        .map(|offset| home_in(current, Some(offset)))
+    else {
+        return;
+    };
+    let Some(area) = work_area(window, home) else {
+        return;
+    };
+    if !same_rect(current, stage_for(home, area)) {
+        use tauri::Emitter;
+        let _ = window.emit_to(window.label(), RELAYOUT_EVENT, ());
+    }
 }
 
 /// The widget moved (a drag, a corner placement, or our own layout). Home

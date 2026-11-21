@@ -95,6 +95,8 @@
     clearTimeout(cardTimer);
     cardTimer = setTimeout(() => (card = null), CARD_MS);
   });
+  // A drag ended near an edge: the window hangs past the screen until it's laid out again.
+  useEvent('widget:relayout', () => layout(target, true));
   useEvent<{ duration_ms?: number }>('widget:highlight', ({ duration_ms }) => {
     locating = true;
     clearTimeout(locateTimer);
