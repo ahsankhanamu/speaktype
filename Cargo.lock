@@ -4602,6 +4602,7 @@ dependencies = [
  "serde",
  "serde_json",
  "signal-hook",
+ "speaktype-capture",
  "speaktype-session",
  "speaktype-stt",
  "specta",
