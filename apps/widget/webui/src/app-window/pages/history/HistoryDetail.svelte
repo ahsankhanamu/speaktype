@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Ellipsis, Pause, Play } from '@lucide/svelte';
+  import { Check, Copy, Ellipsis, Pause, Play } from '@lucide/svelte';
   import { Button, DropdownMenu, EmptyState, Group, IconButton, MenuItem, Row, confirmAlert, toast } from '@speaktype/ui';
   import ModelMenu from '../../../lib/app/ModelMenu.svelte';
   import { copyToClipboard, deleteHistoryEntry, getHistoryAudio, reprocessHistoryEntry } from '../../../lib/ipc';
@@ -78,24 +78,30 @@
 {#if item.kind === 'dictation'}
   <article>
     <header>
-      <div class="heading">
+      <div class="line">
         <h2>{titleOf(item.entry.text)}</h2>
-        <p>{detailMetaOf(item, new Date())}</p>
-      </div>
-      <div class="actions">
-        <Button variant="primary" onclick={() => copy(item)}>{copied ? 'Copied' : 'Copy'}</Button>
-        {#if newest}<Button onclick={pasteAgain}>Paste again</Button>{/if}
         <DropdownMenu.Root>
           <DropdownMenu.Trigger>
-            {#snippet child({ props })}<IconButton {...props} label="More" icon={Ellipsis} />{/snippet}
+            {#snippet child({ props })}<IconButton {...props} label="More" icon={Ellipsis} size={28} />{/snippet}
           </DropdownMenu.Trigger>
           <DropdownMenu.Content>
             <MenuItem label="Delete" destructive onSelect={() => remove(item)} />
           </DropdownMenu.Content>
         </DropdownMenu.Root>
       </div>
+      <div class="line">
+        <p>{detailMetaOf(item, new Date())}</p>
+        {#if newest}<Button size={28} onclick={pasteAgain}>Paste again</Button>{/if}
+      </div>
     </header>
-    <Group><p class="text">{item.entry.text}</p></Group>
+    <Group>
+      <div class="text-box">
+        <p class="text">{item.entry.text}</p>
+        <span class="copy">
+          <IconButton label={copied ? 'Copied' : 'Copy'} icon={copied ? Check : Copy} size={28} class={copied ? 'copied' : ''} onclick={() => copy(item)} />
+        </span>
+      </div>
+    </Group>
     {#if hasAudio}
       <Group>
         <Row kind="control" label="Recording" caption="Saved with this dictation">
@@ -132,10 +138,19 @@
   header {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 2px;
+  }
+  /* Title with its menu; then when and how, with Paste again. */
+  .line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 28px;
   }
   /* One line, truncated: the full text is right below it. */
   h2 {
+    flex: 1;
+    min-width: 0;
     margin: 0;
     overflow: hidden;
     font-size: 17px;
@@ -144,19 +159,26 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .heading p {
-    margin: 6px 0 0;
+  .line p {
+    flex: 1;
+    margin: 0;
     color: var(--st-text-secondary);
     font-size: var(--st-font-info);
   }
-  .actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
+  .text-box {
+    position: relative;
+  }
+  .copy {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+  }
+  .copy :global(.copied) {
+    color: var(--st-success);
   }
   .text {
     margin: 0;
-    padding: 16px;
+    padding: 16px 44px 16px 16px;
     font-size: var(--st-font-body);
     line-height: 1.5;
     white-space: pre-wrap;
