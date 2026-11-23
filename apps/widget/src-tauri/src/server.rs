@@ -562,9 +562,10 @@ fn reap_orphan() {
 fn child_pids(parent: u32) -> Vec<u32> {
     let mut pids = [0 as libc::pid_t; 16];
     let size = std::mem::size_of_val(&pids) as libc::c_int;
-    let bytes =
+    // Unlike `proc_listpids`, this returns the number of pids, not bytes.
+    let count =
         unsafe { libc::proc_listchildpids(parent as libc::pid_t, pids.as_mut_ptr().cast(), size) };
-    let count = (bytes.max(0) as usize / std::mem::size_of::<libc::pid_t>()).min(pids.len());
+    let count = (count.max(0) as usize).min(pids.len());
     pids[..count]
         .iter()
         .filter(|&&pid| pid > 0)
@@ -599,28 +600,21 @@ fn stop_watched(watcher: u32) {
     }
 }
 
+/// When a live process started (seconds since the epoch), or `None` when no
+/// such process exists. The start time tells a reused pid from the original.
 fn process_spawned(pid: u32) -> Option<u64> {
-    if unsafe { libc::kill(pid as i32, 0) } != 0 {
-        return None;
-    }
-    // `struct kinfo_proc` opens with `kp_proc.p_starttime` (a `timeval`), which
-    // is the first and only 8-byte field of the struct on 64-bit macOS.
-    let name = std::ffi::CString::new(format!("kern.proc.pid.{}", pid)).ok()?;
-    let mut start_time = [0u8; 8];
-    let mut len = start_time.len();
+    let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
+    let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;
     let read = unsafe {
-        libc::sysctlbyname(
-            name.as_ptr(),
-            start_time.as_mut_ptr().cast(),
-            &mut len,
-            std::ptr::null_mut(),
+        libc::proc_pidinfo(
+            pid as libc::c_int,
+            libc::PROC_PIDTBSDINFO,
             0,
+            (&mut info as *mut libc::proc_bsdinfo).cast(),
+            size,
         )
     };
-    if read != 0 || len != start_time.len() {
-        return None;
-    }
-    Some(u64::from_ne_bytes(start_time))
+    (read == size).then_some(info.pbi_start_tvsec)
 }
 
 fn running_process(pid: u32) -> Option<Process> {
@@ -658,6 +652,55 @@ pub fn stop_server() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn a_running_process_is_seen_alive_until_it_exits() {
+        // `stop_watched` waits while the server is alive, then kills it; if
+        // this never sees a live process the server is never waited for.
+        let mut child = std::process::Command::new("/bin/sleep")
+            .arg("5")
+            .spawn()
+            .unwrap();
+        assert!(
+            process_spawned(child.id()).is_some(),
+            "a live child must be seen"
+        );
+        let _ = child.kill();
+        let _ = child.wait();
+        assert!(
+            process_spawned(child.id()).is_none(),
+            "a reaped child is gone"
+        );
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn child_pids_lists_every_child_of_a_process() {
+        // `proc_listchildpids` returns a count of pids, not bytes: reading it
+        // as bytes found no children for one to three of them, so a stopped
+        // watcher's server was never waited for or killed.
+        let mut children: Vec<_> = (0..2)
+            .map(|_| {
+                std::process::Command::new("/bin/sleep")
+                    .arg("5")
+                    .spawn()
+                    .unwrap()
+            })
+            .collect();
+        let listed = child_pids(std::process::id());
+        for child in &children {
+            assert!(
+                listed.contains(&child.id()),
+                "{} missing from {listed:?}",
+                child.id()
+            );
+        }
+        for child in &mut children {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
 
     #[test]
     fn pidfile_round_trips_in_the_test_config_dir() {
