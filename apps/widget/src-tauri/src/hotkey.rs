@@ -244,7 +244,7 @@ fn run_macos_super_control_tap(
     use core_foundation::runloop::{kCFRunLoopCommonModes, CFRunLoop};
     use core_graphics::event::{
         CGEventFlags, CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement,
-        CGEventType,
+        CGEventType, CallbackResult,
     };
 
     let both_were_down = Arc::new(AtomicBool::new(false));
@@ -257,7 +257,7 @@ fn run_macos_super_control_tap(
         vec![CGEventType::FlagsChanged],
         move |_proxy, _event_type, event| {
             if SUPER_CONTROL_GEN.load(Ordering::SeqCst) != my_gen {
-                return None;
+                return CallbackResult::Keep;
             }
             let flags = event.get_flags();
             let command = flags.contains(CGEventFlags::CGEventFlagCommand);
@@ -268,13 +268,13 @@ fn run_macos_super_control_tap(
                 crate::commands::press_dictation(&app_for_callback);
             }
             both_flag.store(both_now, Ordering::SeqCst);
-            None
+            CallbackResult::Keep
         },
     )
     .map_err(|_| "CGEventTapCreate failed (grant Accessibility permission)".to_string())?;
 
     let loop_source = tap
-        .mach_port
+        .mach_port()
         .create_runloop_source(0)
         .map_err(|e| format!("create_runloop_source failed: {:?}", e))?;
 
