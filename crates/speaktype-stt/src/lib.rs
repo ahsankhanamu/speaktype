@@ -16,4 +16,6 @@ pub use provider::{
     provider_for, Decode, RemoteModel, Segment, SttProvider, TranscribeRequest, Transcript,
 };
 pub use retry::{timeout_for, RetryPolicy};
-pub use secrets::{KeychainStore, MemoryStore, SecretError, SecretStore};
+#[cfg(feature = "keychain")]
+pub use secrets::KeychainStore;
+pub use secrets::{MemoryStore, SecretError, SecretStore};

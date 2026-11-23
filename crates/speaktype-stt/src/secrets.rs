@@ -2,12 +2,17 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// Keychain service all SpeakType secrets live under.
+#[cfg(feature = "keychain")]
 const SERVICE: &str = "app.speaktype";
 
 #[derive(Debug, thiserror::Error)]
 pub enum SecretError {
+    #[cfg(feature = "keychain")]
     #[error("Keychain access failed: {0}")]
     Keyring(#[from] keyring::Error),
+    /// A store supplied by the host app (the phone's Keychain or Keystore) failed.
+    #[error("Secret store failed: {0}")]
+    Store(String),
 }
 
 pub trait SecretStore: Send + Sync {
@@ -17,8 +22,10 @@ pub trait SecretStore: Send + Sync {
 }
 
 /// macOS Keychain store (service `app.speaktype`, accounts like `stt.groq`).
+#[cfg(feature = "keychain")]
 pub struct KeychainStore;
 
+#[cfg(feature = "keychain")]
 impl SecretStore for KeychainStore {
     fn get(&self, account: &str) -> Result<Option<String>, SecretError> {
         match keyring::Entry::new(SERVICE, account)?.get_password() {
