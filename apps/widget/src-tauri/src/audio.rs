@@ -509,8 +509,10 @@ pub fn smooth_levels(previous: &[f32], raw: &[f32]) -> Vec<f32> {
 pub trait MicLevelsUi: Clone + Send + 'static {
     fn emit_levels(&self, levels: &[DeviceLevel]);
     fn emit_error(&self, message: &str);
-    /// Release the round's streams.
-    fn stop(&self);
+    /// The round reached its 30 s deadline: the owner releases its streams.
+    /// Called only from the round's own task, never while the owner is
+    /// stopping (it takes the owner's lock).
+    fn release_round(&self);
     /// A monotonic clock on the same time base the round sleeps on.
     fn now(&self) -> Duration;
     /// Sleep, without holding the caller's future across a real timer so a
@@ -527,6 +529,8 @@ pub trait MicLevelsUi: Clone + Send + 'static {
 pub struct DeviceLevels<U: MicLevelsUi> {
     ui: U,
     streams: Vec<SendStream>,
+    /// Set to end the live round's tick loop.
+    round_cancelled: Arc<AtomicBool>,
 }
 
 impl<U: MicLevelsUi> DeviceLevels<U> {
@@ -534,6 +538,7 @@ impl<U: MicLevelsUi> DeviceLevels<U> {
         Self {
             ui,
             streams: Vec::new(),
+            round_cancelled: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -578,20 +583,20 @@ impl<U: MicLevelsUi> DeviceLevels<U> {
     }
 
     fn run(&mut self, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
-        spawn_round(self.ui.clone(), levels);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        self.round_cancelled = cancelled.clone();
+        tauri::async_runtime::spawn(round_loop(self.ui.clone(), levels, cancelled));
     }
 
     /// Idempotent: closing a picker, hiding a window and the round's own
-    /// deadline can all arrive for the same round.
+    /// deadline can all arrive for the same round. Releases the streams and
+    /// ends the round's ticks; it never calls back into the owner.
     pub fn stop(&mut self) {
-        if self.streams.is_empty() {
-            return;
-        }
+        self.round_cancelled.store(true, Ordering::SeqCst);
         for stream in self.streams.drain(..) {
             let _ = stream.0.pause();
             drop(stream);
         }
-        self.ui.stop();
     }
 }
 
@@ -601,12 +606,15 @@ impl<U: MicLevelsUi> Drop for DeviceLevels<U> {
     }
 }
 
-/// One round's tick loop. `sleep` is the keep-alive's single wake-up: while
-/// the mic picker stays open it re-calls `start` every 20 s, which bumps the
-/// clock this loop measures itself against, so only the live round reaches
-/// its 30 s deadline.
-fn spawn_round<U: MicLevelsUi>(ui: U, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
-    tauri::async_runtime::spawn(async move {
+/// One round's tick loop. The picker re-calls `start` every 20 s while it
+/// stays open, which cancels this round and begins a fresh one, so only the
+/// live round reaches its 30 s deadline. A cancelled round ends quietly.
+async fn round_loop<U: MicLevelsUi>(
+    ui: U,
+    levels: Arc<Mutex<Vec<DeviceLevel>>>,
+    cancelled: Arc<AtomicBool>,
+) {
+    {
         let mut elapsed = Duration::ZERO;
         // The loudest level each input reached, so the log shows whether any
         // audio arrived (a device that only ever reads 0 delivered silence).
@@ -614,6 +622,9 @@ fn spawn_round<U: MicLevelsUi>(ui: U, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
         loop {
             let before = ui.now();
             ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
+            if cancelled.load(Ordering::SeqCst) {
+                return;
+            }
             elapsed += ui.now().saturating_sub(before);
             if elapsed >= MIC_LEVELS_MAX {
                 let summary: Vec<String> =
@@ -622,7 +633,7 @@ fn spawn_round<U: MicLevelsUi>(ui: U, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
                     "[miclevels] 30 s round over — releasing every input (loudest: {})",
                     summary.join(", ")
                 ));
-                ui.stop();
+                ui.release_round();
                 return;
             }
             let mut round = levels.lock().map(|l| l.clone()).unwrap_or_default();
@@ -633,7 +644,7 @@ fn spawn_round<U: MicLevelsUi>(ui: U, levels: Arc<Mutex<Vec<DeviceLevel>>>) {
             }
             ui.emit_levels(&round);
         }
-    });
+    }
 }
 
 pub fn has_speech(audio: &[f32], sample_rate: u32) -> bool {
@@ -983,13 +994,16 @@ mod monitor_tests {
         /// something to release.
         open: Arc<AtomicUsize>,
         stopped: Arc<AtomicUsize>,
+        emitted: Arc<AtomicUsize>,
         clock: Arc<Mutex<Duration>>,
     }
 
     impl MicLevelsUi for Round {
-        fn emit_levels(&self, _levels: &[DeviceLevel]) {}
+        fn emit_levels(&self, _levels: &[DeviceLevel]) {
+            self.emitted.fetch_add(1, Ordering::SeqCst);
+        }
         fn emit_error(&self, _message: &str) {}
-        fn stop(&self) {
+        fn release_round(&self) {
             // A real round releases every stream at once.
             self.open.store(0, Ordering::SeqCst);
             self.stopped.fetch_add(1, Ordering::SeqCst);
@@ -1018,6 +1032,9 @@ mod monitor_tests {
         fn stops(&self) -> usize {
             self.stopped.load(Ordering::SeqCst)
         }
+        fn emits(&self) -> usize {
+            self.emitted.load(Ordering::SeqCst)
+        }
     }
 
     /// The round's tick loop, run to completion on a paused clock: no
@@ -1031,12 +1048,50 @@ mod monitor_tests {
             ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
             elapsed += ui.now().saturating_sub(before);
             if elapsed >= MIC_LEVELS_MAX {
-                ui.stop();
+                ui.release_round();
                 return emitted;
             }
             drop(levels.lock());
             emitted += 1;
         }
+    }
+
+    #[test]
+    fn a_stopped_round_goes_quiet_and_never_asks_for_another_release() {
+        // Closing the picker stops the round under the owner's lock; the
+        // round must then end on its own, without calling back into the owner
+        // (that call re-took the same lock: the app froze).
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            tokio::time::pause();
+            let ui = Round::default();
+            let cancelled = Arc::new(std::sync::atomic::AtomicBool::new(true));
+            super::round_loop(ui.clone(), Arc::new(Mutex::new(Vec::new())), cancelled).await;
+            assert_eq!(ui.stops(), 0, "a stopped round asks for no release");
+            assert_eq!(ui.emits(), 0, "a stopped round sends no more levels");
+        });
+    }
+
+    #[test]
+    fn a_live_round_releases_itself_once_at_its_deadline() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_time()
+            .build()
+            .unwrap();
+        runtime.block_on(async {
+            tokio::time::pause();
+            let ui = Round::default();
+            let live = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            super::round_loop(ui.clone(), Arc::new(Mutex::new(Vec::new())), live).await;
+            assert_eq!(ui.stops(), 1);
+            assert_eq!(
+                ui.emits(),
+                (MIC_LEVELS_MAX.as_millis() / MIC_LEVELS_EMIT_MS as u128) as usize - 1
+            );
+        });
     }
 
     #[test]
@@ -1069,7 +1124,7 @@ mod monitor_tests {
         ui.sleep(Duration::from_millis(MIC_LEVELS_EMIT_MS)).await;
         *elapsed += ui.now().saturating_sub(before);
         if *elapsed >= MIC_LEVELS_MAX {
-            ui.stop();
+            ui.release_round();
             return true;
         }
         drop(levels.lock());
@@ -1097,7 +1152,7 @@ mod monitor_tests {
                 assert!(!stopped, "the first 20 s stay well under the limit");
             }
             // The picker re-calls `start`: the old round's streams close.
-            ui.stop();
+            ui.release_round();
             ui.open.store(3, Ordering::SeqCst);
             assert_eq!(ui.stops(), 1, "a replaced round is released at once");
 

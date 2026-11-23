@@ -1512,7 +1512,7 @@ impl audio::MicLevelsUi for LevelsUi {
             .emit(MIC_LEVELS_EVENT, json!({ "levels": [], "error": message }));
     }
 
-    fn stop(&self) {
+    fn release_round(&self) {
         stop_mic_levels(&self.app);
     }
 
