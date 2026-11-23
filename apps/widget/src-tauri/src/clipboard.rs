@@ -71,6 +71,11 @@ pub fn spawn_clipboard_monitor(app: AppHandle) {
             }
             last_text = Some(text.clone());
 
+            // A session copy SpeakType made is the person's own session, not a clip.
+            if crate::rich_copy::is_session_copy() {
+                continue;
+            }
+
             // Avoid re-capturing the exact same content if the user copies it
             // twice in a row — trivial guard.
             if last_capture.as_deref() == Some(text.as_str()) {

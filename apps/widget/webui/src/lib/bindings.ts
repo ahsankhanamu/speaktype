@@ -498,6 +498,11 @@ export type Settings = {
 	/**  Scribe: default document template used by session generation. */
 	scribe_template?: string,
 	/**
+	 *  What a copied session starts with: `none` (default), `auto` (a persona
+	 *  picked from what was said) or a persona key from `templates`.
+	 */
+	session_copy_preface?: string,
+	/**
 	 *  Scribe: OpenAI-compatible LLM configuration. Empty base_url means the LLM
 	 *  assembly layer is disabled (MVP runs locally without it).
 	 */

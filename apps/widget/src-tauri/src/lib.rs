@@ -28,6 +28,7 @@ mod paste;
 mod paths;
 mod permissions;
 mod quality;
+mod rich_copy;
 mod segmented_download;
 mod server;
 mod session_cmds;

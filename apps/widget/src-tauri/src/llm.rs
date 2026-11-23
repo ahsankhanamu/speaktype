@@ -35,6 +35,8 @@ pub async fn generate_session_document(
         &store,
         session_id,
         Target::Markdown,
+        // The generator sends its own persona; the content carries none.
+        "none",
     )
     .map_err(|e| e.to_string())?;
     let raw = rendered.text;
@@ -138,6 +140,8 @@ pub async fn generate_session_document(
         &store,
         session_id,
         Target::CodingAgent,
+        // The generator sends its own persona; the content carries none.
+        "none",
     )
     .map_err(|e| e.to_string())?;
     let screenshots: String = absolute

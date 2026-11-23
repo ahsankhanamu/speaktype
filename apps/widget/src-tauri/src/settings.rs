@@ -92,6 +92,10 @@ pub struct Settings {
     /// Scribe: default document template used by session generation.
     #[serde(default = "default_scribe_template")]
     pub scribe_template: String,
+    /// What a copied session starts with: `none` (default), `auto` (a persona
+    /// picked from what was said) or a persona key from `templates`.
+    #[serde(default = "default_session_copy_preface")]
+    pub session_copy_preface: String,
     /// Scribe: OpenAI-compatible LLM configuration. Empty base_url means the LLM
     /// assembly layer is disabled (MVP runs locally without it).
     #[serde(default = "default_scribe_llm_base_url")]
@@ -276,6 +280,10 @@ fn default_scribe_template() -> String {
     "auto".to_string()
 }
 
+fn default_session_copy_preface() -> String {
+    "none".to_string()
+}
+
 fn default_scribe_llm_base_url() -> String {
     String::new()
 }
@@ -356,6 +364,7 @@ impl Default for Settings {
             scribe_clipboard_monitor: default_scribe_clipboard_monitor(),
             scribe_max_screenshots: default_scribe_max_screenshots(),
             scribe_template: default_scribe_template(),
+            session_copy_preface: default_session_copy_preface(),
             scribe_llm_base_url: default_scribe_llm_base_url(),
             scribe_llm_api_key: String::new(),
             stt_provider: None,

@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { Button, Group, Row, Switch } from '@speaktype/ui';
+  import { Button, Group, PopupMenu, Row, Switch } from '@speaktype/ui';
   import { openSystemPane } from '../../lib/ipc';
   import Page from '../Page.svelte';
   import { navigate } from '../router.svelte';
@@ -10,6 +10,7 @@
   const drawAnytime = settings.field('draw_anytime', true);
   const saveMarks = settings.field('save_marks', true);
   const clipboard = settings.field('scribe_clipboard_monitor', true);
+  const startWith = settings.field('session_copy_preface', 'none');
 </script>
 
 <Page title="Sessions">
@@ -41,6 +42,28 @@
     <Group>
       <Row kind="control" label="Include text I copy">
         {#snippet trailing()}<Switch label="Include text I copy" bind:checked={clipboard.value} />{/snippet}
+      </Row>
+    </Group>
+  </Section>
+
+  <Section title="Copying">
+    <Group>
+      <Row kind="control" label="Start with" caption="Text put before your session when you copy it. Images come along too, and each app takes what it can use.">
+        {#snippet trailing()}
+          <PopupMenu
+            label="Start with"
+            bind:value={startWith.value}
+            items={[
+              { value: 'none', label: 'Nothing' },
+              { value: 'auto', label: 'Pick for me' },
+              { value: 'general', label: 'Research' },
+              { value: 'thesis', label: 'Thesis' },
+              { value: 'qa_test_plan', label: 'QA test plan' },
+              { value: 'blog', label: 'Blog' },
+              { value: 'meeting_notes', label: 'Meeting notes' },
+            ]}
+          />
+        {/snippet}
       </Row>
     </Group>
   </Section>

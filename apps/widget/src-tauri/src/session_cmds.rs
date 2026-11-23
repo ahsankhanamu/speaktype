@@ -260,7 +260,8 @@ pub fn session_stop(
         tauri::async_runtime::spawn(async move {
             crate::narration::finish().await;
             let store = app.state::<Arc<Store>>();
-            if let Err(e) = bundle_write(&sessions_root(), &store, id) {
+            let start_with = copy_preface_setting(&app);
+            if let Err(e) = bundle_write(&sessions_root(), &store, id, &start_with) {
                 log_message(&format!("[session] Bundle not written: {}", e.message));
             }
             emit_sessions_changed(&app);
@@ -406,23 +407,43 @@ pub fn item_split(
 
 /// Resolve the preface: the user's own text wins; otherwise the template's
 /// prompt, inferring the template from content when it is "auto".
-fn resolve_preface(detail: &SessionDetail) -> String {
-    if let Some(preface) = detail.session.preface.as_deref() {
-        if !preface.trim().is_empty() {
-            return preface.to_string();
-        }
+/// The text a copied session starts with. A preface set on the session wins;
+/// otherwise the "Start with" setting: `none` (nothing at all), `auto` (a
+/// persona picked from what was said) or a persona key.
+fn resolve_preface(detail: &SessionDetail, start_with: &str) -> String {
+    if let Some(preface) = detail
+        .session
+        .preface
+        .as_deref()
+        .filter(|p| !p.trim().is_empty())
+    {
+        return preface.to_string();
     }
-    match detail.session.template.as_str() {
+    match start_with {
+        "none" => String::new(),
         "auto" => {
-            let content: Vec<&str> = detail
+            let said: Vec<&str> = detail
                 .items
                 .iter()
                 .filter_map(|i| i.text.as_deref())
                 .collect();
-            templates::template_prompt(templates::infer_template(&content.join("\n"))).to_string()
+            templates::template_prompt(templates::infer_template(&said.join("\n"))).to_string()
         }
-        template => templates::template_prompt(template).to_string(),
+        persona => templates::template_prompt(persona).to_string(),
     }
+}
+
+/// The "Start with" setting.
+pub(crate) fn copy_preface_setting(app: &AppHandle) -> String {
+    app.try_state::<AppState>()
+        .and_then(|state| {
+            state
+                .settings
+                .lock()
+                .ok()
+                .map(|s| s.session_copy_preface.clone())
+        })
+        .unwrap_or_else(|| "none".to_string())
 }
 
 /// Render the session's prompt for `target` against its bundle directory.
@@ -434,10 +455,11 @@ pub(crate) fn render_prompt(
     store: &Store,
     session_id: i64,
     target: Target,
+    start_with: &str,
 ) -> Result<RenderedPrompt, IpcError> {
     let detail = store.detail(session_id)?;
     let dir = bundle::bundle_dir_readonly(root, &detail.session);
-    let preface = resolve_preface(&detail);
+    let preface = resolve_preface(&detail, start_with);
     Ok(assemble(&detail, target, &preface, &dir))
 }
 
@@ -447,13 +469,16 @@ pub(crate) fn bundle_write(
     root: &Path,
     store: &Store,
     session_id: i64,
+    start_with: &str,
 ) -> Result<RenderedPrompt, IpcError> {
     let detail = store.detail(session_id)?;
     let dir = bundle::bundle_dir(root, &detail.session);
-    let preface = resolve_preface(&detail);
+    let preface = resolve_preface(&detail, start_with);
     let target = detail.session.target.clone();
-    let rendered = assemble(&detail, target.clone(), &preface, &dir);
-    bundle::write_bundle(root, &detail, &rendered)?;
+    // prompt.md lives beside `images/`, so it links them relatively: it then
+    // previews in any Markdown viewer and survives the folder being moved.
+    let on_disk = assemble(&detail, Target::Markdown, &preface, &dir);
+    bundle::write_bundle(root, &detail, &on_disk)?;
     // Re-render so byte counts measure the files that now exist; the text is
     // identical because assembly is deterministic.
     Ok(assemble(&detail, target, &preface, &dir))
@@ -464,9 +489,16 @@ pub(crate) fn bundle_write(
 pub fn prompt_render(
     session_id: i64,
     target: Target,
+    app: AppHandle,
     store: State<'_, Arc<Store>>,
 ) -> Result<RenderedPrompt, IpcError> {
-    render_prompt(&sessions_root(), &store, session_id, target)
+    render_prompt(
+        &sessions_root(),
+        &store,
+        session_id,
+        target,
+        &copy_preface_setting(&app),
+    )
 }
 
 #[tauri::command]
@@ -474,10 +506,21 @@ pub fn prompt_render(
 pub fn prompt_copy(
     session_id: i64,
     target: Target,
+    app: AppHandle,
     store: State<'_, Arc<Store>>,
 ) -> Result<(), IpcError> {
-    let rendered = render_prompt(&sessions_root(), &store, session_id, target)?;
-    crate::commands::copy_to_clipboard(rendered.text).map_err(IpcError::from)
+    use speaktype_session::assemble::{blocks, render_html, render_html_with, ImageSource};
+    let detail = store.detail(session_id)?;
+    let dir = bundle::bundle_dir_readonly(&sessions_root(), &detail.session);
+    let preface = resolve_preface(&detail, &copy_preface_setting(&app));
+    let text = assemble(&detail, target, &preface, &dir).text;
+    let blocks = blocks(&detail, &dir);
+    let copy = crate::rich_copy::SessionCopy {
+        text: &text,
+        html: &render_html(&blocks, &preface),
+        html_for_rich_text: &render_html_with(&blocks, &preface, ImageSource::File),
+    };
+    crate::rich_copy::write_session_copy(&app, copy).map_err(IpcError::from)
 }
 
 #[tauri::command]
@@ -928,7 +971,7 @@ mod tests {
         let (store, session) = store_with_mark(&dir);
 
         let rendered =
-            render_prompt(&root, &store, session.id, Target::CodingAgent).expect("render");
+            render_prompt(&root, &store, session.id, Target::CodingAgent, "none").expect("render");
         let dir_on_disk = bundle::bundle_dir_readonly(&root, &session);
         assert!(
             !dir_on_disk.exists(),
@@ -943,6 +986,76 @@ mod tests {
         assert!(rendered.text.contains("images/01-mark.png"));
     }
 
+    fn detail_saying(text: &str, preface: Option<&str>) -> SessionDetail {
+        let dir = tempdir();
+        let store = temp_store(&dir);
+        let session = store.create_session("S", "auto", 0).expect("session");
+        store
+            .add_item(
+                session.id,
+                NewItem {
+                    kind: ItemKind::Speech,
+                    t_start_ms: 0,
+                    t_end_ms: None,
+                    text: Some(text.into()),
+                    image_path: None,
+                    source_app: None,
+                    payload: json!({}),
+                },
+            )
+            .expect("speech");
+        let mut detail = store.detail(session.id).expect("detail");
+        detail.session.preface = preface.map(str::to_string);
+        detail
+    }
+
+    #[test]
+    fn start_with_nothing_adds_no_preface() {
+        assert_eq!(resolve_preface(&detail_saying("hi", None), "none"), "");
+    }
+
+    #[test]
+    fn start_with_a_persona_uses_its_prompt() {
+        let detail = detail_saying("hi", None);
+        assert_eq!(
+            resolve_preface(&detail, "meeting_notes"),
+            templates::template_prompt("meeting_notes")
+        );
+        let thesis = detail_saying("my thesis methodology chapter", None);
+        assert_eq!(
+            resolve_preface(&thesis, "auto"),
+            templates::template_prompt("thesis"),
+            "pick for me reads what was said"
+        );
+    }
+
+    #[test]
+    fn a_session_s_own_preface_wins() {
+        let detail = detail_saying("hi", Some("Fix this bug"));
+        assert_eq!(resolve_preface(&detail, "blog"), "Fix this bug");
+    }
+
+    #[test]
+    fn a_copy_without_a_preface_is_only_the_session() {
+        // The person is usually already in a conversation; no persona is
+        // prepended, and nothing (not even a blank line) comes before the content.
+        let dir = tempdir();
+        let (store, session) = store_with_mark(&dir);
+        let rendered = render_prompt(
+            &dir.join("Sessions"),
+            &store,
+            session.id,
+            Target::Markdown,
+            "none",
+        )
+        .expect("render");
+        assert!(
+            rendered.text.starts_with("![Mark 1](images/01-mark.png)"),
+            "{:?}",
+            rendered.text
+        );
+    }
+
     #[test]
     fn stop_writes_the_bundle_after_commit() {
         let dir = tempdir();
@@ -950,7 +1063,7 @@ mod tests {
         let (store, _session) = store_with_mark(&dir);
 
         let stopped = stop_and_notify(&store, 1_700_000_060_000, |stopped| {
-            bundle_write(&root, &store, stopped.id).map(|_| ())
+            bundle_write(&root, &store, stopped.id, "none").map(|_| ())
         })
         .expect("stop");
 
@@ -960,12 +1073,16 @@ mod tests {
             bundle_dir.join("images/01-mark.png").is_file(),
             "image written"
         );
+        // prompt.md sits beside its images, so it links them relatively and
+        // previews in any Markdown viewer; the copied prompt keeps the
+        // session's own target (absolute paths for a coding agent).
+        let on_disk = std::fs::read_to_string(bundle_dir.join("prompt.md")).expect("prompt.md");
+        let markdown =
+            render_prompt(&root, &store, stopped.id, Target::Markdown, "none").expect("md");
+        assert_eq!(on_disk, markdown.text);
+        assert!(on_disk.contains("](images/01-mark.png)"));
         let rendered =
-            render_prompt(&root, &store, stopped.id, Target::CodingAgent).expect("render");
-        assert_eq!(
-            std::fs::read_to_string(bundle_dir.join("prompt.md")).expect("prompt.md"),
-            rendered.text
-        );
+            render_prompt(&root, &store, stopped.id, Target::CodingAgent, "none").expect("render");
         let size = std::fs::metadata(bundle_dir.join("images/01-mark.png"))
             .expect("metadata")
             .len();
