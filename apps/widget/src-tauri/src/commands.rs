@@ -177,6 +177,32 @@ fn discard_recording(app: &AppHandle, state: &AppState) {
     tones::play(Tone::RecordingStop);
 }
 
+/// A session starting while a dictation records takes that dictation's
+/// microphone: the live recorder (and everything it has heard) moves to the
+/// session, an idle one takes its place, and the dictation simply ends — no
+/// transcript, no paste. One microphone, one recording; ending the session
+/// finishes all of it. `None` when nothing was recording.
+pub fn take_dictation_mic(app: &AppHandle) -> Option<AudioRecorder> {
+    let state = app.try_state::<AppState>()?;
+    if !state.dictation.lock().ok()?.phase.is_recording() {
+        return None;
+    }
+    let fresh = AudioRecorder::new()
+        .map_err(|e| log_message(&format!("[dictation] No recorder to hand over with: {e}")))
+        .ok()?;
+    let live = std::mem::replace(&mut *state.recorder.lock().ok()?, fresh);
+    state.is_recording.store(false, Ordering::SeqCst);
+    if let Ok(mut session) = state.chunk_session.lock() {
+        if let Some(active) = session.take() {
+            active.abort();
+        }
+    }
+    crate::debug::discard_session();
+    tray::set_tray_state(app, TrayState::Idle);
+    remember_dictation(app, controller::idle());
+    Some(live)
+}
+
 struct DictationHost<'a> {
     app: &'a AppHandle,
     state: &'a AppState,

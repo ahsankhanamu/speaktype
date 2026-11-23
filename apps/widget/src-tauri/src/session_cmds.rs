@@ -223,7 +223,8 @@ pub fn session_start(
         |session| {
             emit_state(&app, &store, &muted);
             emit_sessions_changed(&app);
-            crate::narration::start(&app, session.id);
+            let dictation_mic = crate::commands::take_dictation_mic(&app);
+            crate::narration::start(&app, session.id, dictation_mic);
         },
     )
 }

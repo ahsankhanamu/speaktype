@@ -103,13 +103,21 @@ fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
+/// When audio already in a buffer began: `samples` at `sample_rate`, as of `now`.
+fn heard_since(now: i64, samples: usize, sample_rate: u32) -> i64 {
+    now - (samples as u64 * 1000 / sample_rate.max(1) as u64) as i64
+}
+
 /// Something happened in the session (a mark, a clip): it isn't idle.
 pub fn touch() {
     LAST_ACTIVITY.store(now_ms(), Ordering::SeqCst);
 }
 
 /// Start listening for `session_id`. A no-op if narration is already running.
-pub fn start(app: &AppHandle, session_id: i64) {
+/// `live` is a recorder already listening (a dictation the session took over):
+/// it keeps running, and what it has heard becomes the first phrase. Without
+/// one, the session opens the microphone itself.
+pub fn start(app: &AppHandle, session_id: i64, live: Option<AudioRecorder>) {
     let Ok(mut running) = RUNNING.lock() else {
         return;
     };
@@ -121,13 +129,24 @@ pub fn start(app: &AppHandle, session_id: i64) {
         Ok(s) => (s.clone(), s.input_device.clone()),
         Err(_) => return,
     };
-    let mut recorder = match AudioRecorder::new() {
-        Ok(r) => r,
-        Err(e) => return log_message(&format!("[narration] No recorder: {e}")),
+    let recorder = match live {
+        Some(recorder) => {
+            log_message(&format!(
+                "[narration] Session {session_id} continues the dictation's recording"
+            ));
+            recorder
+        }
+        None => {
+            let mut recorder = match AudioRecorder::new() {
+                Ok(r) => r,
+                Err(e) => return log_message(&format!("[narration] No recorder: {e}")),
+            };
+            if let Err(e) = recorder.start_with_input(app.clone(), device.as_deref(), || {}) {
+                return log_message(&format!("[narration] Mic did not start: {e}"));
+            }
+            recorder
+        }
     };
-    if let Err(e) = recorder.start_with_input(app.clone(), device.as_deref(), || {}) {
-        return log_message(&format!("[narration] Mic did not start: {e}"));
-    }
     log_message(&format!("[narration] Listening for session {session_id}"));
     touch();
 
@@ -165,8 +184,9 @@ async fn listen(
     let sample_rate = recorder.sample_rate().max(1);
     let frame = (sample_rate * FRAME_MS / 1000) as usize;
     let muted = app.state::<Arc<AtomicBool>>().inner().clone();
+    let already_heard = buffer.lock().map(|b| b.len()).unwrap_or(0);
     let mut phrase = Phrase {
-        started_ms: now_ms(),
+        started_ms: heard_since(now_ms(), already_heard, sample_rate),
         ..Default::default()
     };
     let mut pending = Vec::new();
@@ -299,6 +319,13 @@ async fn transcribe_phrase(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn audio_already_heard_dates_the_first_phrase_back_to_when_it_began() {
+        // 3 s of a dictation's audio at 48 kHz, taken over at t = 10 000 ms.
+        assert_eq!(heard_since(10_000, 144_000, 48_000), 7_000);
+        assert_eq!(heard_since(10_000, 0, 48_000), 10_000);
+    }
 
     #[test]
     fn a_pause_after_enough_speech_ends_a_phrase() {
